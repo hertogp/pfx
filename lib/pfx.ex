@@ -751,27 +751,36 @@ defmodule Pfx do
     do: raise(arg_error(:noint, n))
 
   @doc """
-  Arithmetic shift right the *prefix.bits* by *n* positions.
+  Arithmetic shift right the `pfx.bits` by `n` positions.
+
+  A negative `n` actually shifts to the left.
 
   ## Examples
 
       iex> new(<<1, 2>>, 32) |> bsr(2)
       %Pfx{bits: <<0, 64>>, maxlen: 32}
 
+      # acutally shifts left
       iex> new(<<1, 2>>, 32) |> bsr(-2)
       %Pfx{bits: <<4, 8>>, maxlen: 32}
 
   """
-  @spec bsr(t, integer) :: t | PfxError.t()
-  def bsr(prefix, n) when is_pfx(prefix) and is_integer(n) do
-    width = bit_size(prefix.bits)
-    x = castp(prefix.bits, width)
-    x = x >>> n
-    %Pfx{prefix | bits: <<x::size(width)>>}
+  @spec bsr(t, integer) :: t
+  def bsr(pfx, n) when is_pfx(pfx) and is_integer(n) do
+    width = bit_size(pfx.bits)
+
+    x =
+      castp(pfx.bits, width)
+      |> Bitwise.bsr(n)
+
+    %Pfx{pfx | bits: <<x::size(width)>>}
   end
 
-  def bsr(x, _) when is_exception(x), do: x
-  def bsr(x, y), do: error(:bsr, {x, y})
+  def bsr(pfx, n) when is_integer(n),
+    do: raise(arg_error(:pfx, pfx))
+
+  def bsr(_, n),
+    do: raise(arg_error(:noint, n))
 
   @doc """
   Right pad the *prefix.bits* to its full length using `0`-bits.
