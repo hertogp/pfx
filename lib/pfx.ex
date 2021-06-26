@@ -500,11 +500,11 @@ defmodule Pfx do
   defp joinbitsp(x, y), do: <<y::bitstring, x::bitstring>>
 
   @doc """
-  Cast a `t:Pfx.t()`-prefix to an integer.
+  Cast a `Pfx` prefix to an integer.
 
-  After right padding the given *prefix*, the bits are interpreted as a number
+  After right padding the given `pfx`, the `pfx.bits` are interpreted as a number
   of `maxlen` bits wide.  Empty prefixes evaluate to `0`, since all 'missing'
-  bits are taken to be zero (even if `maxlen` is 0-bits).
+  bits are taken to be zero (even if `maxlen` is `0`).
 
   See `cut/3` for how this capability might be useful.
 
@@ -536,7 +536,7 @@ defmodule Pfx do
     do: raise(arg_error(:pfx, pfx))
 
   @doc """
-  A bitwise NOT of the *prefix.bits*.
+  A bitwise NOT of the `pfx.bits`.
 
   ## Examples
 
@@ -548,15 +548,18 @@ defmodule Pfx do
 
   """
   @spec bnot(t) :: t | PfxError.t()
-  def bnot(prefix) when is_pfx(prefix) do
-    width = bit_size(prefix.bits)
-    x = castp(prefix.bits, width)
-    x = ~~~x
-    %Pfx{prefix | bits: <<x::size(width)>>}
+  def bnot(pfx) when is_pfx(pfx) do
+    width = bit_size(pfx.bits)
+
+    x =
+      castp(pfx.bits, width)
+      |> Bitwise.bnot()
+
+    %Pfx{pfx | bits: <<x::size(width)>>}
   end
 
-  def bnot(x) when is_exception(x), do: x
-  def bnot(x), do: error(:bnot, x)
+  def bnot(pfx),
+    do: raise(arg_error(:pfx, pfx))
 
   @doc """
   A bitwise AND of two prefixes.
