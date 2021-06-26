@@ -1818,6 +1818,9 @@ defmodule Pfx do
         prefix: {0x2001, 0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2}
       }
 
+      iex> teredo("1.1.1.1")
+      nil
+
   """
   @spec teredo(prefix) :: map | nil
   def teredo(pfx) do
@@ -1834,6 +1837,41 @@ defmodule Pfx do
       }
     else
       nil
+    end
+  end
+
+  @doc """
+  Returns true is `pfx` is a multicast prefix, false otherwise
+
+  ## Examples
+
+      iex> multicast?(%Pfx{bits: <<224, 0, 0, 1>>, maxlen: 32})
+      true
+
+      iex> multicast?({{224, 0, 0, 1}, 32})
+      true
+
+      iex> multicast?({224, 0, 0, 1})
+      true
+
+      iex> multicast?("224.0.0.1")
+      true
+
+      iex> multicast?("ff02::1")
+      true
+
+      iex> multicast?("1.1.1.1")
+      false
+
+  """
+  @spec multicast?(prefix) :: boolean
+  def multicast?(pfx) do
+    x = new(pfx)
+
+    cond do
+      member?(x, %Pfx{bits: <<14::4>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<0xFF>>, maxlen: 128}) -> true
+      true -> false
     end
   end
 end
