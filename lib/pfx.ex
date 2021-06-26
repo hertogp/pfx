@@ -842,7 +842,7 @@ defmodule Pfx do
     bsize = bit_size(pfx.bits)
     nbits = min(n, pfx.maxlen - bsize)
     width = bsize + nbits
-    y = if bit == 0, do: 0, else: (1 <<< nbits) - 1
+    y = if bit == 0, do: 0, else: Bitwise.bsl(1, nbits) - 1
     x = castp(pfx.bits, width) + y
 
     %Pfx{pfx | bits: <<x::size(width)>>}
@@ -906,7 +906,7 @@ defmodule Pfx do
       when is_pfx(pfx) and is_integer(n) and n >= 0 and (bit === 0 or bit === 1) do
     bsize = bit_size(pfx.bits)
     nbits = min(n, pfx.maxlen - bsize)
-    y = if bit == 0, do: 0, else: (1 <<< nbits) - 1
+    y = if bit == 0, do: 0, else: Bitwise.bsl(1, nbits) - 1
     x = castp(pfx.bits, bsize)
 
     %Pfx{pfx | bits: <<y::size(nbits), x::size(bsize)>>}
