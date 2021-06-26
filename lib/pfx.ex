@@ -1874,6 +1874,220 @@ defmodule Pfx do
       true -> false
     end
   end
+
+  @doc """
+  Returns a map with multicast address components for given `pfx`.
+
+  Returns nil if `pfx` is not a multicast address.
+
+  ## Examples
+
+      iex> multicast(%Pfx{bits: <<0xff02::16, 0::104, 1::8>>, maxlen: 128})
+      %{
+        preamble: 255,
+        flags: {0, 0, 0, 0},
+        scope: 2,
+        groupID: <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1>>,
+        address: %Pfx{bits: <<0xff02::16, 0::104, 1::8>>, maxlen: 128}
+      }
+
+      iex> multicast({0xff02, 0, 0, 0, 0, 0, 0, 1})
+      %{
+        preamble: 255,
+        flags: {0, 0, 0, 0},
+        scope: 2,
+        groupID: <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1>>,
+        address: {0xff02, 0, 0, 0, 0, 0, 0, 1}
+      }
+
+      iex> multicast("ff02::1")
+      %{
+        preamble: 255,
+        flags: {0, 0, 0, 0},
+        scope: 2,
+        groupID: <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1>>,
+        address: "ff02::1"
+      }
+
+  """
+  @spec multicast(prefix) :: map | nil
+  def multicast(pfx) do
+    x = new(pfx)
+
+    if multicast?(x) do
+      case x.maxlen do
+        128 ->
+          %{
+            preamble: cut(x, 0, 8) |> cast(),
+            flags: cut(x, 8, 4) |> digits(1) |> elem(0),
+            scope: cut(x, 12, 4) |> cast(),
+            groupID: bits(x, 16, 112),
+            address: pfx
+          }
+
+        32 ->
+          %{
+            digits: digits(x, 8) |> elem(0),
+            groupID: bits(x, 4, 28),
+            address: marshall(x, pfx)
+          }
+      end
+    else
+      nil
+    end
+  end
+
+  @doc """
+  Returns true if `pfx` is a link-local prefix, false otherwise
+
+  Link local prefixes include:
+
+  - `0.0.0.0/8`,          [rfc1122](https://tools.ietf.org/html/rfc1122), this-network (link)
+  - `255.255.255.255/32`, [rfc1f22](https://www.iana.org/go/rfc1122), limited broadcast
+  - `169.254.0.0/16`,     [rfc3927](https://www.iana.org/go/rfc3927), link-local
+  - `fe80::/64`,          [rfc4291](https://tools.ietf.org/html/rfc4291), link-local
+
+  ## Examples
+
+      # first 256 addresses are reserved
+      iex> link_local?("169.254.0.0")
+      false
+
+      # last 256 addresses are reserved
+      iex> link_local?("169.254.255.0")
+      false
+
+      iex> link_local?("0.0.0.0")
+      true
+
+      iex> link_local?("0.255.255.255")
+      true
+
+      iex> link_local?({0, 255, 255, 255})
+      true
+
+      iex> link_local?({{0, 255, 255, 255}, 32})
+      true
+
+      iex> link_local?("fe80::acdc:1975")
+      true
+
+  """
+  @spec link_local?(prefix) :: boolean
+  def link_local?(pfx) do
+    # rfc3927 and rfc4271 & friends
+    # and https://en.wikipedia.org/wiki/IPv6_address#Default_address_selection
+    x = new(pfx)
+
+    cond do
+      member?(x, %Pfx{bits: <<169, 254, 0>>, maxlen: 32}) -> false
+      member?(x, %Pfx{bits: <<169, 254, 255>>, maxlen: 32}) -> false
+      member?(x, %Pfx{bits: <<169, 254>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<0>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<255, 255, 255, 255>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<0xFE80::16, 0::48>>, maxlen: 128}) -> true
+      true -> false
+    end
+  end
+
+  @doc """
+  Return a map with link-local address components for given `pfx`.
+
+  Returns nil if `pfx` is not link-local as per
+  [rfc3927](https://www.iana.org/go/rfc3927)
+
+  ## Examples
+
+      iex> x = link_local("169.254.128.233")
+      iex> x
+      %{ digits: {169, 254, 128, 233},
+         prefix: "169.254.0.0/16",
+         ifaceID: 33001,
+         address: "169.254.128.233"
+      }
+      iex> host(x.prefix, x.ifaceID)
+      "169.254.128.233"
+
+      iex> y = link_local("fe80::acdc:1976")
+      iex> y
+      %{ preamble: 1018,
+         prefix: "FE80:0:0:0:0:0:0:0/64",
+         ifaceID: 2900105590,
+         address: "FE80:0:0:0:0:0:ACDC:1976"
+      }
+      iex> host(y.prefix, y.ifaceID)
+      "FE80:0:0:0:0:0:ACDC:1976"
+
+  """
+  @spec link_local(prefix) :: map | nil
+  def link_local(pfx) do
+    x = new(pfx)
+
+    if link_local?(x) do
+      case x.maxlen do
+        128 ->
+          %{
+            preamble: cut(x, 0, 10) |> cast(),
+            prefix: %Pfx{bits: bits(x, 0, 64), maxlen: 128} |> marshall(pfx),
+            ifaceID: cut(x, 64, 64) |> cast(),
+            address: marshall(x, pfx)
+          }
+
+        32 ->
+          %{
+            digits: digits(x, 8) |> elem(0),
+            prefix: %Pfx{bits: bits(x, 0, 16), maxlen: 32} |> marshall(pfx),
+            ifaceID: cut(x, 16, 16) |> cast(),
+            address: marshall(x, pfx)
+          }
+      end
+    end
+  end
+
+  @doc """
+  Returns true if `pfx` is designated as "private-use".
+
+  For IPv4 this includes the [rfc1918](https://www.iana.org/go/rfc1918)
+  prefixes 10.0.0.0/8, 172.16.0.0/12 and 192.168.0.0/16.  For IPv6 this
+  includes the [rfc4193](https://www.iana.org/go/rfc4193) prefix fc00::/7.
+
+  ## Examples
+
+      iex> unique_local?(%Pfx{bits: <<172, 31, 255, 255>>, maxlen: 32})
+      true
+
+      iex> unique_local?({{172, 31, 255, 255}, 32})
+      true
+
+      iex> unique_local?({172, 31, 255, 255})
+      true
+
+      iex> unique_local?("172.31.255.255")
+      true
+
+      iex> unique_local?("10.10.10.10")
+      true
+
+      iex> unique_local?("fc00:acdc::")
+      true
+
+      iex> unique_local?("172.32.0.0")
+      false
+
+  """
+  def unique_local?(pfx) do
+    # TODO: what about the well-known nat64 address(es) that are used only
+    # locally?
+    x = new(pfx)
+
+    cond do
+      member?(x, %Pfx{bits: <<10>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<172, 1::4>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<192, 168>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<126::7>>, maxlen: 128}) -> true
+      true -> false
+    end
+  end
 end
 
 defimpl String.Chars, for: Pfx do
