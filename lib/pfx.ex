@@ -1147,14 +1147,13 @@ defmodule Pfx do
     do: raise(arg_error(:nopos, width))
 
   @doc """
-  Returns a sibling prefix at distance given by *offset*.
+  Returns another `Pfx` at distance `offset`.
 
-  This basically increases or decreases the number represented by the *prefix*
-  bits.
+  This basically increases or decreases the number represented by the `pfx.bits`
+  while keeping `pfx.maxlen` the same.
 
-  Note that the length of *prefix.bits* will not change and when cycling
-  through all other siblings, you're looking at yourself (i.e. it wraps
-  around).
+  Note that the length of `pfx.bits` will not change and cycling through
+  all siblings will eventually wrap around.
 
   ## Examples
 
@@ -1162,7 +1161,7 @@ defmodule Pfx do
       iex> new(<<10, 11>>, 32) |> sibling(1)
       %Pfx{bits: <<10, 12>>, maxlen: 32}
 
-      # and the last shall be first
+      # the last shall be the first
       iex> new(<<10, 11, 0>>, 32) |> sibling(255)
       %Pfx{bits: <<10, 11, 255>>, maxlen: 32}
 
@@ -1179,17 +1178,20 @@ defmodule Pfx do
       %Pfx{bits: <<>>, maxlen: 32}
 
   """
-  @spec sibling(t, integer) :: t | PfxError.t()
-  def sibling(prefix, offset) when is_pfx(prefix) and is_integer(offset) do
-    bsize = bit_size(prefix.bits)
-    x = castp(prefix.bits, bit_size(prefix.bits))
+  @spec sibling(t, integer) :: t
+  def sibling(pfx, offset) when is_pfx(pfx) and is_integer(offset) do
+    bsize = bit_size(pfx.bits)
+    x = castp(pfx.bits, bit_size(pfx.bits))
     x = x + offset
 
-    %Pfx{prefix | bits: <<x::size(bsize)>>}
+    %Pfx{pfx | bits: <<x::size(bsize)>>}
   end
 
-  def sibling(x, _) when is_exception(x), do: x
-  def sibling(x, o), do: error(:sibling, {x, o})
+  def sibling(pfx, offset) when is_integer(offset),
+    do: raise(arg_error(:pfx, pfx))
+
+  def sibling(_, offset),
+    do: raise(arg_error(:noint, offset))
 
   @doc """
   The size of *prefix* as determined by its *missing* bits.
