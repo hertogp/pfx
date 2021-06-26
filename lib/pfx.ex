@@ -125,6 +125,8 @@ defmodule Pfx do
         :noint -> "expected an integer, got #{inspect(data)}"
         :noneg -> "expected a non_neg_integer, got #{inspect(data)}"
         :nobit -> "expected a bit value 0..1, got #{inspect(data)}"
+        :nopart -> "cannot partition prefixes using #{inspect(data)}"
+        :nowidth -> "cannot extract fields from prefix using width: #{inspect(data)}"
         reason -> "error #{reason}, #{inspect(data)}"
       end
 
@@ -922,7 +924,7 @@ defmodule Pfx do
     do: raise(arg_error(:nobit, bit))
 
   @doc """
-  Set prefix.bits to either 0 or 1.
+  Set all `pfx.bits` to either `0` or `1`.
 
   ## Examples
 
@@ -933,30 +935,32 @@ defmodule Pfx do
       %Pfx{bits: <<255, 255, 255>>, maxlen: 32}
 
   """
-  @spec bset(t, 0 | 1) :: t | PfxError.t()
-  def bset(prefix, bit \\ 0)
+  @spec bset(t, 0 | 1) :: t
+  def bset(pfx, bit \\ 0)
 
-  def bset(prefix, bit) when is_pfx(prefix) do
+  def bset(pfx, bit) when is_pfx(pfx) and (bit === 0 or bit === 1) do
     bit = if bit == 0, do: 0, else: -1
-    len = bit_size(prefix.bits)
-    %{prefix | bits: <<bit::size(len)>>}
+    len = bit_size(pfx.bits)
+    %{pfx | bits: <<bit::size(len)>>}
   end
 
-  def bset(x, _) when is_exception(x), do: x
-  def bset(x, y), do: error(:bset, {x, y})
+  def bset(pfx, bit) when bit === 0 or bit === 1,
+    do: raise(arg_error(:pfx, pfx))
+
+  def bset(_, bit),
+    do: raise(arg_error(:nobit, bit))
 
   # Numbers
 
   @doc """
-  Slice a *prefix* into a list of smaller pieces, each *newlen* bits long.
+  Partition a `Pfx` prefix into a list of new prefixes, each `bitlen` long.
 
-  The given *newlen* must be larger than or equal to the prefix' current bit
-  length, else it is considered an error.
+  Note that `bitlen` must be in the range of `bit_size(pfx.bits)..pfx.maxlen-1`.
 
   ## Examples
 
       # break out the /26's in a /24
-      iex> new(<<10, 11, 12>>, 32)|> slice(26)
+      iex> new(<<10, 11, 12>>, 32)|> partition(26)
       [
         %Pfx{bits: <<10, 11, 12, 0::size(2)>>, maxlen: 32},
         %Pfx{bits: <<10, 11, 12, 1::size(2)>>, maxlen: 32},
@@ -965,34 +969,39 @@ defmodule Pfx do
       ]
 
   """
-  @spec slice(t, non_neg_integer) :: list(t) | PfxError.t()
-  def slice(prefix, newlen)
-      when is_pfx(prefix) and is_inrange(newlen, bit_size(prefix.bits), prefix.maxlen) do
-    width = newlen - bit_size(prefix.bits)
-    max = (1 <<< width) - 1
+  @spec partition(t, non_neg_integer) :: list(t)
+  def partition(pfx, bitlen)
+      when is_pfx(pfx) and is_inrange(bitlen, bit_size(pfx.bits), pfx.maxlen) do
+    width = bitlen - bit_size(pfx.bits)
+    max = Bitwise.bsl(1, width) - 1
 
     for n <- 0..max do
-      %Pfx{prefix | bits: <<prefix.bits::bitstring, n::size(width)>>}
+      %Pfx{pfx | bits: <<pfx.bits::bitstring, n::size(width)>>}
     end
   end
 
-  def slice(x, _) when is_exception(x), do: x
-  def slice(x, n), do: error(:slice, {x, n})
+  def partition(pfx, bitlen) when is_pfx(pfx),
+    do: arg_error(:nopart, bitlen)
+
+  def partition(pfx, _),
+    do: raise(arg_error(:pfx, pfx))
 
   @doc """
-  Turn *prefix* into a list of `{number, width}`-fields.
+  Turn a `Pfx` into a list of `{number, width}`-fields.
 
-  If the actual number of prefix bits are not a multiple of *width*, the last
-  field will have a shorter width.
+  If the actual number of prefix bits are not a multiple of `width`, the last
+  `{number, width}`-tuple, will have a smaller width.
 
   ## Examples
 
-      iex> new(<<10, 11, 12, 0::1>>, 32)
-      ...> |> fields(8)
+      iex> new(<<10, 11, 12, 13>>, 32) |> fields(8)
+      [{10, 8}, {11, 8}, {12, 8}, {13, 8}]
+
+      # not a multiple of 8
+      iex> new(<<10, 11, 12, 0::1>>, 32) |> fields(8)
       [{10, 8}, {11, 8}, {12, 8}, {0, 1}]
 
-      iex> new(<<0xacdc::16>>, 128)
-      ...> |> fields(4)
+      iex> new(<<0xacdc::16>>, 128) |> fields(4)
       [{10, 4}, {12, 4}, {13, 4}, {12, 4}]
 
       iex> new(<<10, 11, 12>>, 32)
@@ -1001,13 +1010,20 @@ defmodule Pfx do
       ...> |> Enum.join("")
       "000010100000101100001100"
 
-  """
-  @spec fields(t, non_neg_integer) :: list({non_neg_integer, non_neg_integer}) | PfxError.t()
-  def fields(prefix, width) when is_pfx(prefix) and is_integer(width) and width > 0,
-    do: fields([], prefix.bits, width)
+      # only 1 field with less bits than given width of 64
+      iex> new(<<255, 255>>, 32) |> fields(64)
+      [{65535, 16}]
 
-  def fields(x, _) when is_exception(x), do: x
-  def fields(x, w), do: error(:fields, {x, w})
+  """
+  @spec fields(t, non_neg_integer) :: list({non_neg_integer, non_neg_integer})
+  def fields(pfx, width) when is_pfx(pfx) and is_integer(width) and width > 0,
+    do: fields([], pfx.bits, width)
+
+  def fields(pfx, width) when is_integer(width) and width > 0,
+    do: raise(arg_error(:pfx, pfx))
+
+  def fields(_, width),
+    do: raise(arg_error(:nowidth, width))
 
   defp fields(acc, <<>>, _width), do: Enum.reverse(acc)
 
