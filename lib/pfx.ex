@@ -717,27 +717,38 @@ defmodule Pfx do
     do: raise(arg_error(:noint, n))
 
   @doc """
-  Arithmetic shift left the *prefix.bits* by *n* positions.
+  Arithmetic shift left the `pfx.bits` by `n` positions.
+
+  A negative `n` actually shifts to the right.
 
   ## Examples
 
       iex> new(<<1, 2>>, 32) |> bsl(2)
       %Pfx{bits: <<4, 8>>, maxlen: 32}
 
+      # negative `n` shifts to the right, so:
+      # 0000.0001.0000.0010 becomes
+      # 0000.0000.0100.0000 which is <<0, 64>>
       iex> new(<<1, 2>>, 32) |> bsl(-2)
       %Pfx{bits: <<0, 64>>, maxlen: 32}
 
   """
-  @spec bsl(t, integer) :: t | PfxError.t()
-  def bsl(prefix, n) when is_pfx(prefix) and is_integer(n) do
-    width = bit_size(prefix.bits)
-    x = castp(prefix.bits, width)
-    x = x <<< n
-    %Pfx{prefix | bits: <<x::size(width)>>}
+  @spec bsl(t, integer) :: t
+  def bsl(pfx, n) when is_pfx(pfx) and is_integer(n) do
+    width = bit_size(pfx.bits)
+
+    x =
+      castp(pfx.bits, width)
+      |> Bitwise.bsl(n)
+
+    %Pfx{pfx | bits: <<x::size(width)>>}
   end
 
-  def bsl(x, _) when is_exception(x), do: x
-  def bsl(x, y), do: error(:bsl, {x, y})
+  def bsl(pfx, n) when is_integer(n),
+    do: raise(arg_error(:pfx, pfx))
+
+  def bsl(_, n),
+    do: raise(arg_error(:noint, n))
 
   @doc """
   Arithmetic shift right the *prefix.bits* by *n* positions.
