@@ -65,7 +65,8 @@ defmodule Pfx do
 
   # Private Guards
 
-  defguardp is_pfxlen(length) when is_integer(length) and length >= 0
+  defguardp is_non_neg_integer(n) when is_integer(n) and n >= 0
+  defguardp is_pos_integer(n) when is_integer(n) and n > 0
   defguardp is_inrange(x, y, z) when is_integer(x) and y <= x and x <= z
 
   defguardp is_ip4dig(n) when is_integer(n) and -1 < n and n < 256
@@ -123,10 +124,12 @@ defmodule Pfx do
         :pfx -> "expected a valid Pfx, got #{inspect(data)}"
         :range -> "invalid index range: #{inspect(data)}"
         :noint -> "expected an integer, got #{inspect(data)}"
+        :noints -> "expected all integers, got #{inspect(data)}"
         :noneg -> "expected a non_neg_integer, got #{inspect(data)}"
+        :nopos -> "expected a pos_integer, got #{inspect(data)}"
         :nobit -> "expected a bit value 0..1, got #{inspect(data)}"
         :nopart -> "cannot partition prefixes using #{inspect(data)}"
-        :nowidth -> "cannot extract fields from prefix using width: #{inspect(data)}"
+        :nowidth -> "expected a pos_integer for width, got #{inspect(data)}"
         reason -> "error #{reason}, #{inspect(data)}"
       end
 
@@ -206,10 +209,10 @@ defmodule Pfx do
 
   """
   @spec new(t() | bitstring, non_neg_integer) :: t()
-  def new(bits, maxlen) when is_bitstring(bits) and is_pfxlen(maxlen),
+  def new(bits, maxlen) when is_bitstring(bits) and is_non_neg_integer(maxlen),
     do: %__MODULE__{bits: truncate(bits, maxlen), maxlen: maxlen}
 
-  def new(pfx, maxlen) when is_pfx(pfx) and is_pfxlen(maxlen),
+  def new(pfx, maxlen) when is_pfx(pfx) and is_non_neg_integer(maxlen),
     do: new(pfx.bits, maxlen)
 
   def new(x, len) when is_pfx(x),
@@ -1039,13 +1042,15 @@ defmodule Pfx do
   end
 
   @doc """
-  Transform a *prefix* into `{digits, len}` format.
+  Transform a `Pfx` prefix into `{digits, len}` format.
 
-  The *prefix* is padded to its maximum length using `0`'s and the resulting
-  bits are grouped into *digits*, each *width*-bits wide.  The resulting *len*
-  preserves the original bitstring length.  Note: works best if prefix'
-  *maxlen* is a multiple of the *width* used, otherwise *maxlen* cannot be
-  inferred from this format in combination with *width*.
+  The `pfx` is padded to its maximum length using `0`'s and the resulting
+  bits are grouped into *digits*, each `width`-bits wide.  The resulting `len`
+  denotes the original `pfx.bits` bit_size.
+
+  Note: works best if `pfx.maxlen` is a multiple of the `width` used, otherwise
+  `maxlen` cannot be inferred from this format by `tuple_size(digits) * width`
+  (e.g. by `Pfx.undigits`)
 
   ## Examples
 
@@ -1069,50 +1074,57 @@ defmodule Pfx do
       "11111111000000000000000000000000"
 
   """
-  @spec digits(t, pos_integer) :: {tuple(), pos_integer} | PfxError.t()
-  def digits(%Pfx{} = prefix, width) do
+  @spec digits(t, pos_integer) :: {tuple(), pos_integer}
+  def digits(pfx, width) when is_pfx(pfx) and is_pos_integer(width) do
     try do
       digits =
-        prefix
+        pfx
         |> padr()
         |> fields(width)
         |> Enum.map(fn {n, _w} -> n end)
         |> List.to_tuple()
 
-      {digits, bit_size(prefix.bits)}
+      {digits, bit_size(pfx.bits)}
     rescue
-      _ -> error(:digits, {prefix, width})
+      _ -> error(:digits, {pfx, width})
     end
   end
 
-  def digits(x, _) when is_exception(x), do: x
-  def digits(x, w), do: error(:digits, {x, w})
+  def digits(pfx, width) when is_pos_integer(width),
+    do: raise(arg_error(:pfx, pfx))
+
+  def digits(_, width),
+    do: raise(arg_error(:nowidth, width))
 
   @doc """
-  Return the prefix represented by the *digits*, actual *length* and a given
-  field *width*.
+  Return the `Pfx` prefix represented by the `digits`, actual `length` and a given
+  field `width`.
 
-  Each number/digit in *digits* is turned into a number of *width* bits wide
-  and the resulting prefix's *maxlen* is inferred from the number of digits
-  given and their *width*.
+  The `pfx.bits` are formed by first concatenating the `digits` expressed as
+  bitstrings of `widht`-bits wide and then truncating to the `length`-msb bits.
 
-  Note: if a *digit* does not fit in *width*-bits, only the *width*-least
-  significant bits are preserved.
+  The `pfx.maxlen` is inferred as `tuple_size(digits) * width`.
+
+  Note: if a digit does not fit in `width`-bits, only the `width`-least
+  significant bits are preserved, which may yield surprising results.
 
   ## Examples
 
+      # truncated to the first 24 bits and maxlen is 32 (4*8)
       iex> undigits({{10, 11, 12, 0}, 24}, 8)
       %Pfx{bits: <<10, 11, 12>>, maxlen: 32}
-
-      iex> undigits({{10, 11, 12, 0}, 24}, 8) |> digits(8)
-      {{10, 11, 12, 0}, 24}
 
       iex> undigits({{-1, -1, 0, 0}, 32}, 8) |> format()
       "255.255.0.0"
 
+      # bits are truncated to empty bitstring (`length` is 0)
+      iex> undigits({{1,2,3,4}, 0}, 8)
+      %Pfx{bits: <<>>, maxlen: 32}
+
   """
-  @spec undigits({tuple(), pos_integer}, pos_integer) :: t | PfxError.t()
-  def undigits({digits, length}, width) do
+  @spec undigits({tuple(), pos_integer}, pos_integer) :: t
+  def undigits({digits, length}, width)
+      when is_pos_integer(width) and is_non_neg_integer(length) do
     try do
       bits =
         digits
@@ -1124,12 +1136,15 @@ defmodule Pfx do
       Pfx.new(bits, tuple_size(digits) * width)
     rescue
       # in case digits-tuple contains non-integers
-      _ -> error(:undigits, {{digits, length}, width})
+      _ -> raise arg_error(:noints, digits)
     end
   end
 
-  def undigits(x, _) when is_exception(x), do: x
-  def undigits(d, l), do: error(:undigits, {d, l})
+  def undigits({_digits, length}, width) when is_pos_integer(width),
+    do: raise(arg_error(:noneg, length))
+
+  def undigits({_digits, _length}, width),
+    do: raise(arg_error(:nopos, width))
 
   @doc """
   Returns a sibling prefix at distance given by *offset*.
