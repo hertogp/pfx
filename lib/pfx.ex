@@ -33,7 +33,7 @@ end
 defmodule Pfx do
   # TODO: still do use or do alias Bitwise and calll the func's rather than the
   # operators like x ^^^ y ?
-  use Bitwise
+  alias Bitwise
   alias PfxError
 
   @external_resource "README.md"
@@ -62,6 +62,13 @@ defmodule Pfx do
 
   """
   @type ip_prefix :: {:inet.ip4_address(), 0..32} | {:inet.ip6_address(), 0..128}
+
+  @typedoc """
+  A prefix expressed as either a `Pfx`, an address-tuple, an
+  address,length-tuple or a CIDR string.
+
+  """
+  @type prefix :: t | ip_address | ip_prefix | String.t()
 
   # Private Guards
 
@@ -114,7 +121,7 @@ defmodule Pfx do
       case reason do
         :bitpos -> "invalid bit position: #{inspect(data)}"
         :cidr -> "expected a valid ipv4/ipv6 CIDR string, got #{inspect(data)}"
-        :create -> "cannot crerate a Pfx from: #{inspect(data)}"
+        :create -> "cannot create a Pfx from: #{inspect(data)}"
         :ip4dig -> "expected valid IPv4 digits, got #{inspect(data)}"
         :ip4len -> "expected a valid IPv4 prefix length, got #{inspect(data)}"
         :ip6dig -> "expected valid IPv6 digits, got #{inspect(data)}"
@@ -151,7 +158,7 @@ defmodule Pfx do
   defp castp(bits, width) do
     bsize = bit_size(bits)
     <<x::size(bsize)>> = bits
-    x <<< (width - bsize)
+    Bitwise.bsl(x, width - bsize)
   end
 
   # split a charlist with length into tuple w/ {'address', length}
@@ -179,6 +186,28 @@ defmodule Pfx do
         {Enum.reverse(acc), nil}
     end
   end
+
+  # given a %Pfx{}=x, turn it into same format as y
+  defp marshall(%Pfx{} = x, {_, _, _, _}),
+    do: digits(x, 8) |> elem(0)
+
+  defp marshall(%Pfx{} = x, {_, _, _, _, _, _, _, _}),
+    do: digits(x, 16) |> elem(0)
+
+  defp marshall(%Pfx{} = x, {{_, _, _, _}, _}),
+    do: digits(x, 8)
+
+  defp marshall(%Pfx{} = x, {{_, _, _, _, _, _, _, _}, _}),
+    do: digits(x, 16)
+
+  defp marshall(%Pfx{} = x, y) when is_binary(y),
+    do: "#{x}"
+
+  defp marshall(%Pfx{} = x, y) when is_pfx(y),
+    do: x
+
+  defp marshall(x, y),
+    do: raise(arg_error(:marshall, {x, y}))
 
   # API
 
@@ -261,8 +290,12 @@ defmodule Pfx do
 
 
   """
-  @spec new(ip_address() | {ip_address(), non_neg_integer()}) :: t()
+  @spec new(ip_address() | {ip_address(), non_neg_integer()} | String.t()) :: t()
   def new(prefix)
+
+  # identity
+  def new(pfx) when is_pfx(pfx),
+    do: pfx
 
   # ipv4 tuple(s)
 
@@ -593,7 +626,7 @@ defmodule Pfx do
     width = max(bit_size(pfx1.bits), bit_size(pfx2.bits))
     x = castp(pfx1.bits, width)
     y = castp(pfx2.bits, width)
-    z = x &&& y
+    z = Bitwise.band(x, y)
     %Pfx{pfx1 | bits: <<z::size(width)>>}
   end
 
@@ -1200,22 +1233,24 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> new(<<10, 10, 10, 10>>, 32) |> size()
-      1
-
-      iex> new(<<10, 10, 10>>, 32) |> size()
+      iex> size(%Pfx{bits: <<1, 1, 1>>, maxlen: 32})
       256
 
-      iex> new(<<10, 10>>, 32) |> size()
+      iex> size({{1, 1, 1, 0}, 16})
       65536
 
-  """
-  @spec size(t) :: pos_integer
-  def size(pfx) when is_pfx(pfx),
-    do: :math.pow(2, pfx.maxlen - bit_size(pfx.bits)) |> trunc
+      iex> size({1,1,1,1})
+      1
 
-  def size(pfx),
-    do: raise(arg_error(:pfx, pfx))
+      iex> size("1.1.1.0/23")
+      512
+
+  """
+  @spec size(prefix) :: pos_integer
+  def size(pfx) do
+    x = new(pfx)
+    :math.pow(2, x.maxlen - bit_size(x.bits)) |> trunc
+  end
 
   @doc """
   Return the `nth`-member of a given `pfx`.
@@ -1538,57 +1573,71 @@ defmodule Pfx do
   @doc """
   Returns the this-network prefix (full address) for given `pfx`.
 
+  The result is in the format as `pfx`.
+
   ## Examples
 
-      iex> new("10.10.10.10/24") |> network()
+      iex> network(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
       %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
 
-      iex> new("10.10.10.0/30")
-      ...> |> network()
-      ...> |> digits(8)
+      # mask is applied to address
+      iex> network({{10, 10, 10, 1}, 24})
       {{10, 10, 10, 0}, 32}
 
-      iex> new("acdc:1976::/32") |> network()
+      # a full address is its own this-network
+      iex> network({10, 10, 10, 1})
+      {10, 10, 10, 1}
+
+      iex> network("10.10.10.1/24")
+      "10.10.10.0"
+
+      iex> network(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128})
       %Pfx{bits: <<0xACDC::16, 0x1976::16, 0::96>>, maxlen: 128}
 
-  """
-  @spec network(t) :: t
-  def network(pfx) when is_pfx(pfx),
-    do: padr(pfx, 0)
+      iex> network("acdc:1976::/32")
+      "ACDC:1976:0:0:0:0:0:0"
 
+  """
+  @spec network(prefix) :: prefix
   def network(pfx),
-    do: raise(arg_error(:pfx, pfx))
+    do: new(pfx) |> padr(0) |> marshall(pfx)
 
   @doc """
   Returns the broadcast prefix (full address) for given `pfx`.
 
+  The result is in the same format as `pfx`.
+
   ## Examples
 
-      iex> new("10.10.10.0/24") |> broadcast()
+      iex> broadcast(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
       %Pfx{bits: <<10, 10, 10, 255>>, maxlen: 32}
 
-      iex> new("10.10.10.0/30")
-      ...> |> broadcast()
-      ...> |> digits(8)
+      iex> broadcast({{10, 10, 10, 1}, 30})
       {{10, 10, 10, 3}, 32}
 
-      iex> new("acdc:1976::/32") |> broadcast()
+      # a full address is its own broadcast address
+      iex> broadcast({10, 10, 10, 1})
+      {10, 10, 10, 1}
+
+      iex> broadcast("10.10.0.0/16")
+      "10.10.255.255"
+
+      iex> broadcast(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128})
       %Pfx{bits: <<0xACDC::16, 0x1976::16, -1::96>>, maxlen: 128}
 
   """
-  @spec broadcast(t) :: t
-  def broadcast(pfx) when is_pfx(pfx),
-    do: padr(pfx, 1)
-
+  @spec broadcast(t | String.t()) :: t | String.t()
   def broadcast(pfx),
-    do: raise(arg_error(:pfx, pfx))
+    do: new(pfx) |> padr(1) |> marshall(pfx)
 
   @doc """
   Returns a list of address prefixes for given `pfx`.
 
-  ## Example
+  The result is in the same format as `pfx`.
 
-      iex> new("10.10.10.0/30") |> hosts()
+  ## Examples
+
+      iex> hosts(%Pfx{bits: <<10, 10, 10, 0::6>>, maxlen: 32})
       [
         %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32},
         %Pfx{bits: <<10, 10, 10, 1>>, maxlen: 32},
@@ -1596,53 +1645,197 @@ defmodule Pfx do
         %Pfx{bits: <<10, 10, 10, 3>>, maxlen: 32}
       ]
 
-  """
-  @spec hosts(t) :: list(t)
-  def hosts(pfx) when is_pfx(pfx),
-    do: for(ip <- pfx, do: ip)
+      iex> hosts("10.10.10.0/30")
+      [
+        "10.10.10.0",
+        "10.10.10.1",
+        "10.10.10.2",
+        "10.10.10.3"
+      ]
 
+      iex> hosts({{10, 10, 10, 0}, 30})
+      [
+        {{10, 10, 10, 0}, 32},
+        {{10, 10, 10, 1}, 32},
+        {{10, 10, 10, 2}, 32},
+        {{10, 10, 10, 3}, 32}
+      ]
+
+  """
+  @spec hosts(t | String.t()) :: list(t) | list(String.t())
   def hosts(pfx),
-    do: arg_error(:pfx, pfx)
+    do: for(ip <- new(pfx), do: marshall(ip, pfx))
 
   @doc """
   Return the `nth` host in given `pfx`.
 
-  Same as `Pfx.member`.  Offset wraps around.
+  The result is in the same format as `pfx`.
+
+  Note that offset `nth` wraps around. See `Pfx.member/2`.
 
   ## Example
 
-      iex> new("10.10.10.0/24") |> host(128)
+      iex> host(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 128)
       %Pfx{bits: <<10, 10, 10, 128>>, maxlen: 32}
 
-      iex> new("10.10.10.0/24") |> host(256)
-      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
+      iex> host({{10, 10, 10, 0}, 24}, 128)
+      {{10, 10, 10, 128}, 32}
+
+      iex> host({10, 10, 10, 10}, 13)
+      {10, 10, 10, 10}
+
+      iex> host("10.10.10.0/24", 128)
+      "10.10.10.128"
 
   """
-  @spec host(t, integer) :: t
-  def host(pfx, nth) when is_pfx(pfx) and is_integer(nth),
-    do: member(pfx, nth)
+  @spec host(t | String.t(), integer) :: t | String.t()
+  def host(pfx, nth) when is_integer(nth),
+    do: new(pfx) |> member(nth) |> marshall(pfx)
 
-  def host(pfx, nth) when is_pfx(pfx),
+  def host(_pfx, nth),
     do: raise(arg_error(:noint, nth))
-
-  def host(pfx, _nth),
-    do: raise(arg_error(:pfx, pfx))
 
   @doc """
   Return the mask as a `Pfx` for given `pfx`.
 
-  ## Example
+  The result is in the same format as `pfx`.
 
-      iex> new("10.10.10.128/25") |> mask() |> format()
+  ## Examples
+
+      iex> mask(%Pfx{bits: <<10, 10, 10, 1::1>>, maxlen: 32})
+      %Pfx{bits: <<255, 255, 255, 128>>, maxlen: 32}
+
+      iex> mask({{10, 10, 10, 1}, 25})
+      {{255, 255, 255, 128}, 32}
+
+      iex> mask({10, 10, 10, 1})
+      {255, 255, 255, 255}
+
+      iex> mask("10.10.10.128/25")
       "255.255.255.128"
 
-  """
-  @spec mask(t) :: t
-  def mask(pfx) when is_pfx(pfx),
-    do: bset(pfx, 1) |> padr(0)
 
+  """
+  @spec mask(prefix) :: prefix
   def mask(pfx),
-    do: raise(arg_error(:pfx, pfx))
+    do: new(pfx) |> bset(1) |> padr(0) |> marshall(pfx)
+
+  @doc """
+  Returns the inverted mask for given `pfx`.
+
+  The result is in the same format as `pfx`.
+
+  ## Examples
+
+    iex> inv_mask(%Pfx{bits: <<10, 10, 10, 0::1>>, maxlen: 32})
+    %Pfx{bits: <<0, 0, 0, 127>>, maxlen: 32}
+
+    iex> inv_mask({{10, 10, 10, 0}, 25})
+    {{0, 0, 0, 127}, 32}
+
+    iex> inv_mask({10, 10, 10, 0})
+    {0, 0, 0, 0}
+
+    iex> inv_mask("10.10.10.0/25")
+    "0.0.0.127"
+
+  """
+  @spec inv_mask(prefix) :: prefix
+  def inv_mask(pfx),
+    do: new(pfx) |> bset(0) |> padr(1) |> marshall(pfx)
+
+  @doc """
+  Returns the neighboring prefix such that both can be combined in a supernet.
+
+  The result is in the same format as `pfx`.
+
+  ## Example
+
+      iex> neighbor(%Pfx{bits: <<1, 1, 1, 1::1>>, maxlen: 32})
+      %Pfx{bits: <<1, 1, 1, 0::1>>, maxlen: 32}
+
+      iex> neighbor({{1, 1, 1, 128}, 25})
+      {{1, 1, 1, 0}, 25}
+
+      iex> neighbor({1, 1, 1, 1})
+      {1, 1, 1, 0}
+
+      iex> neighbor("1.1.1.0/25")
+      "1.1.1.128/25"
+
+      iex> neighbor("1.1.1.128/25")
+      "1.1.1.0/25"
+
+  """
+  @spec neighbor(prefix) :: prefix
+  def neighbor(pfx) do
+    x = new(pfx)
+    offset = 1 - 2 * bit(x, bit_size(x.bits) - 1)
+    sibling(x, offset) |> marshall(pfx)
+  end
+
+  @doc """
+  Returns true if *prefix* is a teredo address, false otherwise
+
+  See [rfc4380](https://www.iana.org/go/rfc4380).
+
+  ## Example
+
+      iex> teredo?("2001:0000:4136:e378:8000:63bf:3fff:fdd2")
+      true
+
+      iex> teredo?("1.1.1.1")
+      false
+
+  """
+  @spec teredo?(prefix) :: boolean
+  def teredo?(pfx),
+    do: new(pfx) |> member?(%Pfx{bits: <<0x2001::16, 0::16>>, maxlen: 128})
+
+  @doc """
+  Returns a map with the teredo address components of `pfx` or nil.
+
+  Returns nil if `pfx` is not a teredo address.
+
+  ## Examples
+
+      # Example from https://en.wikipedia.org/wiki/Teredo_tunneling#IPv6_addressing
+      iex> teredo("2001:0000:4136:e378:8000:63bf:3fff:fdd2")
+      %{
+        server: "65.54.227.120",
+        client: "192.0.2.45",
+        port: 40000,
+        flags: {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        prefix: "2001:0000:4136:e378:8000:63bf:3fff:fdd2"
+      }
+
+      iex> teredo({0x2001, 0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2})
+      %{
+        server: "65.54.227.120",
+        client: "192.0.2.45",
+        port: 40000,
+        flags: {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        prefix: {0x2001, 0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2}
+      }
+
+  """
+  @spec teredo(prefix) :: map | nil
+  def teredo(pfx) do
+    # https://www.rfc-editor.org/rfc/rfc4380.html#section-4
+    x = new(pfx)
+
+    if teredo?(x) do
+      %{
+        server: "#{cut(x, 32, 32)}",
+        client: "#{cut(x, 96, 32) |> bnot()}",
+        port: cut(x, 80, 16) |> bnot() |> cast(),
+        flags: cut(x, 64, 16) |> digits(1) |> elem(0),
+        prefix: pfx
+      }
+    else
+      nil
+    end
+  end
 end
 
 defimpl String.Chars, for: Pfx do
