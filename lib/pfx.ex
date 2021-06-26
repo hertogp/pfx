@@ -1421,7 +1421,7 @@ defmodule Pfx do
       iex> compare(new(<<10>>, 32), new(<<11>>, 32))
       :lt
 
-      # sort prefix.bits size first, than on prefix.bits values
+      # sort on `pfx.bits` size first, than on `pfx.bits` values
       iex> l = [new(<<10, 11>>, 32), new(<<10,10,10>>, 32), new(<<10,10>>, 32)]
       iex> Enum.sort(l, Pfx)
       [
@@ -1439,21 +1439,25 @@ defmodule Pfx do
         %Pfx{bits: <<10, 11>>, maxlen: 32}
       ]
 
-      # prefixes must have the same maxlen
+      # `pfx1.maxlen` must equal `pfx2.maxlen`
       iex> compare(new(<<10>>, 32), new(<<10>>, 128))
-      %PfxError{
-        reason: :compare,
-        data: {%Pfx{bits: <<10>>, maxlen: 32}, %Pfx{bits: <<10>>, maxlen: 128}}
-      }
-
+      ** (ArgumentError) prefixes have different maxlen's: {%Pfx{bits: "\n", maxlen: 32}, %Pfx{bits: "\n", maxlen: 128}}
 
   """
-  @spec compare(t, t) :: :eq | :lt | :gt | PfxError.t()
-  def compare(prefix1, prefix2)
-  def compare(x, y) when is_comparable(x, y), do: comparep(x.bits, y.bits)
-  def compare(x, _) when is_exception(x), do: x
-  def compare(_, y) when is_exception(y), do: y
-  def compare(x, y), do: error(:compare, {x, y})
+  @spec compare(t, t) :: :eq | :lt | :gt
+  def compare(pfx1, pfx2)
+
+  def compare(x, y) when is_comparable(x, y),
+    do: comparep(x.bits, y.bits)
+
+  def compare(x, y) when is_pfx(x) and is_pfx(y),
+    do: raise(arg_error(:nocompare, {x, y}))
+
+  def compare(x, y) when is_pfx(y),
+    do: raise(arg_error(:pfx, x))
+
+  def compare(_x, y),
+    do: raise(arg_error(:pfx, y))
 
   defp comparep(x, y) when bit_size(x) > bit_size(y), do: :lt
   defp comparep(x, y) when bit_size(x) < bit_size(y), do: :gt
@@ -1462,15 +1466,15 @@ defmodule Pfx do
   defp comparep(x, y) when x == y, do: :eq
 
   @doc """
-  Contrast two prefixes.
+  Contrast two `Pfx` prefixes
 
   Contrasting two prefixes will yield one of:
-  - `:equal` prefix1 is equal to prefix2
-  - `:more` prefix1 is a more specific version of prefix2
-  - `:less` prefix1 is a less specific version of prefix2
-  - `:left` prefix1 is left-adjacent to prefix2
-  - `:right` prefix1 is right-adjacent to prefix2
-  - `:disjoint` prefix1 has no match with prefix2 whatsoever.
+  - `:equal` pfx1 is equal to pfx2
+  - `:more` pfx1 is a more specific version of pfx2
+  - `:less` pfx1 is a less specific version of pfx2
+  - `:left` pfx1 is left-adjacent to pfx2
+  - `:right` pfx1 is right-adjacent to pfx2
+  - `:disjoint` pfx1 has no match with pfx2 whatsoever.
 
   ## Examples
 
@@ -1493,12 +1497,20 @@ defmodule Pfx do
       :disjoint
 
   """
-  @spec contrast(t, t) :: :equal | :more | :less | :left | :right | :disjoint | PfxError.t()
-  def contrast(prefix1, prefix2)
-  def contrast(x, y) when is_comparable(x, y), do: contrastp(x.bits, y.bits)
-  def contrast(x, _) when is_exception(x), do: x
-  def contrast(_, y) when is_exception(y), do: y
-  def contrast(x, y), do: error(:contrast, {x, y})
+  @spec contrast(t, t) :: :equal | :more | :less | :left | :right | :disjoint
+  def contrast(pfx1, pfx2)
+
+  def contrast(x, y) when is_comparable(x, y),
+    do: contrastp(x.bits, y.bits)
+
+  def contrast(x, y) when is_pfx(x) and is_pfx(y),
+    do: raise(arg_error(:nocompare, {x, y}))
+
+  def contrast(x, y) when is_pfx(y),
+    do: raise(arg_error(:pfx, x))
+
+  def contrast(_, y),
+    do: raise(arg_error(:pfx, y))
 
   defp contrastp(x, y) when x == y,
     do: :equal
