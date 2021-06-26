@@ -1593,7 +1593,7 @@ defmodule Pfx do
         %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32},
         %Pfx{bits: <<10, 10, 10, 1>>, maxlen: 32},
         %Pfx{bits: <<10, 10, 10, 2>>, maxlen: 32},
-        %Pfx{bits: <<10, 10, 10, 3>>, maxlen: 32},
+        %Pfx{bits: <<10, 10, 10, 3>>, maxlen: 32}
       ]
 
   """
@@ -1603,6 +1603,30 @@ defmodule Pfx do
 
   def hosts(pfx),
     do: arg_error(:pfx, pfx)
+
+  @doc """
+  Return the `nth` host in given `pfx`.
+
+  Same as `Pfx.member`.  Offset wraps around.
+
+  ## Example
+
+      iex> new("10.10.10.0/24") |> host(128)
+      %Pfx{bits: <<10, 10, 10, 128>>, maxlen: 32}
+
+      iex> new("10.10.10.0/24") |> host(256)
+      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
+
+  """
+  @spec host(t, integer) :: t
+  def host(pfx, nth) when is_pfx(pfx) and is_integer(nth),
+    do: member(pfx, nth)
+
+  def host(pfx, nth) when is_pfx(pfx),
+    do: raise(arg_error(:noint, nth))
+
+  def host(pfx, _nth),
+    do: raise(arg_error(:pfx, pfx))
 end
 
 defimpl String.Chars, for: Pfx do
