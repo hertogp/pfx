@@ -36,78 +36,32 @@ defmodule Pfx do
   use Bitwise
   alias PfxError
 
-  @moduledoc ~S"""
-  A `Pfx` represents a sequence of one or more full length addresses.
+  @external_resource "README.md"
 
-  A prefix is defined by zero or more `bits` & a maximum length `maxlen`.
-
-      iex> new(<<10, 10, 10>>, 32)
-      %Pfx{bits: <<10, 10, 10>>, maxlen: 32}
-
-      iex> new(<<0xacdc::16, 0x1976::16>>, 128)
-      %Pfx{bits: <<172, 220, 25, 118>>, maxlen: 128}
-
-      iex> new(<<0xc0, 0x3f, 0xd5>>, 48)
-      %Pfx{bits: <<192, 63, 213>>, maxlen: 48}
-
-
-  The module contains functions to work with prefixes.
-
-  In general, Pfx functions either return some value or a `t:PfxError.t/0` in
-  case of any errors.  These exceptions are also passed through if given where
-  a prefix was expected.
-
-  A `t:Pfx.t/0` is enumerable:
-
-      iex> pfx = new(<<10,10,10,0::6>>, 32)
-      iex> for ip <- pfx do ip end
-      [
-        %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32},
-        %Pfx{bits: <<10, 10, 10, 1>>, maxlen: 32},
-        %Pfx{bits: <<10, 10, 10, 2>>, maxlen: 32},
-        %Pfx{bits: <<10, 10, 10, 3>>, maxlen: 32}
-      ]
-
-  Enumeration yields a list of full-length prefixes.
-
-  `t:Pfx.t/0` also implements the `String.Chars` protocol with some defaults for
-  prefixes that formats maxlen 32 as IPv4, a maxlen of 48 as MAC address and
-  a maxlen of 128 as IPv6.  Other maxlen's will simply come out as a series of
-  8-bit numbers joined by "." followed by `/num_of_bits`
-
-      iex> "#{new(<<10, 11, 12>>, 32)}"
-      "10.11.12.0/24"
-
-      iex> "#{new(<<0xACDC::16, 0x1976::16>>, 128)}"
-      "ACDC:1976:0:0:0:0:0:0/32"
-
-      iex> "#{new(<<0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6>>, 48)}"
-      "A1:B2:C3:D4:E5:F6"
-
-      iex> "#{new(<<1, 2, 3, 4, 5>>, 64)}"
-      "1.2.3.4.5.0.0.0/40"
-
-
-  So the list comprehension earlier, could also read:
-
-      iex> prefix = new(<<10, 10, 10, 0::6>>, 32)
-      iex> for ip <- prefix do "#{ip}" end
-      [
-        "10.10.10.0",
-        "10.10.10.1",
-        "10.10.10.2",
-        "10.10.10.3"
-      ]
-  """
+  @moduledoc File.read!("README.md")
+             |> String.split("<!-- @MODULEDOC -->")
+             |> Enum.fetch!(1)
 
   @enforce_keys [:bits, :maxlen]
   defstruct bits: <<>>, maxlen: 0
 
   @typedoc """
-  A prefix struct with fields `bits` and `maxlen`.
+  A prefix struct with fields: `bits` and `maxlen`.
 
   """
   @type t :: %__MODULE__{bits: <<_::_*1>>, maxlen: non_neg_integer}
+
+  @typedoc """
+  An :inet IPv4 or IPv6 address (tuple)
+
+  """
+  @type ip_address :: :inet.ip4_address() | :inet.ip6_address()
+
+  @typedoc """
+  An IPv4 prefix ({`t:inet.ip4_address/0`, 0..32}) or an IPv6 prefix ({`t:inet.ip6_address/0`, 0..128}).
+
+  """
+  @type ip_prefix :: {:inet.ip4_address(), 0..32} | {:inet.ip6_address(), 0..128}
 
   # Private Guards
 
@@ -151,7 +105,26 @@ defmodule Pfx do
   # Helpers
 
   @compile inline: [error: 2]
-  defp error(reason, data), do: PfxError.new(reason, data)
+  defp error(reason, data),
+    do: PfxError.new(reason, data)
+
+  defp arg_error(reason, data) do
+    msg =
+      case reason do
+        :pfx -> "expected a valid Pfx, got #{inspect(data)}"
+        :cidr -> "expected a valid CIDR string, got #{inspect(data)}"
+        :max -> "expected a non_neg_integer for maxlen, got #{inspect(data)}"
+        :ip4len -> "expected a valid IPv4 prefix length, got #{inspect(data)}"
+        :ip6len -> "expected a valid IPv6 prefix length, got #{inspect(data)}"
+        :ip4dig -> "expected valid IPv4 digits, got #{inspect(data)}"
+        :ip6dig -> "expected valid IPv6 digits, got #{inspect(data)}"
+        :bitpos -> "invalid bit position: #{inspect(data)}"
+        :range -> "invalid index range: #{inspect(data)}"
+        reason -> "error #{reason}, #{inspect(data)}"
+      end
+
+    ArgumentError.exception(msg)
+  end
 
   # optionally drops some lsb's
   defp truncate(bits, max) do
@@ -202,9 +175,15 @@ defmodule Pfx do
   @doc """
   Creates a new prefix.
 
-  A prefix can be created from a bitstring and a maximum length, truncating the
-  bitstring when needed or from an existing prefix and a new maxlen, again
-  truncating the bits when needed.
+  A prefix can be created from:
+  - from a bitstring and a maximum length, truncating the bits as needed,
+  - from a `t:Pfx.t/0` prefix and a new maxlen, again truncating as needed,
+  - from an ipv4 or ipv6 `t:ip_address/0` tuple
+  - from an {`t:ip_address/0`, `length`} tuple
+
+  The last form sets the `maxlen` according to the IP protocol version used,
+  while the `length` parameter is used to truncate the `bits` for the prefix.
+
 
   ## Examples
 
@@ -219,7 +198,7 @@ defmodule Pfx do
       %Pfx{maxlen: 128, bits: <<10, 10>>}
 
   """
-  @spec new(t | bitstring, non_neg_integer) :: t | PfxError.t()
+  @spec new(t() | bitstring, non_neg_integer) :: t()
   def new(bits, maxlen) when is_bitstring(bits) and is_pfxlen(maxlen),
     do: %__MODULE__{bits: truncate(bits, maxlen), maxlen: maxlen}
 
@@ -227,12 +206,59 @@ defmodule Pfx do
     do: new(pfx.bits, maxlen)
 
   def new(x, len) when is_pfx(x),
-    do: raise(ArgumentError.exception("expected a prefix length integer, got #{inspect(len)}"))
+    do: raise(arg_error(:maxlen, len))
 
   def new(x, _),
-    do: raise(ArgumentError.exception("expected a valid Pfx, got #{inspect(x)}"))
+    do: raise(arg_error(:pfx, x))
 
-  # IPv4 tuples
+  @doc """
+  Creates a new prefix from address tuples or binaries.
+
+  Use:
+  - an ipv4 or ipv6 `t:ip_address/0` tuple directly for a full address, or
+  - a {`t:ip_address/0`, `length`}-tuple to truncate the bits to `length`.
+  - a binary in
+    [CIDR](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing)-notation,
+    like `"acdc:1976::/32"`
+
+  Binaries are processed by `:inet.parse_address/1`, so be aware of IPv4 shorthand
+  notations that may yield surprising results, since digits are taken to be:
+  - `d1.d2.d3.d4` -> `d1.d2.d3.d4` (full address)
+  - `d1.d2.d4` -> `d1.d2.0.d4`
+  - `d1.d4` -> `d1.0.0.d4`
+  - `d4` -> `0.0.0.d4`
+
+  ## Examples
+
+      iex> new({{0xacdc, 0x1976, 0, 0, 0, 0, 0, 0}, 32})
+      %Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128}
+
+      iex> new({10, 10, 0, 0})
+      %Pfx{bits: <<10, 10, 0, 0>>, maxlen: 32}
+
+      iex> new({{10, 10, 0, 0}, 16})
+      %Pfx{bits: <<10, 10>>, maxlen: 32}
+
+      iex> new("10.10.0.0")
+      %Pfx{bits: <<10, 10, 0, 0>>, maxlen: 32}
+
+      iex> new("10.10.10.10/16")
+      %Pfx{bits: <<10, 10>>, maxlen: 32}
+
+      # 10.10/16 is interpreted as 10.0.0.10/16 (!)
+      iex> new("10.10/16")
+      %Pfx{bits: <<10, 0>>, maxlen: 32}
+
+
+  """
+  @spec new(ip_address() | {ip_address(), non_neg_integer()}) :: t()
+  def new(prefix)
+
+  # IPv4 tuple(s)
+
+  def new({a, b, c, d}),
+    do: new({{a, b, c, d}, 32})
+
   def new({{a, b, c, d}, nil}),
     do: new({{a, b, c, d}, 32})
 
@@ -241,10 +267,17 @@ defmodule Pfx do
     %Pfx{bits: bits, maxlen: 32}
   end
 
-  def new({a, b, c, d}),
-    do: new({{a, b, c, d}, 32})
+  def new({{a, b, c, d} = digits, len}) when is_ip4(a, b, c, d, 0),
+    do: raise(arg_error(:ip4len, {digits, len}))
+
+  def new({{_, _, _, _} = digits, len}),
+    do: raise(arg_error(:ip4dig, {digits, len}))
 
   # IPv6 tuple(s)
+
+  def new({a, b, c, d, e, f, g, h}),
+    do: new({{a, b, c, d, e, f, g, h}, 128})
+
   def new({{a, b, c, d, e, f, g, h}, nil}),
     do: new({{a, b, c, d, e, f, g, h}, 128})
 
@@ -255,20 +288,27 @@ defmodule Pfx do
     %Pfx{bits: bits, maxlen: 128}
   end
 
-  def new({a, b, c, d, e, f, g, h}),
-    do: new({{a, b, c, d, e, f, g, h}, 128})
+  def new({{a, b, c, d, e, f, g, h} = digits, len}) when is_ip6(a, b, c, d, e, f, g, h, 0),
+    do: raise(arg_error(:ip6len, {digits, len}))
+
+  def new({{_, _, _, _, _, _, _, _} = digits, len}),
+    do: raise(arg_error(:ip6dig, {digits, len}))
 
   # From Binary
-  def new(prefix) when is_binary(prefix) do
-    charlist = String.to_charlist(prefix)
+  def new(string) when is_binary(string) do
+    charlist = String.to_charlist(string)
     {address, mask} = splitp(charlist, [])
 
-    case {:inet.parse_address(address), mask} do
-      {{:error, _}, _} -> error(:new, prefix)
-      {_, :error} -> error(:new, prefix)
-      {{:ok, digits}, mask} -> new({digits, mask})
+    try do
+      {:ok, digits} = :inet.parse_address(address)
+      new({digits, mask})
+    rescue
+      [MatchError, ArgumentError] -> raise arg_error(:cidr, string)
     end
   end
+
+  def new(prefix),
+    do: raise(arg_error(:unknown, prefix))
 
   # TODO:
   # - turn IP's encode into new()
@@ -299,20 +339,17 @@ defmodule Pfx do
       ...>  0x8000::16, 0x63bf::16, 0x3fff::16, 0xfdd2::16>>, 128)
       iex>
       iex> # client
-      iex> cut(teredo, 96, 32) |> bnot()
-      %Pfx{bits: <<192, 0, 2, 45>>, maxlen: 32}
+      iex> cut(teredo, 96, 32) |> bnot() |> format()
+      "192.0.2.45"
       iex>
-      iex> # same as:
-      iex> cut(teredo, -1, -32) |> bnot()
-      %Pfx{bits: <<192, 0, 2, 45>>, maxlen: 32}
       iex>
       iex> # udp port
       iex> cut(teredo, 80, 16) |> bnot() |> cast()
       40000
       iex>
       iex> # teredo server
-      iex> cut(teredo, 32, 32)
-      %Pfx{bits: <<65, 54, 227, 120>>, maxlen: 32}
+      iex> cut(teredo, 32, 32) |> format()
+      "65.54.227.120"
       iex>
       iex> # flags
       iex> cut(teredo, 64, 16) |> digits(1) |> elem(0)
@@ -324,33 +361,34 @@ defmodule Pfx do
       iex> %Pfx{bits: <<255, 255>>, maxlen: 32} |> cut(8, 16)
       %Pfx{bits: <<255, 0>>, maxlen: 16}
 
-  Extraction must stay within `maxlen` of given *prefix*.
+  Extraction must stay within `maxlen` of given `pfx`.
 
       # cannot exceed boundaries though:
       iex> %Pfx{bits: <<255, 255>>, maxlen: 32} |> cut(8, 32)
-      %PfxError{reason: :cut,
-                    data: {%Pfx{bits: <<255, 255>>, maxlen: 32}, 8, 32}}
+      ** (ArgumentError) invalid index range: {8, 32}
 
   """
   @spec cut(t(), integer, integer) :: t() | PfxError.t()
-  def cut(prefix, start, length) when is_pfx(prefix) do
-    case bits(prefix, start, length) do
-      x when is_exception(x) -> error(:cut, {prefix, start, length})
-      bits -> new(bits, bit_size(bits))
+  def cut(pfx, start, length) when is_pfx(pfx) do
+    try do
+      bits = bits(pfx, start, length)
+      new(bits, bit_size(bits))
+    rescue
+      # `cut` raises its own
+      ArgumentError -> raise arg_error(:range, {start, length})
     end
   end
 
-  def cut(x, _, _) when is_exception(x), do: x
-  def cut(x, p, l), do: error(:cut, {x, p, l})
+  def cut(pfx, _, _),
+    do: raise(arg_error(:pfx, pfx))
 
   # Bit Ops
 
   @doc """
-  Return *prefix*'s bit-value at given *position*.
+  Return Pfx's bit-value at given `position`.
 
-  A bit position is a `0`-based index from the left.  A position beyond the
-  *prefix.bits*-length always yields a `0`, regardless of whether it is also
-  beyond *prefix.maxlen*.
+  A bit position is a `0`-based index from the left.  A bit position in the range
+  of `bit_size(pfx.bits)`..`pfx.maxlen - 1` always yields `0`.
 
   ## Examples
 
@@ -359,41 +397,43 @@ defmodule Pfx do
       1
       iex> bit(x, -17)  # same bit
       1
-      iex> bit(x, 12345)
-      %PfxError{reason: :bit, data: {%Pfx{bits: <<0, 1>>, maxlen: 32}, 12345}}
+      iex> bit(x, 24)
+      0
+      # errors out on invalid positions
+      iex> bit(x, 33)
+      ** (ArgumentError) invalid bit position: 33
 
   """
   @spec bit(t, integer) :: 0 | 1 | PfxError.t()
-  def bit(prefix, position) when position + prefix.maxlen < 0 or position >= prefix.maxlen,
-    do: error(:bit, {prefix, position})
+  def bit(pfx, position) when position + pfx.maxlen < 0 or position >= pfx.maxlen,
+    do: raise(arg_error(:bitpos, position))
 
-  def bit(prefix, position) when position < 0,
-    do: bit(prefix, prefix.maxlen + position)
+  def bit(pfx, position) when is_pfx(pfx) and position < 0,
+    do: bit(pfx, pfx.maxlen + position)
 
-  def bit(prefix, pos) when pos < bit_size(prefix.bits) do
-    <<_::size(pos), bit::1, _::bitstring>> = prefix.bits
+  def bit(pfx, pos) when pos < bit_size(pfx.bits) do
+    <<_::size(pos), bit::1, _::bitstring>> = pfx.bits
     bit
   end
 
-  def bit(prefix, pos) when is_pfx(prefix) and pos < prefix.maxlen,
+  def bit(pfx, pos) when pos < pfx.maxlen,
     do: 0
 
-  def bit(x, _) when is_exception(x), do: x
-  def bit(x, y), do: error(:bit, {x, y})
+  def bit(x, _), do: raise(arg_error(:pfx, x))
 
   @doc """
-  Return a series of bits for given *prefix* and starting bit *position* and
-  *length*.
+  Return a series of bits for given `pfx`, starting bit `position` & `length`.
 
-  Negative *position*'s are relative to the end of the prefix's bitstring,
-  while negative *length* means collect bits going left instead of to the
-  right.  Note that the bit at given *position* is always included in the
-  result regardless of direction.
+  Negative `position`'s are relative to the end of the `pfx.bits` bitstring,
+  while negative `length` will collect bits going left instead of to the
+  right.  Note that the bit at given `position` is always included in the
+  result regardless of direction.  Finally, a `length` of `0` results in
+  an empty bitstring.
 
   ## Examples
 
+      # first byte
       iex> x = new(<<128, 0, 0, 1>>, 32)
-      iex> # first byte
       iex> x |> bits(0, 8)
       <<128>>
       # same as
@@ -412,24 +452,30 @@ defmodule Pfx do
       iex> x = new(<<128>>, 32)
       iex> x |> bits(0, 32)
       <<128, 0, 0, 0>>
-      iex> x |> bits(-1, -32)
-      <<128, 0, 0, 0>>
+
+      # the last 5 bits
+      iex> x = new(<<255>>, 8)
+      iex> bits(x, 7, -5)
+      <<0b11111::size(5)>>
 
   """
   @spec bits(t, integer, integer) :: bitstring() | PfxError.t()
-  def bits(prefix, position, length) when is_pfx(prefix) and is_integer(position * length) do
-    pos = if position < 0, do: prefix.maxlen + position, else: position
+  def bits(pfx, position, length) when is_pfx(pfx) and is_integer(position * length) do
+    pos = if position < 0, do: pfx.maxlen + position, else: position
     {pos, len} = if length < 0, do: {pos + 1 + length, -length}, else: {pos, length}
 
     cond do
-      pos < 0 or pos >= prefix.maxlen -> error(:bits, {prefix, position, length})
-      pos + len > prefix.maxlen -> error(:bits, {prefix, position, length})
-      true -> bitsp(prefix, pos, len)
+      pos < 0 or pos >= pfx.maxlen -> raise arg_error(:range, {position, length})
+      pos + len > pfx.maxlen -> raise arg_error(:range, {position, length})
+      true -> bitsp(pfx, pos, len)
     end
   end
 
-  def bits(x, _, _) when is_exception(x), do: x
-  def bits(x, p, l), do: error(:bits, {x, p, l})
+  def bits(pfx, position, length) when is_pfx(pfx),
+    do: raise(arg_error(:range, {position, length}))
+
+  def bits(pfx, _, _),
+    do: raise(arg_error(:pfx, pfx))
 
   defp bitsp(pfx, pos, len) do
     pfx = padr(pfx)
@@ -438,26 +484,23 @@ defmodule Pfx do
   end
 
   @doc """
-  Return the concatenation of 1 or more snippets of bits of the given *prefix*
-  or the first `t:PfxError.t/0` encountered during bit extraction using `bits/3`.
+  Return the concatenation of 1 or more series of bits of the given `pfx`.
 
   ## Example
 
       iex> x = new(<<1, 2, 3, 4>>, 32)
       iex> x |> bits([{0,8}, {-1, -8}])
       <<1, 4>>
+      #
       iex> x |> bits([{0, 8}, {-1, 8}])
-      %PfxError{reason: :bits, data: {%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}, -1, 8}}
+      ** (ArgumentError) invalid index range: {-1, 8}
 
   """
   @spec bits(t, [{integer, integer}]) :: bitstring | PfxError.t()
-  def bits(prefix, pos_len) when is_pfx(prefix) and is_list(pos_len) do
-    Enum.map(pos_len, fn {pos, len} -> bits(prefix, pos, len) end)
+  def bits(pfx, pos_len) when is_pfx(pfx) and is_list(pos_len) do
+    Enum.map(pos_len, fn {pos, len} -> bits(pfx, pos, len) end)
     |> Enum.reduce(<<>>, &joinbitsp/2)
   end
-
-  def bits(x, _) when is_exception(x), do: x
-  def bits(x, pl), do: error(:bits, {x, pl})
 
   # helper to join bits or return any PfxError argument provided
   defp joinbitsp(x, _) when is_exception(x), do: x
