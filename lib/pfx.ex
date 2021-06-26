@@ -566,6 +566,8 @@ defmodule Pfx do
   @doc """
   A bitwise AND of two prefixes.
 
+  Both prefixes should have the same `Pfx.maxlen`
+
   ## Examples
 
       iex> x = new(<<128, 129, 130, 131>>, 32)
@@ -599,40 +601,45 @@ defmodule Pfx do
   @doc """
   A bitwise OR of two prefixes.
 
+  Both prefixes should have the same `Pfx.maxlen`
+
   ## Examples
 
-      # same size prefixes
+      # same sized `bits`
       iex> x = new(<<10, 11, 12, 13>>, 32)
       iex> y = new(<<0, 0, 255, 255>>, 32)
       iex> bor(x, y)
       %Pfx{bits: <<10, 11, 255, 255>>, maxlen: 32}
 
-      # different sized prefixes, missing bits are considered to be `0`
+      # same `maxlen` but differently sized `bits`: missing bits are considered to be `0`
       iex> x = new(<<10, 11, 12, 13>>, 32)
       iex> y = new(<<255, 255>>, 32)
       iex> bor(x, y)
       %Pfx{bits: <<255, 255, 12, 13>>, maxlen: 32}
-      iex>
-      iex> bor(y, x)
-      %Pfx{bits: <<255, 255, 12, 13>>, maxlen: 32}
-
 
   """
-  @spec bor(t, t) :: t | PfxError.t()
-  def bor(prefix1, prefix2) when is_comparable(prefix1, prefix2) do
-    width = max(bit_size(prefix1.bits), bit_size(prefix2.bits))
-    x = castp(prefix1.bits, width)
-    y = castp(prefix2.bits, width)
-    z = x ||| y
-    %Pfx{prefix1 | bits: <<z::size(width)>>}
+  @spec bor(t, t) :: t
+  def bor(pfx1, pfx2) when is_comparable(pfx1, pfx2) do
+    width = max(bit_size(pfx1.bits), bit_size(pfx2.bits))
+    x = castp(pfx1.bits, width)
+    y = castp(pfx2.bits, width)
+    z = Bitwise.bor(x, y)
+    %Pfx{pfx1 | bits: <<z::size(width)>>}
   end
 
-  def bor(x, _) when is_exception(x), do: x
-  def bor(_, x) when is_exception(x), do: x
-  def bor(x, y), do: error(:bor, {x, y})
+  def bor(pfx1, pfx2) when is_pfx(pfx1) and is_pfx(pfx2),
+    do: raise(arg_error(:nocompare, {pfx1, pfx2}))
+
+  def bor(pfx1, pfx2) when is_pfx(pfx2),
+    do: raise(arg_error(:pfx, pfx1))
+
+  def bor(_, pfx2),
+    do: raise(arg_error(:pfx, pfx2))
 
   @doc """
   A bitwise XOR of two prefixes.
+
+  Both prefixes should have the same `Pfx.maxlen`
 
   ## Examples
 
