@@ -70,6 +70,9 @@ defmodule Pfx do
   """
   @type prefix :: t | ip_address | ip_prefix | String.t()
 
+  # valid prefix lengths to use for nat64
+  @nat64_lengths [96, 64, 56, 48, 40, 32]
+
   # Private Guards
 
   defguardp is_non_neg_integer(n) when is_integer(n) and n >= 0
@@ -129,6 +132,7 @@ defmodule Pfx do
         :max -> "expected a non_neg_integer for maxlen, got #{inspect(data)}"
         :nocompare -> "prefixes have different maxlen's: #{inspect(data)}"
         :pfx -> "expected a valid Pfx, got #{inspect(data)}"
+        :pfx6 -> "expected a valid IPv6 Pfx, got #{inspect(data)}"
         :range -> "invalid index range: #{inspect(data)}"
         :noint -> "expected an integer, got #{inspect(data)}"
         :noints -> "expected all integers, got #{inspect(data)}"
@@ -2087,6 +2091,98 @@ defmodule Pfx do
       member?(x, %Pfx{bits: <<126::7>>, maxlen: 128}) -> true
       true -> false
     end
+  end
+
+  @doc """
+  Returns true if `pfx` is matched by the Well-Known Prefixes defined in
+  [rfc6053](https://www.iana.org/go/rfc6052) and
+  [rfc8215](https://www.iana.org/go/rfc8215), false otherwise.
+
+  Note that organisation specific prefixes might still be used for nat64.
+
+  ## Example
+
+      iex> nat64?(%Pfx{bits: <<0x64::16, 0xff9b::16, 0::64, 0x1010::16, 0x1010::16>>, maxlen: 128})
+      true
+
+      iex> nat64?({{0x64, 0xff9b, 0, 0, 0, 0, 0x1010, 0x1010}, 128})
+      true
+
+      iex> nat64?({0x64, 0xff9b, 0, 0, 0, 0, 0x1010, 0x1010})
+      true
+
+      iex> nat64?("64:ff9b::10.10.10.10")
+      true
+
+      iex> nat64?("64:ff9b:1::10.10.10.10")
+      true
+
+  """
+  @spec nat64?(prefix) :: boolean
+  def nat64?(pfx) do
+    x = new(pfx)
+
+    member?(x, %Pfx{bits: <<0x0064::16, 0xFF9B::16, 0::64>>, maxlen: 128}) or
+      member?(x, %Pfx{bits: <<0x0064::16, 0xFF9B::16, 1::16>>, maxlen: 128})
+  end
+
+  @doc """
+  Returns the embedded IPv4 address of a nat64 `pfx`
+
+  The `ip6` prefix should be a full IPv6 address.  The `len` defaults to `96`, but if
+  specified it should be one of [#{Enum.join(@nat64_lengths, ", ")}].
+
+  ## Examples
+
+      iex> nat64_decode("64:ff9b::10.10.10.10")
+      "10.10.10.10"
+
+      iex> nat64_decode("64:ff9b:1:0a0a:000a:0a00::", 48)
+      "10.10.10.10"
+
+      # from rfc6052, section 2.4
+
+      iex> nat64_decode("2001:db8:c000:221::", 32)
+      "192.0.2.33"
+
+      iex> nat64_decode("2001:db8:1c0:2:21::", 40)
+      "192.0.2.33"
+
+      iex> nat64_decode("2001:db8:122:c000:2:2100::", 48)
+      "192.0.2.33"
+
+      iex> nat64_decode("2001:db8:122:3c0:0:221::", 56)
+      "192.0.2.33"
+
+      iex> nat64_decode("2001:db8:122:344:c0:2:2100::", 64)
+      "192.0.2.33"
+
+      iex> nat64_decode("2001:db8:122:344::192.0.2.33", 96)
+      "192.0.2.33"
+
+      iex> nat64_decode("2001:db8:122:344::192.0.2.33", 90)
+      ** (ArgumentError) error nat64_decode, "len 90 not in: 96, 64, 56, 48, 40, 32"
+
+  """
+  @spec nat64_decode(prefix, integer) :: String.t()
+  def nat64_decode(pfx, len \\ 96)
+
+  def nat64_decode(pfx, len) when len in @nat64_lengths do
+    x = new(pfx)
+
+    case bit_size(x.bits) do
+      128 -> nat64_decodep(x, len)
+      _ -> raise arg_error(:pfx6, pfx)
+    end
+  end
+
+  def nat64_decode(_, len),
+    do: raise(arg_error(:nat64_decode, "len #{len} not in: #{Enum.join(@nat64_lengths, ", ")}"))
+
+  defp nat64_decodep(ip6, len) do
+    ip6 = if len < 96, do: %{ip6 | bits: bits(ip6, [{0, 64}, {72, 56}])}, else: ip6
+
+    "#{%Pfx{bits: bits(ip6, len, 32), maxlen: 32}}"
   end
 end
 
