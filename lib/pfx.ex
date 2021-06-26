@@ -1532,15 +1532,86 @@ defmodule Pfx do
       :disjoint
     end
   end
+
+  # IP conveniences
+
+  @doc """
+  Returns the this-network prefix (full address) for given `pfx`.
+
+  ## Examples
+
+      iex> new("10.10.10.10/24") |> network()
+      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
+
+      iex> new("10.10.10.0/30")
+      ...> |> network()
+      ...> |> digits(8)
+      {{10, 10, 10, 0}, 32}
+
+      iex> new("acdc:1976::/32") |> network()
+      %Pfx{bits: <<0xACDC::16, 0x1976::16, 0::96>>, maxlen: 128}
+
+  """
+  @spec network(t) :: t
+  def network(pfx) when is_pfx(pfx),
+    do: padr(pfx, 0)
+
+  def network(pfx),
+    do: raise(arg_error(:pfx, pfx))
+
+  @doc """
+  Returns the broadcast prefix (full address) for given `pfx`.
+
+  ## Examples
+
+      iex> new("10.10.10.0/24") |> broadcast()
+      %Pfx{bits: <<10, 10, 10, 255>>, maxlen: 32}
+
+      iex> new("10.10.10.0/30")
+      ...> |> broadcast()
+      ...> |> digits(8)
+      {{10, 10, 10, 3}, 32}
+
+      iex> new("acdc:1976::/32") |> broadcast()
+      %Pfx{bits: <<0xACDC::16, 0x1976::16, -1::96>>, maxlen: 128}
+
+  """
+  @spec broadcast(t) :: t
+  def broadcast(pfx) when is_pfx(pfx),
+    do: padr(pfx, 1)
+
+  def broadcast(pfx),
+    do: raise(arg_error(:pfx, pfx))
+
+  @doc """
+  Returns a list of address prefixes for given `pfx`.
+
+  ## Example
+
+      iex> new("10.10.10.0/30") |> hosts()
+      [
+        %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32},
+        %Pfx{bits: <<10, 10, 10, 1>>, maxlen: 32},
+        %Pfx{bits: <<10, 10, 10, 2>>, maxlen: 32},
+        %Pfx{bits: <<10, 10, 10, 3>>, maxlen: 32},
+      ]
+
+  """
+  @spec hosts(t) :: list(t)
+  def hosts(pfx) when is_pfx(pfx),
+    do: for(ip <- pfx, do: ip)
+
+  def hosts(pfx),
+    do: arg_error(:pfx, pfx)
 end
 
 defimpl String.Chars, for: Pfx do
-  def to_string(prefix) do
-    case prefix.maxlen do
-      32 -> Pfx.format(prefix)
-      48 -> Pfx.format(prefix, base: 16, ssep: ":")
-      128 -> Pfx.format(prefix, base: 16, width: 16, ssep: ":")
-      _ -> Pfx.format(prefix)
+  def to_string(pfx) do
+    case pfx.maxlen do
+      32 -> Pfx.format(pfx)
+      48 -> Pfx.format(pfx, base: 16, ssep: ":")
+      128 -> Pfx.format(pfx, base: 16, width: 16, ssep: ":")
+      _ -> Pfx.format(pfx)
     end
   end
 end
@@ -1549,8 +1620,8 @@ defimpl Enumerable, for: Pfx do
   require Pfx
 
   # invalid Pfx yields a count of 0
-  def count(prefix),
-    do: {:ok, trunc(:math.pow(2, prefix.maxlen - bit_size(prefix.bits)))}
+  def count(pfx),
+    do: {:ok, trunc(:math.pow(2, pfx.maxlen - bit_size(pfx.bits)))}
 
   def member?(x, y) when Pfx.is_comparable(x, y) do
     memberp?(x.bits, y.bits)
@@ -1568,8 +1639,8 @@ defimpl Enumerable, for: Pfx do
     {:ok, x == ypart}
   end
 
-  def slice(prefix) do
-    {:ok, size} = count(prefix)
+  def slice(pfx) do
+    {:ok, size} = count(pfx)
     {:ok, size, &slicep(&1, &2)}
   end
 

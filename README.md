@@ -10,10 +10,10 @@ A `Pfx` represents a sequence of one or more full length addresses.
 
 A prefix is defined by zero or more `bits` & a maximum length `maxlen` and
 can be created from:
-- a `t:bitstring/0` and a `length`,
+- a `t:bitstring/0` and a maximum `length`,
 - a `t:Pfx.ip_address/0`,
 - a {`t:Pfx.ip_address/0`, `length`}-tuple, or
-- a `t:binary/0` denoting a prefix in CIDR-notation.
+- a `t:binary/0` denoting an IP prefix in CIDR-notation.
 
 The first option allows for the creation of any sort of prefix, the latter
 three yield either an IPv4 of IPv6 prefix.
@@ -28,55 +28,34 @@ three yield either an IPv4 of IPv6 prefix.
     iex> new(<<10, 10, 10>>, 32)
     %Pfx{bits: <<10, 10, 10>>, maxlen: 32}
 
+    iex> new("10.10.10.0/24")
+    %Pfx{bits: <<10, 10, 10>>, maxlen: 32}
+
     iex> new({10, 10, 10, 10})
     %Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}
 
     iex> new({{10, 10, 10, 10}, 24})
     %Pfx{bits: <<10, 10, 10>>, maxlen: 32}
 
-    iex> new("10.10.10.10")
-    %Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}
-
-    iex> new("10.10.10.10/24")
-    %Pfx{bits: <<10, 10, 10>>, maxlen: 32}
-
     # IPv6
     iex> new(<<44252::16, 6518::16>>, 128)
-    %Pfx{bits: <<0xACDC::16, 0x1976::16>>, maxlen: 128}
-
-    iex> new({{44252, 6518, 0, 0, 0, 0, 0, 0}, 32})
     %Pfx{bits: <<0xACDC::16, 0x1976::16>>, maxlen: 128}
 
     iex> new("acdc:1976::/32")
     %Pfx{bits: <<44252::16, 6518::16>>, maxlen: 128}
 
+    iex> new({{44252, 6518, 0, 0, 0, 0, 0, 0}, 32})
+    %Pfx{bits: <<0xACDC::16, 0x1976::16>>, maxlen: 128}
 
-A `t:Pfx.t/0` is enumerable:
-
-    iex> pfx = new("10.10.10.0/30")
-    iex> for ip <- pfx do ip end
-    [
-      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32},
-      %Pfx{bits: <<10, 10, 10, 1>>, maxlen: 32},
-      %Pfx{bits: <<10, 10, 10, 2>>, maxlen: 32},
-      %Pfx{bits: <<10, 10, 10, 3>>, maxlen: 32}
-    ]
-
-Enumeration yields a list of full-length prefixes.
-
-`t:Pfx.t/0` also implements the `String.Chars` protocol with some defaults for
+`t:Pfx.t/0` implements the `String.Chars` protocol with some defaults for
 prefixes that formats:
 - `maxlen: 32` as an IPv4 CIDR string,
 - `maxlen: 48` as a MAC address string and
 - `maxlen: 128` as an IPv6 CIDR string
 
 Other `maxlen`'s will simply come out as a series of 8-bit numbers joined by "."
-followed by `/num_of_bits`  If the prefix has `maxlen` bits, the `/num_of_bits`
-is omitted.  If the defaults won't yield the desired results, check out the
-`Pfx.format/2` function.
-
-
-## Examples
+followed by `/num_of_bits`. The latter is omitted if equal to `pfx.bits`
+length.
 
     iex> "#{new(<<10, 11, 12>>, 32)}"
     "10.11.12.0/24"
@@ -94,15 +73,27 @@ is omitted.  If the defaults won't yield the desired results, check out the
     "1.2.3.4.5.0.0.0/40"
 
 
-So the list comprehension earlier, could also read:
+A `t:Pfx.t/0` is also enumerable:
 
-    iex> prefix = new("10.10.10.0/30")
-    iex> for ip <- prefix do "#{ip}" end
+    iex> pfx = new("10.10.10.0/30")
+    iex> for ip <- pfx do "#{ip}" end
     [
       "10.10.10.0",
       "10.10.10.1",
       "10.10.10.2",
       "10.10.10.3"
+    ]
+
+The library contains a number of functions to make working with prefixes
+easier.  Note that some functions are geared toward IPv4/IPv6 prefixes while
+others are more generic.
+
+    iex> pfx = new("10.10.10.0/24")
+    iex> partition(pfx, 26) |> Enum.map(fn x -> "#{x}" end)
+    [ "10.10.10.0/26",
+      "10.10.10.64/26",
+      "10.10.10.128/26",
+      "10.10.10.192/26"
     ]
 
 
