@@ -129,7 +129,7 @@ defmodule Pfx do
         :nopos -> "expected a pos_integer, got #{inspect(data)}"
         :nobit -> "expected a bit value 0..1, got #{inspect(data)}"
         :nopart -> "cannot partition prefixes using #{inspect(data)}"
-        :nowidth -> "expected a pos_integer for width, got #{inspect(data)}"
+        :nowidth -> "expected valid width, got #{inspect(data)}"
         reason -> "error #{reason}, #{inspect(data)}"
       end
 
@@ -1218,26 +1218,22 @@ defmodule Pfx do
     do: raise(arg_error(:pfx, pfx))
 
   @doc """
-  Return the *nth*-member of a given *prefix*.
+  Return the `nth`-member of a given `pfx`.
 
   A prefix represents a range of (possibly longer) prefixes which can be
   seen as *members* of the prefix.  So a prefix of `n`-bits long represents:
-  - 1 prefix of `n+0`-bits long (i.e. itself),
+  - 1 prefix of `n`-bits long (i.e. itself),
   - 2 prefixes of `n+1`-bits long,
   - 4 prefixes of `n+2`-bits long
   - ..
   - 2^w prefixes of `n+w`-bits long
 
-  where `n+w` <= *prefix.maxlen*.
+  where `n+w` <= `pfx.maxlen`.
 
-  Not specifying a *width* assumes the maximum width available.  If a *width*
-  is specified, the *nth*-offset is added to the prefix as a number
-  *width*-bits wide.  This wraps around since `<<16::4>>` comes out as
+  Not specifying a `width` assumes the maximum width available.  If a `width`
+  is specified, the `nth`-offset is added to the prefix as a number
+  `width`-bits wide.  This wraps around since `<<16::4>>` comes out as
   `<<0::4>>`.
-
-  It is considered an error to specify a *width* greater than the amount of
-  bits the *prefix* actually has to spare, given its *prefix.bits*-length and its
-  *prefix.maxlen*.
 
   ## Examples
 
@@ -1259,15 +1255,18 @@ defmodule Pfx do
       %Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}
 
   """
-  @spec member(t, integer) :: t | PfxError.t()
-  def member(prefix, nth) when is_pfx(prefix),
-    do: member(prefix, nth, prefix.maxlen - bit_size(prefix.bits))
+  @spec member(t, integer) :: t
+  def member(pfx, nth) when is_pfx(pfx) and is_integer(nth),
+    do: member(pfx, nth, pfx.maxlen - bit_size(pfx.bits))
 
-  def member(x, _) when is_exception(x), do: x
-  def member(x, y), do: error(:member, {x, y})
+  def member(pfx, nth) when is_integer(nth),
+    do: raise(arg_error(:pfx, pfx))
+
+  def member(_, nth),
+    do: raise(arg_error(:noint, nth))
 
   @doc """
-  Return the *nth* subprefix for a given *prefix*, using *width* bits.
+  Return the `nth` subprefix for a given `pfx`, using `width` bits.
 
   ## Examples
 
@@ -1280,24 +1279,35 @@ defmodule Pfx do
       %Pfx{bits: <<10, 10, 10, 1::2>>, maxlen: 32}
 
   """
-  @spec member(t, integer, pos_integer) :: t | PfxError.t()
+  @spec member(t, integer, pos_integer) :: t
   def member(pfx, nth, width)
       when is_pfx(pfx) and is_integer(nth) and
              is_inrange(width, 0, pfx.maxlen - bit_size(pfx.bits)),
       do: %{pfx | bits: <<pfx.bits::bits, nth::size(width)>>}
 
-  def member(x, _, _) when is_exception(x), do: x
-  def member(x, n, w), do: error(:member, {x, n, w})
+  def member(pfx, nth, width) when is_pfx(pfx) and is_integer(nth),
+    do: raise(arg_error(:nowidth, width))
+
+  def member(pfx, nth, width)
+      when is_pfx(pfx) and is_inrange(width, 0, pfx.maxlen - bit_size(pfx.bits)),
+      do: raise(arg_error(:noint, nth))
+
+  def member(pfx, _nth, width) when is_pfx(pfx),
+    do: raise(arg_error(:nowidth, width))
+
+  def member(pfx, _, _),
+    do: raise(arg_error(:pfx, pfx))
 
   @doc """
-  Returns true is prefix x is a member of prefix y
+  Returns true is prefix `pfx1` is a member of prefix `pfx2`
 
-  If either x or y is invalid, member? returns false
+  If either `prfx1` or `pfx2` is invalid, member? simply returns false
 
   """
   @spec member?(t, t) :: boolean
-  def member?(x, y) when is_comparable(x, y) and bit_size(y.bits) <= bit_size(x.bits),
-    do: y.bits == truncate(x.bits, bit_size(y.bits))
+  def member?(pfx1, pfx2)
+      when is_comparable(pfx1, pfx2) and bit_size(pfx2.bits) <= bit_size(pfx1.bits),
+      do: pfx2.bits == truncate(pfx1.bits, bit_size(pfx2.bits))
 
   def member?(_, _), do: false
 
