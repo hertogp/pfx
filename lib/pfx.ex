@@ -123,7 +123,8 @@ defmodule Pfx do
         :pfx -> "expected a valid Pfx, got #{inspect(data)}"
         :range -> "invalid index range: #{inspect(data)}"
         :noint -> "expected an integer, got #{inspect(data)}"
-        :bitval -> "expected a bit value 0..1, got #{inspect(data)}"
+        :noneg -> "expected a non_neg_integer, got #{inspect(data)}"
+        :nobit -> "expected a bit value 0..1, got #{inspect(data)}"
         reason -> "error #{reason}, #{inspect(data)}"
       end
 
@@ -816,7 +817,7 @@ defmodule Pfx do
     do: raise(arg_error(:pfx, pfx))
 
   def padr(_, bit),
-    do: raise(arg_error(:bitval, bit))
+    do: raise(arg_error(:nobit, bit))
 
   @doc """
   Right pad the `pfx.bits` with `n` bits of either `0` or `1`'s.
@@ -836,7 +837,8 @@ defmodule Pfx do
 
   """
   @spec padr(t, 0 | 1, non_neg_integer) :: t
-  def padr(pfx, bit, n) when is_pfx(pfx) and is_integer(n) and (bit === 0 or bit === 1) do
+  def padr(pfx, bit, n)
+      when is_pfx(pfx) and is_integer(n) and n >= 0 and (bit === 0 or bit === 1) do
     bsize = bit_size(pfx.bits)
     nbits = min(n, pfx.maxlen - bsize)
     width = bsize + nbits
@@ -846,14 +848,17 @@ defmodule Pfx do
     %Pfx{pfx | bits: <<x::size(width)>>}
   end
 
-  def padr(pfx, bit, n) when is_integer(n) and (bit === 0 or bit === 1),
+  def padr(pfx, bit, n) when is_integer(n) and n >= 0 and (bit === 0 or bit === 1),
     do: raise(arg_error(:pfx, pfx))
 
-  def padr(_, bit, n) when is_integer(n),
-    do: raise(arg_error(:bitval, bit))
+  def padr(_, bit, n) when bit === 0 or bit === 1,
+    do: raise(arg_error(:noneg, n))
+
+  def padr(_, bit, _),
+    do: raise(arg_error(:nobit, bit))
 
   @doc """
-  Left pad the *prefix.bits* to its full length using `0`-bits.
+  Left pad the `pfx.bits` to its full length using `0`-bits.
 
   ## Example
 
@@ -861,15 +866,15 @@ defmodule Pfx do
       %Pfx{bits: <<0, 0, 1, 2>>, maxlen: 32}
 
   """
-  @spec padl(t) :: t | PfxError.t()
-  def padl(x) when is_pfx(x), do: padl(x, 0, x.maxlen)
-  def padl(x) when is_exception(x), do: x
-  def padl(x), do: error(:padl, x)
+  @spec padl(t) :: t
+  def padl(pfx) when is_pfx(pfx),
+    do: padl(pfx, 0, pfx.maxlen)
+
+  def padl(pfx),
+    do: raise(arg_error(:pfx, pfx))
 
   @doc """
-  Left pad the *prefix.bits* to its full length using either `0` or `1`-bits.
-
-  If *bit* is anything other than `0`, `1`-bits are used for padding.
+  Left pad the `pfx.bits` to its full length using either `0` or `1`-bits.
 
   ## Example
 
@@ -877,35 +882,44 @@ defmodule Pfx do
       %Pfx{bits: <<255, 255, 1, 2>>, maxlen: 32}
 
   """
-  @spec padl(t, 0 | 1) :: t | PfxError.t()
-  def padl(x, bit) when is_pfx(x), do: padl(x, bit, x.maxlen)
-  def padl(x, _) when is_exception(x), do: x
-  def padl(x, y), do: error(:padl, {x, y})
+  @spec padl(t, 0 | 1) :: t
+  def padl(pfx, bit) when is_pfx(pfx) and (bit === 0 or bit === 1),
+    do: padl(pfx, bit, pfx.maxlen)
+
+  def padl(pfx, bit) when bit === 0 or bit === 1,
+    do: raise(arg_error(:pfx, pfx))
+
+  def padl(_, bit),
+    do: raise(arg_error(:nobit, bit))
 
   @doc """
-  Left pad the *prefix.bits* with *n* bits of either `0` or `1`'s.
-
-  If *bit* is anything other than `0`, `1`-bits are used for padding.  The
-  result is silently clipped to its maximum length.
+  Left pad the `pfx.bits` with `n` bits of either `0` or `1`'s.
 
   ## Example
 
-      iex> new(<<>>, 32) |> padl(1, 16) |> padl(0, 16)
+      iex> new(<<255, 255>>, 32) |> padl(0, 16)
       %Pfx{bits: <<0, 0, 255, 255>>, maxlen: 32}
 
   """
-  @spec padl(t, 0 | 1, non_neg_integer) :: t | PfxError.t()
-  def padl(prefix, bit, n) when is_pfx(prefix) and is_integer(n) do
-    bsize = bit_size(prefix.bits)
-    nbits = min(n, prefix.maxlen - bsize)
+  @spec padl(t, 0 | 1, non_neg_integer) :: t
+  def padl(pfx, bit, n)
+      when is_pfx(pfx) and is_integer(n) and n >= 0 and (bit === 0 or bit === 1) do
+    bsize = bit_size(pfx.bits)
+    nbits = min(n, pfx.maxlen - bsize)
     y = if bit == 0, do: 0, else: (1 <<< nbits) - 1
-    x = castp(prefix.bits, bsize)
+    x = castp(pfx.bits, bsize)
 
-    %Pfx{prefix | bits: <<y::size(nbits), x::size(bsize)>>}
+    %Pfx{pfx | bits: <<y::size(nbits), x::size(bsize)>>}
   end
 
-  def padl(x, _, _) when is_exception(x), do: x
-  def padl(x, b, n), do: error(:padl, {x, b, n})
+  def padl(pfx, bit, n) when is_integer(n) and n >= 0 and (bit === 0 or bit === 1),
+    do: raise(arg_error(:pfx, pfx))
+
+  def padl(_, bit, n) when bit === 0 or bit === 1,
+    do: raise(arg_error(:noneg, n))
+
+  def padl(_, bit, _),
+    do: raise(arg_error(:nobit, bit))
 
   @doc """
   Set prefix.bits to either 0 or 1.
