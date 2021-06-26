@@ -1314,7 +1314,7 @@ defmodule Pfx do
   # Format
 
   @doc ~S"""
-  Generic formatter to turn a *prefix* into a string, using several options:
+  Generic formatter to turn a `Pfx` into a string, using several options:
   - `:width`, field width (default 8)
   - `:base`, howto turn a field into a string (default 10, use 16 for hex numbers)
   - `:unit`, how many fields go into 1 section (default 1)
@@ -1322,7 +1322,7 @@ defmodule Pfx do
   - `:lsep`, howto join a mask if required (default "/")
   - `:mask`, whether to add a mask (default false)
   - `:reverse`, whether to reverse fields before grouping/joining (default false)
-  - `:padding`, whether to pad out the prefix' bits (default true)
+  - `:padding`, whether to pad out the `pfx.bits` (default true)
 
   The defaults are geared towards IPv4 prefixes, but the options should be able
   to accomodate other domains as well.
@@ -1340,24 +1340,24 @@ defmodule Pfx do
       iex> new(<<10, 11, 12, 128>>, 32) |> format()
       "10.11.12.128"
 
-      iex> prefix = new(<<0xacdc::16, 0x1976::16>>, 128)
-      iex> format(prefix, width: 16, base: 16, ssep: ":")
+      iex> pfx = new(<<0xacdc::16, 0x1976::16>>, 128)
+      iex> format(pfx, width: 16, base: 16, ssep: ":")
       "ACDC:1976:0:0:0:0:0:0/32"
       #
       # similar, but grouping 4 fields, each 4 bits wide, into a single section
       #
-      iex> format(prefix, width: 4, base: 16, unit: 4, ssep: ":")
+      iex> format(pfx, width: 4, base: 16, unit: 4, ssep: ":")
       "ACDC:1976:0000:0000:0000:0000:0000:0000/32"
       #
-      # this time, omit the acutal prefix length
+      # this time, omit the acutal pfx length
       #
-      iex> format(prefix, width: 16, base: 16, ssep: ":", mask: false)
+      iex> format(pfx, width: 16, base: 16, ssep: ":", mask: false)
       "ACDC:1976:0:0:0:0:0:0"
       #
       # ptr for IPv6 using the nibble format:
       # - dot-separated reversal of all hex digits in the expanded address
       #
-      iex> prefix
+      iex> pfx
       ...> |> format(width: 4, base: 16, mask: false, reverse: true)
       ...> |> String.downcase()
       ...> |> (fn x -> "#{x}.ip6.arpa." end).()
@@ -1371,10 +1371,10 @@ defmodule Pfx do
 
 
   """
-  @spec format(t, Keyword.t()) :: String.t() | PfxError.t()
-  def format(prefix, opts \\ [])
+  @spec format(t, Keyword.t()) :: String.t()
+  def format(pfx, opts \\ [])
 
-  def format(prefix, opts) when is_pfx(prefix) do
+  def format(pfx, opts) when is_pfx(pfx) do
     width = Keyword.get(opts, :width, 8)
     base = Keyword.get(opts, :base, 10)
     ssep = Keyword.get(opts, :ssep, ".")
@@ -1384,8 +1384,8 @@ defmodule Pfx do
     reverse = Keyword.get(opts, :reverse, false)
     padding = Keyword.get(opts, :padding, true)
 
-    bitstr =
-      prefix
+    string =
+      pfx
       |> (fn x -> if padding, do: padr(x), else: x end).()
       |> fields(width)
       |> Enum.map(fn {n, _w} -> Integer.to_string(n, base) end)
@@ -1393,15 +1393,15 @@ defmodule Pfx do
       |> Enum.chunk_every(unit)
       |> Enum.join(ssep)
 
-    if mask and bit_size(prefix.bits) < prefix.maxlen do
-      "#{bitstr}#{lsep}#{bit_size(prefix.bits)}"
+    if mask and bit_size(pfx.bits) < pfx.maxlen do
+      "#{string}#{lsep}#{bit_size(pfx.bits)}"
     else
-      bitstr
+      string
     end
   end
 
-  def format(x, _) when is_exception(x), do: x
-  def format(x, o), do: error(:format, {x, o})
+  def format(pfx, _opts),
+    do: raise(arg_error(:pfx, pfx))
 
   # Sorting
 
