@@ -111,14 +111,16 @@ defmodule Pfx do
   defp arg_error(reason, data) do
     msg =
       case reason do
-        :pfx -> "expected a valid Pfx, got #{inspect(data)}"
-        :cidr -> "expected a valid CIDR string, got #{inspect(data)}"
-        :max -> "expected a non_neg_integer for maxlen, got #{inspect(data)}"
-        :ip4len -> "expected a valid IPv4 prefix length, got #{inspect(data)}"
-        :ip6len -> "expected a valid IPv6 prefix length, got #{inspect(data)}"
-        :ip4dig -> "expected valid IPv4 digits, got #{inspect(data)}"
-        :ip6dig -> "expected valid IPv6 digits, got #{inspect(data)}"
         :bitpos -> "invalid bit position: #{inspect(data)}"
+        :cidr -> "expected a valid ipv4/ipv6 CIDR string, got #{inspect(data)}"
+        :create -> "cannot crerate a Pfx from: #{inspect(data)}"
+        :ip4dig -> "expected valid IPv4 digits, got #{inspect(data)}"
+        :ip4len -> "expected a valid IPv4 prefix length, got #{inspect(data)}"
+        :ip6dig -> "expected valid IPv6 digits, got #{inspect(data)}"
+        :ip6len -> "expected a valid IPv6 prefix length, got #{inspect(data)}"
+        :max -> "expected a non_neg_integer for maxlen, got #{inspect(data)}"
+        :nocompare -> "prefixes have different maxlen's: #{inspect(data)}"
+        :pfx -> "expected a valid Pfx, got #{inspect(data)}"
         :range -> "invalid index range: #{inspect(data)}"
         reason -> "error #{reason}, #{inspect(data)}"
       end
@@ -308,7 +310,7 @@ defmodule Pfx do
   end
 
   def new(prefix),
-    do: raise(arg_error(:unknown, prefix))
+    do: raise(arg_error(:create, prefix))
 
   # ==========================================================================
   # TODO:
@@ -364,7 +366,7 @@ defmodule Pfx do
       ** (ArgumentError) invalid index range: {8, 32}
 
   """
-  @spec cut(t(), integer, integer) :: t() | PfxError.t()
+  @spec cut(t(), integer, integer) :: t()
   def cut(pfx, start, length) when is_pfx(pfx) do
     try do
       bits = bits(pfx, start, length)
@@ -399,7 +401,7 @@ defmodule Pfx do
       ** (ArgumentError) invalid bit position: 33
 
   """
-  @spec bit(t, integer) :: 0 | 1 | PfxError.t()
+  @spec bit(t, integer) :: 0 | 1
   def bit(pfx, position) when position + pfx.maxlen < 0 or position >= pfx.maxlen,
     do: raise(arg_error(:bitpos, position))
 
@@ -454,7 +456,7 @@ defmodule Pfx do
       <<0b11111::size(5)>>
 
   """
-  @spec bits(t, integer, integer) :: bitstring() | PfxError.t()
+  @spec bits(t, integer, integer) :: bitstring()
   def bits(pfx, position, length) when is_pfx(pfx) and is_integer(position * length) do
     pos = if position < 0, do: pfx.maxlen + position, else: position
     {pos, len} = if length < 0, do: {pos + 1 + length, -length}, else: {pos, length}
@@ -491,7 +493,7 @@ defmodule Pfx do
       ** (ArgumentError) invalid index range: {-1, 8}
 
   """
-  @spec bits(t, [{integer, integer}]) :: bitstring | PfxError.t()
+  @spec bits(t, [{integer, integer}]) :: bitstring
   def bits(pfx, ranges) when is_pfx(pfx) and is_list(ranges) do
     Enum.map(ranges, fn {pos, len} -> bits(pfx, pos, len) end)
     |> Enum.reduce(<<>>, &joinbitsp/2)
@@ -547,7 +549,7 @@ defmodule Pfx do
       %Pfx{bits: <<0, 255>>, maxlen: 32}
 
   """
-  @spec bnot(t) :: t | PfxError.t()
+  @spec bnot(t) :: t
   def bnot(pfx) when is_pfx(pfx) do
     width = bit_size(pfx.bits)
 
@@ -576,18 +578,23 @@ defmodule Pfx do
       %Pfx{bits: <<128, 129, 0, 0>>, maxlen: 32}
 
   """
-  @spec band(t, t) :: t | PfxError.t()
-  def band(prefix1, prefix2) when is_comparable(prefix1, prefix2) do
-    width = max(bit_size(prefix1.bits), bit_size(prefix2.bits))
-    x = castp(prefix1.bits, width)
-    y = castp(prefix2.bits, width)
+  @spec band(t, t) :: t
+  def band(pfx1, pfx2) when is_comparable(pfx1, pfx2) do
+    width = max(bit_size(pfx1.bits), bit_size(pfx2.bits))
+    x = castp(pfx1.bits, width)
+    y = castp(pfx2.bits, width)
     z = x &&& y
-    %Pfx{prefix1 | bits: <<z::size(width)>>}
+    %Pfx{pfx1 | bits: <<z::size(width)>>}
   end
 
-  def band(x, _) when is_exception(x), do: x
-  def band(_, x) when is_exception(x), do: x
-  def band(x, y), do: error(:band, {x, y})
+  def band(pfx1, pfx2) when is_pfx(pfx1) and is_pfx(pfx2),
+    do: raise(arg_error(:nocompare, {pfx1, pfx2}))
+
+  def band(pfx1, pfx2) when is_pfx(pfx2),
+    do: raise(arg_error(:pfx, pfx1))
+
+  def band(pfx1, _),
+    do: raise(arg_error(:pfx, pfx1))
 
   @doc """
   A bitwise OR of two prefixes.
