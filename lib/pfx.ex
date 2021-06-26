@@ -132,8 +132,10 @@ defmodule Pfx do
         :max -> "expected a non_neg_integer for maxlen, got #{inspect(data)}"
         :nocompare -> "prefixes have different maxlen's: #{inspect(data)}"
         :pfx -> "expected a valid Pfx, got #{inspect(data)}"
+        :pfx4 -> "expected a valid IPv4 Pfx, got #{inspect(data)}"
         :pfx6 -> "expected a valid IPv6 Pfx, got #{inspect(data)}"
         :range -> "invalid index range: #{inspect(data)}"
+        :nat64 -> "expected a valid IPv6 nat64 address, got #{inspect(data)}"
         :noint -> "expected an integer, got #{inspect(data)}"
         :noints -> "expected all integers, got #{inspect(data)}"
         :noneg -> "expected a non_neg_integer, got #{inspect(data)}"
@@ -2129,7 +2131,7 @@ defmodule Pfx do
   @doc """
   Returns the embedded IPv4 address of a nat64 `pfx`
 
-  The `ip6` prefix should be a full IPv6 address.  The `len` defaults to `96`, but if
+  The `pfx` prefix should be a full IPv6 address.  The `len` defaults to `96`, but if
   specified it should be one of [#{Enum.join(@nat64_lengths, ", ")}].
 
   ## Examples
@@ -2169,20 +2171,121 @@ defmodule Pfx do
 
   def nat64_decode(pfx, len) when len in @nat64_lengths do
     x = new(pfx)
-
-    case bit_size(x.bits) do
-      128 -> nat64_decodep(x, len)
-      _ -> raise arg_error(:pfx6, pfx)
-    end
+    unless bit_size(x.bits) == 128, do: raise(arg_error(:nat64, x))
+    x = if len < 96, do: %{x | bits: bits(x, [{0, 64}, {72, 56}])}, else: x
+    "#{%Pfx{bits: bits(x, len, 32), maxlen: 32}}"
   end
 
   def nat64_decode(_, len),
     do: raise(arg_error(:nat64_decode, "len #{len} not in: #{Enum.join(@nat64_lengths, ", ")}"))
 
-  defp nat64_decodep(ip6, len) do
-    ip6 = if len < 96, do: %{ip6 | bits: bits(ip6, [{0, 64}, {72, 56}])}, else: ip6
+  @doc """
+  Return an IPv4 embedded IPv6 address for given `pfx6` and `pfx4`.
 
-    "#{%Pfx{bits: bits(ip6, len, 32), maxlen: 32}}"
+  The length of the `pfx6.bits` should be one of [#{Enum.join(@nat64_lengths, ", ")}] as defined
+  in [rfc6052](https://www.iana.org/go/rfc6052).  The `pfx4` prefix should be a full address.
+
+  ## Examples
+
+      # from rfc6052, section 2.2
+
+      iex> nat64_encode(%Pfx{bits: <<0x2001::16, 0xdb8::16>>, maxlen: 128}, "192.0.2.33")
+      %Pfx{bits: <<0x2001::16, 0xdb8::16, 0xc000::16, 0x221::16, 0::64>>, maxlen: 128}
+
+      iex> nat64_encode("2001:db8::/32", "192.0.2.33")
+      "2001:DB8:C000:221:0:0:0:0"
+
+      iex> nat64_encode({{0x2001, 0xdb8, 0, 0, 0, 0, 0, 0}, 32}, "192.0.2.33")
+      {{0x2001, 0xdb8, 0xc000, 0x221, 0, 0, 0, 0}, 128}
+
+      # other examples
+      iex> nat64_encode("2001:db8:100::/40", "192.0.2.33")
+      "2001:DB8:1C0:2:21:0:0:0"
+
+      iex> nat64_encode("2001:db8:122::/48", "192.0.2.33")
+      "2001:DB8:122:C000:2:2100:0:0"
+
+      iex> nat64_encode("2001:db8:122:300::/56", "192.0.2.33")
+      "2001:DB8:122:3C0:0:221:0:0"
+
+      iex> nat64_encode("2001:db8:122:344::/64", "192.0.2.33")
+      "2001:DB8:122:344:C0:2:2100:0"
+
+      iex> nat64_encode("2001:db8:122:344::/96", "192.0.2.33")
+      "2001:DB8:122:344:0:0:C000:221"
+
+  """
+  @spec nat64_encode(prefix(), prefix()) :: prefix
+  def nat64_encode(pfx6, pfx4) do
+    ip6 = new(pfx6)
+
+    unless bit_size(ip6.bits) in @nat64_lengths,
+      do: raise(arg_error(:nat64, pfx6))
+
+    ip4 = new(pfx4)
+
+    unless bit_size(ip4.bits) == 32,
+      do: raise(arg_error(:pfx4, pfx4))
+
+    ip6 = %{ip6 | bits: ip6.bits <> ip4.bits}
+
+    if bit_size(ip6.bits) < 128 do
+      %{
+        ip6
+        | bits:
+            <<bits(ip6, [{0, 64}])::bitstring, 0::8,
+              bits(ip6, [{64, bit_size(ip6.bits) - 64}])::bitstring>>
+      }
+      |> padr(0)
+      |> marshall(pfx6)
+    else
+      marshall(ip6, pfx6)
+    end
+  end
+
+  @doc """
+  Return a reverse DNS name (pointer) for given `pfx`.
+
+  The prefix will be padded right with `0`-bits to a multiple of 8 for IPv4 prefixes and
+  to a multiple of 4 for IPv6 prefixes.  Note that this might give unexpected results.
+  So `dns_ptr/1` works best if the prefix given is actually a multiple of 4 or 8.
+
+  ## Examples
+
+      iex> dns_ptr("10.10.0.0/16")
+      "10.10.in-addr.arpa"
+
+      # "1.2.3.0/23" actually encodes as %Pfx{bits: <<1, 2, 1::size(7)>>, maxlen: 32}
+      # and padding right with 0-bits to a /24 yields the 1.2.2.0/24 ...
+      iex> dns_ptr("1.2.3.0/23")
+      "2.2.1.in-addr.arpa"
+
+      iex> dns_ptr("acdc:1976::/32")
+      "6.7.9.1.c.d.c.a.ip6.arpa"
+
+      # https://www.youtube.com/watch?v=VD7BV-z5GsE
+      iex> dns_ptr("acdc:1975::b1ba:2021")
+      "1.2.0.2.a.b.1.b.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.5.7.9.1.c.d.c.a.ip6.arpa"
+
+  """
+  @spec dns_ptr(prefix()) :: String.t()
+  def dns_ptr(pfx) do
+    x = new(pfx)
+
+    {width, base, suffix} =
+      case x.maxlen do
+        32 -> {8, 10, "in-addr.arpa"}
+        128 -> {4, 16, "ip6.arpa"}
+        _ -> raise arg_error(:pfx, pfx)
+      end
+
+    n = rem(x.maxlen - bit_size(x.bits), width)
+
+    x
+    |> padr(0, n)
+    |> format(width: width, base: base, padding: false, reverse: true, mask: false)
+    |> String.downcase()
+    |> (&"#{&1}.#{suffix}").()
   end
 end
 
