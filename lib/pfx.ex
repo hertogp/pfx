@@ -173,7 +173,7 @@ defmodule Pfx do
   # API
 
   @doc """
-  Creates a new prefix.
+  Creates a new `t:Pfx.t/0`-prefix.
 
   A prefix can be created from:
   - from a bitstring and a maximum length, truncating the bits as needed,
