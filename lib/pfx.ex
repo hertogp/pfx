@@ -254,7 +254,7 @@ defmodule Pfx do
   @spec new(ip_address() | {ip_address(), non_neg_integer()}) :: t()
   def new(prefix)
 
-  # IPv4 tuple(s)
+  # ipv4 tuple(s)
 
   def new({a, b, c, d}),
     do: new({{a, b, c, d}, 32})
@@ -273,7 +273,7 @@ defmodule Pfx do
   def new({{_, _, _, _} = digits, len}),
     do: raise(arg_error(:ip4dig, {digits, len}))
 
-  # IPv6 tuple(s)
+  # ipv6 tuple(s)
 
   def new({a, b, c, d, e, f, g, h}),
     do: new({{a, b, c, d, e, f, g, h}, 128})
@@ -294,7 +294,7 @@ defmodule Pfx do
   def new({{_, _, _, _, _, _, _, _} = digits, len}),
     do: raise(arg_error(:ip6dig, {digits, len}))
 
-  # From Binary
+  # from ipv4/ipv6 CIDR binary
   def new(string) when is_binary(string) do
     charlist = String.to_charlist(string)
     {address, mask} = splitp(charlist, [])
@@ -310,17 +310,13 @@ defmodule Pfx do
   def new(prefix),
     do: raise(arg_error(:unknown, prefix))
 
+  # ==========================================================================
   # TODO:
-  # - turn IP's encode into new()
-  # - turn IP's decode into to_string
   # - raise argument errors when invalid input is passed in
   # - raise PfxError only when encountering an invalid prefix struct
-  # - do {:ok, value}, {:error, PfxError} functions too
-
   # ==========================================================================
 
-  # ==========================================================================
-  # Slice-&-Dice
+  # Bit ops
 
   @doc """
   Cut out a series of bits and turn it into its own `Pfx`.
@@ -382,13 +378,12 @@ defmodule Pfx do
   def cut(pfx, _, _),
     do: raise(arg_error(:pfx, pfx))
 
-  # Bit Ops
-
   @doc """
   Return Pfx's bit-value at given `position`.
 
-  A bit position is a `0`-based index from the left.  A bit position in the range
-  of `bit_size(pfx.bits)`..`pfx.maxlen - 1` always yields `0`.
+  A bit position is a `0`-based index from the left.  A negative bit position
+  is taken relative to `Pfx.maxlen`. A bit position in the range of
+  `bit_size(pfx.bits)`..`pfx.maxlen - 1` always yields `0`.
 
   ## Examples
 
@@ -497,18 +492,15 @@ defmodule Pfx do
 
   """
   @spec bits(t, [{integer, integer}]) :: bitstring | PfxError.t()
-  def bits(pfx, pos_len) when is_pfx(pfx) and is_list(pos_len) do
-    Enum.map(pos_len, fn {pos, len} -> bits(pfx, pos, len) end)
+  def bits(pfx, ranges) when is_pfx(pfx) and is_list(ranges) do
+    Enum.map(ranges, fn {pos, len} -> bits(pfx, pos, len) end)
     |> Enum.reduce(<<>>, &joinbitsp/2)
   end
 
-  # helper to join bits or return any PfxError argument provided
-  defp joinbitsp(x, _) when is_exception(x), do: x
-  defp joinbitsp(_, y) when is_exception(y), do: y
   defp joinbitsp(x, y), do: <<y::bitstring, x::bitstring>>
 
   @doc """
-  Cast a prefix to an integer.
+  Cast a `t:Pfx.t()`-prefix to an integer.
 
   After right padding the given *prefix*, the bits are interpreted as a number
   of `maxlen` bits wide.  Empty prefixes evaluate to `0`, since all 'missing'
@@ -531,17 +523,17 @@ defmodule Pfx do
       iex> %Pfx{bits: <<>>, maxlen: 8} |> cast()
       0
 
-      # bit weird, but:
+      # a bit weird, but:
       iex> %Pfx{bits: <<>>, maxlen: 0} |> cast()
       0
 
   """
   @spec cast(t()) :: non_neg_integer
-  def cast(prefix) when is_pfx(prefix),
-    do: castp(prefix.bits, prefix.maxlen)
+  def cast(pfx) when is_pfx(pfx),
+    do: castp(pfx.bits, pfx.maxlen)
 
-  def cast(x) when is_exception(x), do: x
-  def cast(x), do: error(:cast, x)
+  def cast(pfx),
+    do: raise(arg_error(:pfx, pfx))
 
   @doc """
   A bitwise NOT of the *prefix.bits*.
