@@ -1194,25 +1194,28 @@ defmodule Pfx do
     do: raise(arg_error(:noint, offset))
 
   @doc """
-  The size of *prefix* as determined by its *missing* bits.
+  Returns the number of full addresses represented by the `Pfx`.
 
   size(prefix) == 2^(prefix.maxlen - bit_size(prefix.bits))
 
   ## Examples
 
-      iex> new(<<10, 10, 10>>, 32) |> size()
-      256
-
       iex> new(<<10, 10, 10, 10>>, 32) |> size()
       1
 
-  """
-  @spec size(t) :: pos_integer | PfxError.t()
-  def size(prefix) when is_pfx(prefix),
-    do: :math.pow(2, prefix.maxlen - bit_size(prefix.bits)) |> trunc
+      iex> new(<<10, 10, 10>>, 32) |> size()
+      256
 
-  def size(x) when is_exception(x), do: x
-  def size(x), do: error(:size, x)
+      iex> new(<<10, 10>>, 32) |> size()
+      65536
+
+  """
+  @spec size(t) :: pos_integer
+  def size(pfx) when is_pfx(pfx),
+    do: :math.pow(2, pfx.maxlen - bit_size(pfx.bits)) |> trunc
+
+  def size(pfx),
+    do: raise(arg_error(:pfx, pfx))
 
   @doc """
   Return the *nth*-member of a given *prefix*.
