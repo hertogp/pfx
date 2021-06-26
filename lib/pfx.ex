@@ -1627,6 +1627,22 @@ defmodule Pfx do
 
   def host(pfx, _nth),
     do: raise(arg_error(:pfx, pfx))
+
+  @doc """
+  Return the mask as a `Pfx` for given `pfx`.
+
+  ## Example
+
+      iex> new("10.10.10.128/25") |> mask() |> format()
+      "255.255.255.128"
+
+  """
+  @spec mask(t) :: t
+  def mask(pfx) when is_pfx(pfx),
+    do: bset(pfx, 1) |> padr(0)
+
+  def mask(pfx),
+    do: raise(arg_error(:pfx, pfx))
 end
 
 defimpl String.Chars, for: Pfx do
