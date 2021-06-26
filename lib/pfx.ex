@@ -657,19 +657,23 @@ defmodule Pfx do
       %Pfx{bits: <<245, 244, 12, 13>>, maxlen: 32}
 
   """
-  @spec bxor(t, t) :: t | PfxError.t()
-  def bxor(prefix1, prefix2) when is_comparable(prefix1, prefix2) do
-    width = max(bit_size(prefix1.bits), bit_size(prefix2.bits))
-    x = castp(prefix1.bits, width)
-    y = castp(prefix2.bits, width)
+  @spec bxor(t, t) :: t
+  def bxor(pfx1, pfx2) when is_comparable(pfx1, pfx2) do
+    width = max(bit_size(pfx1.bits), bit_size(pfx2.bits))
+    x = castp(pfx1.bits, width)
+    y = castp(pfx2.bits, width)
     z = Bitwise.bxor(x, y)
-    # was x ^^^ y
-    %Pfx{prefix1 | bits: <<z::size(width)>>}
+    %Pfx{pfx1 | bits: <<z::size(width)>>}
   end
 
-  def bxor(x, _) when is_exception(x), do: x
-  def bxor(_, x) when is_exception(x), do: x
-  def bxor(x, y), do: error(:bxor, {x, y})
+  def bxor(pfx1, pfx2) when is_pfx(pfx1) and is_pfx(pfx2),
+    do: raise(arg_error(:nocompare, {pfx1, pfx2}))
+
+  def bxor(pfx1, pfx2) when is_pfx(pfx2),
+    do: raise(arg_error(:pfx, pfx1))
+
+  def bxor(_, pfx2),
+    do: raise(arg_error(:pfx, pfx2))
 
   @doc """
   Rotate the *prefix.bits* by *n* positions.
