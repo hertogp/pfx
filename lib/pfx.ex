@@ -122,6 +122,7 @@ defmodule Pfx do
         :nocompare -> "prefixes have different maxlen's: #{inspect(data)}"
         :pfx -> "expected a valid Pfx, got #{inspect(data)}"
         :range -> "invalid index range: #{inspect(data)}"
+        :noint -> "expected an integer, got #{inspect(data)}"
         reason -> "error #{reason}, #{inspect(data)}"
       end
 
@@ -676,7 +677,9 @@ defmodule Pfx do
     do: raise(arg_error(:pfx, pfx2))
 
   @doc """
-  Rotate the *prefix.bits* by *n* positions.
+  Rotate the `pfx.bits` by `n` positions.
+
+  Positive `n` rotates right, negative rotates left.
 
   ## Examples
 
@@ -690,26 +693,28 @@ defmodule Pfx do
       %Pfx{bits: <<2, 4, 6, 8>>, maxlen: 32}
 
   """
-  @spec brot(t, integer) :: t | PfxError.t()
-  def brot(prefix, n) when is_integer(n) and n < 0 do
-    plen = bit_size(prefix.bits)
-    brot(prefix, plen + rem(n, plen))
+  @spec brot(t, integer) :: t
+  def brot(pfx, n) when is_pfx(pfx) and is_integer(n) and n < 0 do
+    plen = bit_size(pfx.bits)
+    brot(pfx, plen + rem(n, plen))
   end
 
-  def brot(prefix, n) when is_pfx(prefix) and is_integer(n) do
-    width = bit_size(prefix.bits)
+  def brot(pfx, n) when is_pfx(pfx) and is_integer(n) do
+    width = bit_size(pfx.bits)
     n = rem(n, width)
-    x = castp(prefix.bits, width)
-    m = ~~~(1 <<< n)
-    r = x &&& m
-    l = x >>> n
+    x = castp(pfx.bits, width)
+    m = Bitwise.bsl(1, n) |> Bitwise.bnot()
+    r = Bitwise.band(x, m)
+    l = Bitwise.bsr(x, n)
     lw = width - n
-    %Pfx{prefix | bits: <<r::size(n), l::size(lw)>>}
+    %Pfx{pfx | bits: <<r::size(n), l::size(lw)>>}
   end
 
-  def brot(x, _) when is_exception(x), do: x
-  def brot(_, x) when is_exception(x), do: x
-  def brot(x, y), do: error(:brot, {x, y})
+  def brot(pfx, n) when is_integer(n),
+    do: raise(arg_error(:pfx, pfx))
+
+  def brot(_, n),
+    do: raise(arg_error(:noint, n))
 
   @doc """
   Arithmetic shift left the *prefix.bits* by *n* positions.
