@@ -1023,16 +1023,22 @@ defmodule Pfx do
 
   ## Example
 
-      iex> new(<<1, 2>>, 32) |> padl()
+      iex> padl(%Pfx{bits: <<1, 2>>, maxlen: 32})
       %Pfx{bits: <<0, 0, 1, 2>>, maxlen: 32}
 
+      iex> padl("1.2.0.0/16")
+      "0.0.1.2"
+
+      iex> padl({{1, 2, 0, 0}, 16})
+      {{0, 0, 1, 2}, 32}
+
   """
-  @spec padl(t) :: t
+  @spec padl(prefix) :: prefix
   def padl(pfx) when is_pfx(pfx),
     do: padl(pfx, 0, pfx.maxlen)
 
   def padl(pfx),
-    do: raise(arg_error(:pfx, pfx))
+    do: padl(new(pfx)) |> marshall(pfx)
 
   @doc """
   Left pad the `pfx.bits` to its full length using either `0` or `1`-bits.
