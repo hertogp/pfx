@@ -1690,6 +1690,15 @@ defmodule Pfx do
       iex> compare(new(<<10>>, 32), new(<<11>>, 32))
       :lt
 
+      iex> compare("10.0.0.0/8", "11.0.0.0/8")
+      :lt
+
+      iex> compare("10.0.0.0/8", {{11, 0, 0, 0}, 8})
+      :lt
+
+      iex> compare({10, 0, 0, 0}, {{11, 0, 0, 0}, 16})
+      :lt
+
       # sort on `pfx.bits` size first, than on `pfx.bits` values
       iex> l = [new(<<10, 11>>, 32), new(<<10,10,10>>, 32), new(<<10,10>>, 32)]
       iex> Enum.sort(l, Pfx)
@@ -1708,12 +1717,29 @@ defmodule Pfx do
         %Pfx{bits: <<10, 11>>, maxlen: 32}
       ]
 
-      # `pfx1.maxlen` must equal `pfx2.maxlen`
+      iex> l = ["10.11.0.0/16", "10.10.10.0/24", "10.10.0.0/16"]
+      iex> Enum.sort(l, Pfx)
+      [
+        "10.10.10.0/24",
+        "10.10.0.0/16",
+        "10.11.0.0/16"
+      ]
+
+      # not advisable, you mixed representations are possible as well
+      iex> l = ["10.11.0.0/16", {{10, 10, 10, 0}, 24}, %Pfx{bits: <<10, 10>>, maxlen: 32}]
+      iex> Enum.sort(l, Pfx)
+      [
+        {{10, 10, 10, 0}, 24},
+        %Pfx{bits: <<10, 10>>, maxlen: 32},
+        "10.11.0.0/16",
+      ]
+
+      # Note: all prefixes must have the same `maxlen`
       iex> compare(new(<<10>>, 32), new(<<10>>, 128))
       ** (ArgumentError) prefixes have different maxlen's: {%Pfx{bits: "\n", maxlen: 32}, %Pfx{bits: "\n", maxlen: 128}}
 
   """
-  @spec compare(t, t) :: :eq | :lt | :gt
+  @spec compare(prefix, prefix) :: :eq | :lt | :gt
   def compare(pfx1, pfx2)
 
   def compare(x, y) when is_comparable(x, y),
@@ -1722,11 +1748,8 @@ defmodule Pfx do
   def compare(x, y) when is_pfx(x) and is_pfx(y),
     do: raise(arg_error(:nocompare, {x, y}))
 
-  def compare(x, y) when is_pfx(y),
-    do: raise(arg_error(:pfx, x))
-
-  def compare(_x, y),
-    do: raise(arg_error(:pfx, y))
+  def compare(x, y),
+    do: compare(new(x), new(y))
 
   defp comparep(x, y) when bit_size(x) > bit_size(y), do: :lt
   defp comparep(x, y) when bit_size(x) < bit_size(y), do: :gt
