@@ -963,7 +963,7 @@ defmodule Pfx do
       {1, 2, 0, 0}
 
   """
-  @spec padr(t, 0 | 1) :: t
+  @spec padr(prefix, 0 | 1) :: prefix
   def padr(pfx, bit) when is_pfx(pfx) and (bit === 0 or bit === 1),
     do: padr(pfx, bit, pfx.maxlen)
 
@@ -976,21 +976,28 @@ defmodule Pfx do
   @doc """
   Right pad the `pfx.bits` with `n` bits of either `0` or `1`'s.
 
+  The result is clipped at `maxlen` bits without warning.
+
   ## Examples
 
-      iex> pfx = new(<<255, 255>>, 32)
-      iex> padr(pfx, 0, 8)
+      iex> padr(%Pfx{bits: <<255, 255>>, maxlen: 32}, 0, 8)
       %Pfx{bits: <<255, 255, 0>>, maxlen: 32}
-      #
-      iex> padr(pfx, 1, 16)
-      %Pfx{bits: <<255, 255, 255, 255>>, maxlen: 32}
+
+      iex> padr(%Pfx{bits: <<255, 255>>, maxlen: 32}, 1, 8)
+      %Pfx{bits: <<255, 255, 255>>, maxlen: 32}
 
       # results are clipped to maxlen
-      iex> new(<<1, 2>>, 32) |> padr(0, 64)
+      iex> new(<<1, 2>>, 32) |> padr(0, 512)
       %Pfx{bits: <<1, 2, 0, 0>>, maxlen: 32}
 
+      iex> padr("255.255.0.0/16", 1, 8)
+      "255.255.255.0/24"
+
+      iex> padr({{255, 255, 0, 0}, 16}, 1, 8)
+      {{255, 255, 255, 0}, 24}
+
   """
-  @spec padr(t, 0 | 1, non_neg_integer) :: t
+  @spec padr(prefix, 0 | 1, non_neg_integer) :: prefix
   def padr(pfx, bit, n)
       when is_pfx(pfx) and is_integer(n) and n >= 0 and (bit === 0 or bit === 1) do
     bsize = bit_size(pfx.bits)
@@ -1003,7 +1010,7 @@ defmodule Pfx do
   end
 
   def padr(pfx, bit, n) when is_integer(n) and n >= 0 and (bit === 0 or bit === 1),
-    do: raise(arg_error(:pfx, pfx))
+    do: padr(new(pfx), bit, n) |> marshall(pfx)
 
   def padr(_, bit, n) when bit === 0 or bit === 1,
     do: raise(arg_error(:noneg, n))
