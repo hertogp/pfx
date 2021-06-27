@@ -544,7 +544,7 @@ defmodule Pfx do
   defp joinbitsp(x, y), do: <<y::bitstring, x::bitstring>>
 
   @doc """
-  Cast a `Pfx` prefix to an integer.
+  Cast a `t:prefix/0` to an integer.
 
   After right padding the given `pfx`, the `pfx.bits` are interpreted as a number
   of `maxlen` bits wide.  Empty prefixes evaluate to `0`, since all 'missing'
@@ -571,13 +571,25 @@ defmodule Pfx do
       iex> %Pfx{bits: <<>>, maxlen: 0} |> cast()
       0
 
+      iex> %Pfx{bits: <<255, 255, 0, 0>>, maxlen: 32} |> cast()
+      4294901760
+
+      iex> cast({255, 255, 0, 0})
+      4294901760
+
+      iex> cast({{255, 255, 0, 0}, 32})
+      4294901760
+
+      iex> cast("255.255.0.0")
+      4294901760
+
   """
-  @spec cast(t()) :: non_neg_integer
+  @spec cast(prefix) :: non_neg_integer
   def cast(pfx) when is_pfx(pfx),
     do: castp(pfx.bits, pfx.maxlen)
 
   def cast(pfx),
-    do: raise(arg_error(:pfx, pfx))
+    do: new(pfx) |> cast()
 
   @doc """
   A bitwise NOT of the `pfx.bits`.
