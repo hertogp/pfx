@@ -615,7 +615,7 @@ defmodule Pfx do
 
 
   """
-  @spec bnot(t) :: t
+  @spec bnot(prefix) :: prefix
   def bnot(pfx) when is_pfx(pfx) do
     width = bit_size(pfx.bits)
 
@@ -630,9 +630,11 @@ defmodule Pfx do
     do: new(pfx) |> bnot() |> marshall(pfx)
 
   @doc """
-  A bitwise AND of two prefixes.
+  A bitwise AND of two `t:prefix/0`'s.
 
-  Both prefixes should have the same `Pfx.maxlen`
+  Both prefixes should, ultimately, have the same `maxlen`.
+  If one or more arguments are nog a `Pfx`-struct they are
+  are converted using `Pfx.new/1`.
 
   ## Examples
 
@@ -645,8 +647,24 @@ defmodule Pfx do
       iex> band(y,x)
       %Pfx{bits: <<128, 129, 0, 0>>, maxlen: 32}
 
+      iex> band("1.2.3.4", "255.255.0.0")
+      "1.2.0.0"
+
+      iex> band("1.2.3.4", {255, 255, 0, 0})
+      "1.2.0.0"
+
+      iex> band({1, 2, 3, 4}, "255.255.0.0")
+      {1, 2, 0, 0}
+
+      # both will still have maxlen `32`
+      iex> band({{1, 2, 3, 4}, 24}, {{255, 255, 0, 0}, 32})
+      {{1, 2, 0, 0}, 32}
+
+      # the work of ancient astrounauts ..
+      iex> band("1.2.3.4", "255.255")
+      "1.0.0.4"
   """
-  @spec band(t, t) :: t
+  @spec band(prefix, prefix) :: prefix
   def band(pfx1, pfx2) when is_comparable(pfx1, pfx2) do
     width = max(bit_size(pfx1.bits), bit_size(pfx2.bits))
     x = castp(pfx1.bits, width)
@@ -658,11 +676,8 @@ defmodule Pfx do
   def band(pfx1, pfx2) when is_pfx(pfx1) and is_pfx(pfx2),
     do: raise(arg_error(:nocompare, {pfx1, pfx2}))
 
-  def band(pfx1, pfx2) when is_pfx(pfx2),
-    do: raise(arg_error(:pfx, pfx1))
-
-  def band(_, pfx2),
-    do: raise(arg_error(:pfx, pfx2))
+  def band(pfx1, pfx2),
+    do: band(new(pfx1), new(pfx2)) |> marshall(pfx1)
 
   @doc """
   A bitwise OR of two prefixes.
