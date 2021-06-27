@@ -682,7 +682,11 @@ defmodule Pfx do
   @doc """
   A bitwise OR of two prefixes.
 
-  Both prefixes should have the same `Pfx.maxlen`
+  Both prefixes should, ultimately, have the same `maxlen`.
+  If one or more arguments are nog a `Pfx`-struct they are
+  are converted using `Pfx.new/1`.
+
+  Note that the result is always a full length address whithin given prefix.
 
   ## Examples
 
@@ -698,8 +702,17 @@ defmodule Pfx do
       iex> bor(x, y)
       %Pfx{bits: <<255, 255, 12, 13>>, maxlen: 32}
 
+      iex> bor("1.2.3.4", "0.0.255.0")
+      "1.2.255.4"
+
+      iex> bor({1, 2, 3, 4}, "0.0.255.0")
+      {1, 2, 255, 4}
+
+      iex> bor({{1, 2, 3, 4}, 16}, {0, 0, 255, 0})
+      {{1, 2, 255, 0}, 32}
+
   """
-  @spec bor(t, t) :: t
+  @spec bor(prefix, prefix) :: prefix
   def bor(pfx1, pfx2) when is_comparable(pfx1, pfx2) do
     width = max(bit_size(pfx1.bits), bit_size(pfx2.bits))
     x = castp(pfx1.bits, width)
@@ -711,11 +724,8 @@ defmodule Pfx do
   def bor(pfx1, pfx2) when is_pfx(pfx1) and is_pfx(pfx2),
     do: raise(arg_error(:nocompare, {pfx1, pfx2}))
 
-  def bor(pfx1, pfx2) when is_pfx(pfx2),
-    do: raise(arg_error(:pfx, pfx1))
-
-  def bor(_, pfx2),
-    do: raise(arg_error(:pfx, pfx2))
+  def bor(pfx1, pfx2),
+    do: bor(new(pfx1), new(pfx2)) |> marshall(pfx1)
 
   @doc """
   A bitwise XOR of two prefixes.
