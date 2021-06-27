@@ -946,8 +946,21 @@ defmodule Pfx do
 
   ## Example
 
-      iex> new(<<1, 2>>, 32) |> padr(1)
+      iex> padr(%Pfx{bits: <<1, 2>>, maxlen: 32}, 1)
       %Pfx{bits: <<1, 2, 255, 255>>, maxlen: 32}
+
+      iex> padr("1.2.0.0/16", 1)
+      "1.2.255.255"
+
+      iex> padr({{1, 2, 0, 0}, 16}, 1)
+      {{1, 2, 255, 255}, 32}
+
+      # nothing to padr already a full prefix
+      iex> padr("1.2.0.0", 1)
+      "1.2.0.0"
+
+      iex> padr({1, 2, 0, 0}, 1)
+      {1, 2, 0, 0}
 
   """
   @spec padr(t, 0 | 1) :: t
@@ -955,7 +968,7 @@ defmodule Pfx do
     do: padr(pfx, bit, pfx.maxlen)
 
   def padr(pfx, bit) when bit === 0 or bit === 1,
-    do: raise(arg_error(:pfx, pfx))
+    do: padr(new(pfx), bit) |> marshall(pfx)
 
   def padr(_, bit),
     do: raise(arg_error(:nobit, bit))
