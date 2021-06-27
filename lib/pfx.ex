@@ -1258,27 +1258,27 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> new(<<10, 11, 12>>, 32) |> digits(8)
+      iex> digits(%Pfx{bits: <<10, 11, 12>>, maxlen: 32}, 8)
       {{10, 11, 12, 0}, 24}
 
-      iex> new(<<0x12, 0x34, 0x56, 0x78>>, 32) |> digits(4)
-      {{1, 2, 3, 4, 5, 6, 7, 8}, 32}
+      # not obvious that each number is 4 bits wide
+      iex> digits(%Pfx{bits: <<0x12, 0x34, 0x56, 0x78>>, maxlen: 128}, 4)
+      {{1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 32}
 
-      iex> new(<<10, 11, 12, 1::1>>, 32) |> digits(8)
+      iex> digits(%Pfx{bits: <<10, 11, 12, 1::1>>, maxlen: 32}, 8)
       {{10, 11, 12, 128}, 25}
 
-      iex> new(<<0xacdc::16, 1976::16>>, 128) |> digits(16)
-      {{44252, 1976, 0, 0, 0, 0, 0, 0}, 32}
+      iex> digits(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128}, 16)
+      {{44252, 6518, 0, 0, 0, 0, 0, 0}, 32}
 
-      iex> new(<<255>>, 32)
-      ...> |> digits(1)
-      ...> |> elem(0)
-      ...> |> Tuple.to_list()
-      ...> |> Enum.join("")
-      "11111111000000000000000000000000"
+      iex> digits("acdc:1976::/32", 16)
+      {{44252, 6518, 0, 0, 0, 0, 0, 0}, 32}
+
+      iex> digits({{0xacdc, 0x1976, 0, 0, 0, 0, 0, 0}, 32}, 16)
+      {{44252, 6518, 0, 0, 0, 0, 0, 0}, 32}
 
   """
-  @spec digits(t, pos_integer) :: {tuple(), pos_integer}
+  @spec digits(prefix, pos_integer) :: {tuple(), pos_integer}
   def digits(pfx, width) when is_pfx(pfx) and is_pos_integer(width) do
     try do
       digits =
@@ -1295,7 +1295,7 @@ defmodule Pfx do
   end
 
   def digits(pfx, width) when is_pos_integer(width),
-    do: raise(arg_error(:pfx, pfx))
+    do: digits(new(pfx), width)
 
   def digits(_, width),
     do: raise(arg_error(:nowidth, width))
