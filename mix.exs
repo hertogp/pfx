@@ -35,7 +35,10 @@ defmodule Pfx.MixProject do
     [
       main: Pfx,
       extras: ["README.md", "CHANGELOG.md"],
-      source_url: @url
+      source_url: @url,
+      groups_for_functions: [
+        "IP oriented": &(&1[:section] == :ip)
+      ]
     ]
   end
 

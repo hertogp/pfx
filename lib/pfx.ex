@@ -1,40 +1,5 @@
-defmodule PfxError do
-  defexception [:reason, :data]
-
-  @typedoc """
-  An exception struct with fields `reason` and `data`.
-
-  PfxError's are raised by Pfx functions when invalid Pfx structs are passed
-  in.
-
-  """
-  @type t :: %__MODULE__{reason: atom(), data: any()}
-
-  @doc """
-  Create a PfxError struct.
-
-  ## Example
-
-      iex> new(:func_x, "1.1.1.256")
-      %PfxError{reason: :func_x, data: "1.1.1.256"}
-
-  """
-  @spec new(atom(), any()) :: t()
-  def new(reason, data),
-    do: %__MODULE__{reason: reason, data: data}
-
-  @spec message(t()) :: String.t()
-  def message(%__MODULE__{reason: reason, data: data}),
-    do: format(reason, data)
-
-  defp format(reason, data), do: "#{reason}: #{inspect(data)}"
-end
-
 defmodule Pfx do
-  # TODO: still do use or do alias Bitwise and calll the func's rather than the
-  # operators like x ^^^ y ?
   alias Bitwise
-  alias PfxError
 
   @external_resource "README.md"
 
@@ -115,10 +80,6 @@ defmodule Pfx do
 
   # Helpers
 
-  @compile inline: [error: 2]
-  defp error(reason, data),
-    do: PfxError.new(reason, data)
-
   defp arg_error(reason, data) do
     msg =
       case reason do
@@ -131,7 +92,7 @@ defmodule Pfx do
         :ip6len -> "expected a valid IPv6 prefix length, got #{inspect(data)}"
         :max -> "expected a non_neg_integer for maxlen, got #{inspect(data)}"
         :nocompare -> "prefixes have different maxlen's: #{inspect(data)}"
-        :pfx -> "expected a valid Pfx, got #{inspect(data)}"
+        :pfx -> "expected a valid Pfx struct, got #{inspect(data)}"
         :pfx4 -> "expected a valid IPv4 Pfx, got #{inspect(data)}"
         :pfx6 -> "expected a valid IPv6 Pfx, got #{inspect(data)}"
         :range -> "invalid index range: #{inspect(data)}"
@@ -140,7 +101,7 @@ defmodule Pfx do
         :noints -> "expected all integers, got #{inspect(data)}"
         :noneg -> "expected a non_neg_integer, got #{inspect(data)}"
         :nopos -> "expected a pos_integer, got #{inspect(data)}"
-        :nobit -> "expected a bit value 0..1, got #{inspect(data)}"
+        :nobit -> "expected a integer (bit) value 0..1, got #{inspect(data)}"
         :nopart -> "cannot partition prefixes using #{inspect(data)}"
         :nowidth -> "expected valid width, got #{inspect(data)}"
         reason -> "error #{reason}, #{inspect(data)}"
@@ -193,7 +154,7 @@ defmodule Pfx do
     end
   end
 
-  # given a %Pfx{}=x, turn it into same format as y
+  # given a valid %Pfx{}=x, turn it into same format as y
   defp marshall(%Pfx{} = x, {_, _, _, _}),
     do: digits(x, 8) |> elem(0)
 
@@ -359,12 +320,6 @@ defmodule Pfx do
   def new(prefix),
     do: raise(arg_error(:create, prefix))
 
-  # ==========================================================================
-  # TODO:
-  # - raise argument errors when invalid input is passed in
-  # - raise PfxError only when encountering an invalid prefix struct
-  # ==========================================================================
-
   # Bit ops
 
   @doc """
@@ -497,8 +452,16 @@ defmodule Pfx do
       iex> x |> bits(0, 32)
       <<128, 0, 0, 0>>
 
+      iex> x = new(<<128>>, 32)
+      iex> x |> bits(0, 16)
+      <<128, 0>>
+
+      iex> x = new(<<128>>, 32)
+      iex> x |> bits(15, -16)
+      <<128, 0>>
+
       # the last 5 bits
-      iex> x = new(<<255>>, 8)
+      iex> x = new(<<255>>, 32)
       iex> bits(x, 7, -5)
       <<0b11111::size(5)>>
 
@@ -642,8 +605,8 @@ defmodule Pfx do
   def band(pfx1, pfx2) when is_pfx(pfx2),
     do: raise(arg_error(:pfx, pfx1))
 
-  def band(pfx1, _),
-    do: raise(arg_error(:pfx, pfx1))
+  def band(_, pfx2),
+    do: raise(arg_error(:pfx, pfx2))
 
   @doc """
   A bitwise OR of two prefixes.
@@ -1125,7 +1088,7 @@ defmodule Pfx do
 
       {digits, bit_size(pfx.bits)}
     rescue
-      _ -> error(:digits, {pfx, width})
+      _ -> raise arg_error(:digits, {pfx, width})
     end
   end
 
@@ -1218,13 +1181,22 @@ defmodule Pfx do
 
   """
   @spec sibling(t, integer) :: t
-  def sibling(pfx, offset) when is_pfx(pfx) and is_integer(offset) do
-    bsize = bit_size(pfx.bits)
-    x = castp(pfx.bits, bit_size(pfx.bits))
-    x = x + offset
+  def sibling(pfx, offset) when is_integer(offset) do
+    x = new(pfx)
+    bsize = bit_size(x.bits)
+    n = castp(x.bits, bit_size(x.bits))
+    n = n + offset
 
-    %Pfx{pfx | bits: <<x::size(bsize)>>}
+    marshall(%Pfx{x | bits: <<n::size(bsize)>>}, pfx)
   end
+
+  # def sibling(pfx, offset) when is_pfx(pfx) and is_integer(offset) do
+  #   bsize = bit_size(pfx.bits)
+  #   x = castp(pfx.bits, bit_size(pfx.bits))
+  #   x = x + offset
+
+  #   %Pfx{pfx | bits: <<x::size(bsize)>>}
+  # end
 
   def sibling(pfx, offset) when is_integer(offset),
     do: raise(arg_error(:pfx, pfx))
@@ -1376,6 +1348,10 @@ defmodule Pfx do
 
       iex> new(<<10, 11, 12>>, 32) |> format()
       "10.11.12.0/24"
+
+      # bitstring, note that mask is applied when new creates the `pfx`
+      iex> new("1.2.3.4/24") |> format(width: 1, base: 2, unit: 8, mask: false)
+      "00000001.00000010.00000011.00000000"
 
       # mask not appended as its redundant for a full-sized prefix
       iex> new(<<10, 11, 12, 128>>, 32) |> format()
@@ -1733,17 +1709,17 @@ defmodule Pfx do
 
   ## Examples
 
-    iex> inv_mask(%Pfx{bits: <<10, 10, 10, 0::1>>, maxlen: 32})
-    %Pfx{bits: <<0, 0, 0, 127>>, maxlen: 32}
+      iex> inv_mask(%Pfx{bits: <<10, 10, 10, 0::1>>, maxlen: 32})
+      %Pfx{bits: <<0, 0, 0, 127>>, maxlen: 32}
 
-    iex> inv_mask({{10, 10, 10, 0}, 25})
-    {{0, 0, 0, 127}, 32}
+      iex> inv_mask({{10, 10, 10, 0}, 25})
+      {{0, 0, 0, 127}, 32}
 
-    iex> inv_mask({10, 10, 10, 0})
-    {0, 0, 0, 0}
+      iex> inv_mask({10, 10, 10, 0})
+      {0, 0, 0, 0}
 
-    iex> inv_mask("10.10.10.0/25")
-    "0.0.0.127"
+      iex> inv_mask("10.10.10.0/25")
+      "0.0.0.127"
 
   """
   @spec inv_mask(prefix) :: prefix
@@ -1805,7 +1781,7 @@ defmodule Pfx do
 
   ## Examples
 
-      # Example from https://en.wikipedia.org/wiki/Teredo_tunneling#IPv6_addressing
+      # example from https://en.wikipedia.org/wiki/Teredo_tunneling#IPv6_addressing
       iex> teredo("2001:0000:4136:e378:8000:63bf:3fff:fdd2")
       %{
         server: "65.54.227.120",
@@ -1821,7 +1797,7 @@ defmodule Pfx do
         client: "192.0.2.45",
         port: 40000,
         flags: {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        prefix: {0x2001, 0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2}
+        prefix: {0x2001, 0x0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2}
       }
 
       iex> teredo("1.1.1.1")
@@ -2050,6 +2026,7 @@ defmodule Pfx do
     end
   end
 
+  @doc section: :ip
   @doc """
   Returns true if `pfx` is designated as "private-use".
 
@@ -2081,6 +2058,7 @@ defmodule Pfx do
       false
 
   """
+  @spec unique_local?(prefix) :: boolean
   def unique_local?(pfx) do
     # TODO: what about the well-known nat64 address(es) that are used only
     # locally?
