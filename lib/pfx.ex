@@ -1406,9 +1406,9 @@ defmodule Pfx do
     do: raise(arg_error(:noint, offset))
 
   @doc """
-  Returns the number of full addresses represented by the `Pfx`.
+  Returns the number of full addresses represented by given `pfx`.
 
-  size(prefix) == 2^(prefix.maxlen - bit_size(prefix.bits))
+  size(pfx) == 2^(pfx.maxlen - bit_size(pfx.bits))
 
   ## Examples
 
@@ -1426,10 +1426,12 @@ defmodule Pfx do
 
   """
   @spec size(prefix) :: pos_integer
-  def size(pfx) do
-    x = new(pfx)
-    :math.pow(2, x.maxlen - bit_size(x.bits)) |> trunc
+  def size(pfx) when is_pfx(pfx) do
+    :math.pow(2, pfx.maxlen - bit_size(pfx.bits)) |> trunc
   end
+
+  def size(pfx),
+    do: size(new(pfx))
 
   @doc """
   Return the `nth`-member of a given `pfx`.
