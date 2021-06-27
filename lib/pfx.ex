@@ -60,16 +60,18 @@ defmodule Pfx do
   # Guards
 
   @doc """
-  Guard that ensures a given *prefix* is actually valid.
-  - it is a `t:Pfx.t/0` struct
-  - the length of its *bits* <= *maxlen*
-
+  Guard that ensures a given `pfx` is actually valid.
+  - it is a `t:Pfx.t/0` struct,
+  - `pfx.maxlen` is a `t:non-neg-integer/0`,
+  - `pfx.maxlen` is >= 0, and
+  - `bit_size(pfx.bits) <= pfx.maxlen`
 
   """
 
-  defguard is_pfx(prefix)
-           when prefix.__struct__ == __MODULE__ and
-                  bit_size(prefix.bits) <= prefix.maxlen
+  defguard is_pfx(pfx)
+           when pfx.__struct__ == __MODULE__ and
+                  is_non_neg_integer(pfx.maxlen) and
+                  bit_size(pfx.bits) <= pfx.maxlen
 
   @doc """
   Guard that ensures both prefixes are valid and comparable (same maxlen).
@@ -91,19 +93,19 @@ defmodule Pfx do
         :ip6dig -> "expected valid IPv6 digits, got #{inspect(data)}"
         :ip6len -> "expected a valid IPv6 prefix length, got #{inspect(data)}"
         :max -> "expected a non_neg_integer for maxlen, got #{inspect(data)}"
+        :nat64 -> "expected a valid IPv6 nat64 address, got #{inspect(data)}"
+        :nobit -> "expected a integer (bit) value 0..1, got #{inspect(data)}"
         :nocompare -> "prefixes have different maxlen's: #{inspect(data)}"
+        :noint -> "expected an integer, got #{inspect(data)}"
+        :noints -> "expected all integers, got #{inspect(data)}"
+        :noneg -> "expected a non_neg_integer, got #{inspect(data)}"
+        :nopart -> "cannot partition prefixes using #{inspect(data)}"
+        :nopos -> "expected a pos_integer, got #{inspect(data)}"
+        :nowidth -> "expected valid width, got #{inspect(data)}"
         :pfx -> "expected a valid Pfx struct, got #{inspect(data)}"
         :pfx4 -> "expected a valid IPv4 Pfx, got #{inspect(data)}"
         :pfx6 -> "expected a valid IPv6 Pfx, got #{inspect(data)}"
         :range -> "invalid index range: #{inspect(data)}"
-        :nat64 -> "expected a valid IPv6 nat64 address, got #{inspect(data)}"
-        :noint -> "expected an integer, got #{inspect(data)}"
-        :noints -> "expected all integers, got #{inspect(data)}"
-        :noneg -> "expected a non_neg_integer, got #{inspect(data)}"
-        :nopos -> "expected a pos_integer, got #{inspect(data)}"
-        :nobit -> "expected a integer (bit) value 0..1, got #{inspect(data)}"
-        :nopart -> "cannot partition prefixes using #{inspect(data)}"
-        :nowidth -> "expected valid width, got #{inspect(data)}"
         reason -> "error #{reason}, #{inspect(data)}"
       end
 
@@ -177,6 +179,9 @@ defmodule Pfx do
     do: raise(arg_error(:marshall, {x, y}))
 
   # API
+  # - new/1 and new/2 *MUST* return a `Pfx` struct or raise an ArgumentError
+  #   since many functions use `new` to translate other representations into
+  #   a `Pfx` struct and call themselves again.
 
   @doc """
   Creates a new `t:Pfx.t/0`-prefix.
@@ -194,14 +199,15 @@ defmodule Pfx do
   ## Examples
 
       iex> new(<<10, 10>>, 32)
-      %Pfx{maxlen: 32, bits: <<10, 10>>}
+      %Pfx{bits: <<10, 10>>, maxlen: 32}
 
       iex> new(<<10, 10>>, 8)
-      %Pfx{maxlen: 8, bits: <<10>>}
+      %Pfx{bits: <<10>>, maxlen: 8}
 
-      # changing maxlen changes the prefix' meaning
+      # Create a new `Pfx` from an existing one, note:
+      # this changes the `Pfx`'s meaning
       iex> new(<<10, 10>>, 32) |> new(128)
-      %Pfx{maxlen: 128, bits: <<10, 10>>}
+      %Pfx{bits: <<10, 10>>, maxlen: 128}
 
   """
   @spec new(t() | bitstring, non_neg_integer) :: t()
@@ -230,9 +236,9 @@ defmodule Pfx do
   Binaries are processed by `:inet.parse_address/1`, so be aware of IPv4 shorthand
   notations that may yield surprising results, since digits are taken to be:
   - `d1.d2.d3.d4` -> `d1.d2.d3.d4` (full address)
-  - `d1.d2.d4` -> `d1.d2.0.d4`
-  - `d1.d4` -> `d1.0.0.d4`
-  - `d4` -> `0.0.0.d4`
+  - `d1.d2.d3` -> `d1.d2.0.d3`
+  - `d1.d2` -> `d1.0.0.d2`
+  - `d1` -> `0.0.0.d1`
 
   ## Examples
 
@@ -257,7 +263,7 @@ defmodule Pfx do
 
 
   """
-  @spec new(ip_address() | {ip_address(), non_neg_integer()} | String.t()) :: t()
+  @spec new(ip_address | ip_prefix | String.t()) :: t()
   def new(prefix)
 
   # identity
@@ -269,6 +275,7 @@ defmodule Pfx do
   def new({a, b, c, d}),
     do: new({{a, b, c, d}, 32})
 
+  # ipv4 default mask is 32
   def new({{a, b, c, d}, nil}),
     do: new({{a, b, c, d}, 32})
 
@@ -288,6 +295,7 @@ defmodule Pfx do
   def new({a, b, c, d, e, f, g, h}),
     do: new({{a, b, c, d, e, f, g, h}, 128})
 
+  # ipv6 default mask is 128
   def new({{a, b, c, d, e, f, g, h}, nil}),
     do: new({{a, b, c, d, e, f, g, h}, 128})
 
@@ -368,7 +376,8 @@ defmodule Pfx do
       ** (ArgumentError) invalid index range: {8, 32}
 
   """
-  @spec cut(t(), integer, integer) :: t()
+  @spec cut(prefix, integer, integer) :: prefix
+  @spec cut(prefix, integer, integer) :: t()
   def cut(pfx, start, length) when is_pfx(pfx) do
     try do
       bits = bits(pfx, start, length)
@@ -379,8 +388,10 @@ defmodule Pfx do
     end
   end
 
-  def cut(pfx, _, _),
-    do: raise(arg_error(:pfx, pfx))
+  def cut(pfx, start, length) do
+    IO.inspect(pfx, label: :notanpfx)
+    new(pfx) |> cut(start, length) |> marshall(pfx)
+  end
 
   @doc """
   Return Pfx's bit-value at given `position`.
@@ -1555,7 +1566,7 @@ defmodule Pfx do
   @doc """
   Returns the this-network prefix (full address) for given `pfx`.
 
-  The result is in the format as `pfx`.
+  The result is in the same format as `pfx`.
 
   ## Examples
 
@@ -1770,6 +1781,7 @@ defmodule Pfx do
       false
 
   """
+  @doc section: :ip
   @spec teredo?(prefix) :: boolean
   def teredo?(pfx),
     do: new(pfx) |> member?(%Pfx{bits: <<0x2001::16, 0::16>>, maxlen: 128})
@@ -1804,6 +1816,7 @@ defmodule Pfx do
       nil
 
   """
+  @doc section: :ip
   @spec teredo(prefix) :: map | nil
   def teredo(pfx) do
     # https://www.rfc-editor.org/rfc/rfc4380.html#section-4
@@ -1846,6 +1859,7 @@ defmodule Pfx do
       false
 
   """
+  @doc section: :ip
   @spec multicast?(prefix) :: boolean
   def multicast?(pfx) do
     x = new(pfx)
@@ -1892,6 +1906,7 @@ defmodule Pfx do
       }
 
   """
+  @doc section: :ip
   @spec multicast(prefix) :: map | nil
   def multicast(pfx) do
     x = new(pfx)
@@ -1939,6 +1954,13 @@ defmodule Pfx do
       iex> link_local?("169.254.255.0")
       false
 
+      # rest is considered link local
+      iex> link_local?("169.254.1.0")
+      true
+
+      iex> link_local?("169.254.254.255")
+      true
+
       iex> link_local?("0.0.0.0")
       true
 
@@ -1955,6 +1977,7 @@ defmodule Pfx do
       true
 
   """
+  @doc section: :ip
   @spec link_local?(prefix) :: boolean
   def link_local?(pfx) do
     # rfc3927 and rfc4271 & friends
@@ -2001,6 +2024,7 @@ defmodule Pfx do
       "FE80:0:0:0:0:0:ACDC:1976"
 
   """
+  @doc section: :ip
   @spec link_local(prefix) :: map | nil
   def link_local(pfx) do
     x = new(pfx)
@@ -2026,7 +2050,6 @@ defmodule Pfx do
     end
   end
 
-  @doc section: :ip
   @doc """
   Returns true if `pfx` is designated as "private-use".
 
@@ -2058,6 +2081,7 @@ defmodule Pfx do
       false
 
   """
+  @doc section: :ip
   @spec unique_local?(prefix) :: boolean
   def unique_local?(pfx) do
     # TODO: what about the well-known nat64 address(es) that are used only
@@ -2098,6 +2122,7 @@ defmodule Pfx do
       true
 
   """
+  @doc section: :ip
   @spec nat64?(prefix) :: boolean
   def nat64?(pfx) do
     x = new(pfx)
@@ -2144,6 +2169,7 @@ defmodule Pfx do
       ** (ArgumentError) error nat64_decode, "len 90 not in: 96, 64, 56, 48, 40, 32"
 
   """
+  @doc section: :ip
   @spec nat64_decode(prefix, integer) :: String.t()
   def nat64_decode(pfx, len \\ 96)
 
@@ -2193,6 +2219,7 @@ defmodule Pfx do
       "2001:DB8:122:344:0:0:C000:221"
 
   """
+  @doc section: :ip
   @spec nat64_encode(prefix(), prefix()) :: prefix
   def nat64_encode(pfx6, pfx4) do
     ip6 = new(pfx6)
@@ -2246,6 +2273,7 @@ defmodule Pfx do
       "1.2.0.2.a.b.1.b.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.5.7.9.1.c.d.c.a.ip6.arpa"
 
   """
+  @doc section: :ip
   @spec dns_ptr(prefix()) :: String.t()
   def dns_ptr(pfx) do
     x = new(pfx)

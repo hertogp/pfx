@@ -6,25 +6,102 @@
 
 <!-- @MODULEDOC -->
 
-A `Pfx` represents a sequence of one or more full length addresses.
+Functions to make working with prefixes easier.
 
-A prefix is defined by zero or more `bits` & a maximum length `maxlen` and
-can be created from:
-- a `t:bitstring/0` and a maximum `length`,
-- a `t:Pfx.ip_address/0`,
-- a {`t:Pfx.ip_address/0`, `length`}-tuple, or
-- a `t:binary/0` denoting an IP prefix in CIDR-notation.
+`Pfx` defines a prefix as a struct with a number of `bits` and a maximum
+`maxlen` length.  Hence a `Pfx` struct represents some domain-specific value,
+like an IPv4/6 address or network, a MAC address, a MAC OUI range or something
+else entirely.
+
+A `Pfx` struct can be created from:
+1. a `t:bitstring/0` and a `t:non_neg_integer/0` for the maximum length,
+2. a `t:Pfx.ip_address/0`,
+3. a `t:Pfx.ip_prefix/0`, or
+4. a `t:binary/0` denoting an IP prefix in CIDR-notation.
 
 The first option allows for the creation of any sort of prefix, the latter
-three yield either an IPv4 of IPv6 prefix.
+three yield either an IPv4 or IPv6 prefix.
+
+Several functions, like `Pfx.unique_local?/1` are more IP oriented, and are
+included along with the more generic `Pfx` functions like `Pfx.cut/3` in
+order to have "one module to rule them all".
+
+
+## Validity
+
+The `Pfx.new/2` function will silently clip the provided `bits`-string to
+`maxlen`-bits when needed, since a `Pfx` struct named `pfx` is valid, iff:
+- `bit_size(pfx.bits)` is in range `0..pfx.maxlen-1`, and where
+- `pfx.maxlen` is a `t:non_neg_integer/0`
+
+Keep that in mind when instantiating directly or updating a `Pfx`, otherwise
+functions will choke on it.
+
+Same goes for `t:Pfx.ip_address/0` representations, which must be a valid
+`:inet.ip_address()`, representing either an IPv4 or IPv6 address through a
+tuple of four `8`-bit wide numbers or eight `16`-bit wide numbers.
+
+If used as the first element in a `t:Pfx.ip_prefix/0` tuple, the second element
+is interpreted as the mask, used to clip the bitstring when creating the `Pfx`
+struct.  IPv4 masks must be in range `0..32` and IPv6 masks in range `0..128`.
+The resulting `Pfx` will have its `maxlen` set to `32` for IPv4 tuples and
+`128` for IPv6 tuples.
+
+Last but not least, a binary is interpreted as a string in CIDR-notation for
+some IPv4/IPv6 address or prefix.
+
+
+## Ancient tradition
+
+`Pfx.new/1` accepts CIDR-strings which are ultimately processed using erlang's
+`:inet.parse_address` which, at the time of writing, still honors the ancient
+linux tradition of injecting zero's when presented with less than four IPv4
+digits in a CIDR string.
+
+    # "d" -> "0.0.0.d"
+    iex> new("10") |> format()
+    "0.0.0.10"
+
+    iex> new("10/8") |> format()
+    "0.0.0.0/8"
+
+    # "d1.d2" -> "d1.0.0.d2"
+    iex> new("10.10") |> format()
+    "10.0.0.10"
+
+    iex> new("10.10/16") |> format()
+    "10.0.0.0/16"
+
+    # "d1.d2.d3" -> "d1.d2.0.d3"
+    iex> new("10.10.10") |> format()
+    "10.10.0.10"
+
+    iex> new("10.10.10/24") |> format()
+    "10.10.0.0/24"
+
+Bottom line: never go short, you may be unpleasantly surprised.
+
 
 ## Examples
 
-    # An OUI
-    iex> new(<<0x00, 0x22, 0x72>>, 48)
-    %Pfx{bits: <<0, 34, 114>>, maxlen: 48}
+    # IANA's OUI range 00-00-5e-xx-xx-xx
+    iex> new(<<0x00, 0x00, 0x5e>>, 48)
+    %Pfx{bits: <<0, 0, 94>>, maxlen: 48}
+
+    # IANA's assignment for the VRRP MAC address range 00-00-5e-00-01-{VRID}
+    iex> vrrp_mac_range = new(<<0x00, 0x00, 0x5e, 0x00, 0x01>>, 48)
+    %Pfx{bits: <<0, 0, 94, 0, 1>>, maxlen: 48}
+    iex>
+    iex> vrrp_mac = new(<<0x00, 0x00, 0x5e, 0x00, 0x01, 0x0f>>, 48)
+    %Pfx{bits: <<0, 0, 94, 0, 1, 15>>, maxlen: 48}
+    iex>
+    iex> member?(vrrp_mac, vrrp_mac_range)
+    true
+    iex> cut(vrrp_mac, 47, -8) |> cast()
+    15
 
     # IPv4
+
     iex> new(<<10, 10, 10>>, 32)
     %Pfx{bits: <<10, 10, 10>>, maxlen: 32}
 
@@ -48,7 +125,7 @@ three yield either an IPv4 of IPv6 prefix.
     %Pfx{bits: <<0xACDC::16, 0x1976::16>>, maxlen: 128}
 
 `t:Pfx.t/0` implements the `String.Chars` protocol with some defaults for
-prefixes that formats:
+prefixes that formats prefixes with:
 - `maxlen: 32` as an IPv4 CIDR string,
 - `maxlen: 48` as a MAC address string and
 - `maxlen: 128` as an IPv6 CIDR string
@@ -57,20 +134,32 @@ Other `maxlen`'s will simply come out as a series of 8-bit numbers joined by "."
 followed by `/num_of_bits`. The latter is omitted if equal to `pfx.bits`
 length.
 
+If other formatting is required, use the `Pfx.format/2` function, which takes
+some options and creates a string representation out of a `Pfx` struct.
+
+    # a subnet
     iex> "#{new(<<10, 11, 12>>, 32)}"
     "10.11.12.0/24"
 
+    # an address
     iex> "#{new(<<10, 11, 12, 13>>, 32)}"
     "10.11.12.13"
 
+    # an ipv6 prefix
     iex> "#{new(<<0xACDC::16, 0x1976::16>>, 128)}"
     "ACDC:1976:0:0:0:0:0:0/32"
 
+    # a MAC address
     iex> "#{new(<<0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6>>, 48)}"
     "A1:B2:C3:D4:E5:F6"
 
+    # just 8-bit numbers and mask length
     iex> "#{new(<<1, 2, 3, 4, 5>>, 64)}"
     "1.2.3.4.5.0.0.0/40"
+
+    # an ip4 address formatted as a string of bits
+    iex> new(<<1, 2, 3, 4>>, 32) |> format(width: 1, unit: 8)
+    "00000001.00000010.00000011.00000100"
 
 
 A `t:Pfx.t/0` is also enumerable:
@@ -84,9 +173,8 @@ A `t:Pfx.t/0` is also enumerable:
       "10.10.10.3"
     ]
 
-The library contains a number of functions to make working with prefixes
-easier.  Note that some functions are geared toward IPv4/IPv6 prefixes while
-others are more generic.
+Functions sometimes have generic names, since they apply to all sorts of
+prefixes, e.g.
 
     iex> pfx = new("10.10.10.0/24")
     iex> partition(pfx, 26) |> Enum.map(fn x -> "#{x}" end)
