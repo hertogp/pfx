@@ -1191,40 +1191,43 @@ defmodule Pfx do
     do: partition(new(pfx), bitlen) |> Enum.map(fn x -> marshall(x, pfx) end)
 
   @doc """
-  Turn a `Pfx` into a list of `{number, width}`-fields.
+  Turn a `pfx.bits` string into a list of `{number, width}`-fields.
 
-  If the actual number of prefix bits are not a multiple of `width`, the last
+  If `bit_size(pfx.bits)` is not a multiple of `width`, the last
   `{number, width}`-tuple, will have a smaller width.
 
   ## Examples
 
-      iex> new(<<10, 11, 12, 13>>, 32) |> fields(8)
+      iex> fields(%Pfx{bits: <<10, 11, 12, 13>>, maxlen: 32}, 8)
       [{10, 8}, {11, 8}, {12, 8}, {13, 8}]
 
       # not a multiple of 8
-      iex> new(<<10, 11, 12, 0::1>>, 32) |> fields(8)
+      iex> fields(%Pfx{bits: <<10, 11, 12, 0::1>>, maxlen: 32}, 8)
       [{10, 8}, {11, 8}, {12, 8}, {0, 1}]
 
       iex> new(<<0xacdc::16>>, 128) |> fields(4)
       [{10, 4}, {12, 4}, {13, 4}, {12, 4}]
 
-      iex> new(<<10, 11, 12>>, 32)
-      ...> |> fields(1)
-      ...> |> Enum.map(fn {x, _} -> x end)
-      ...> |> Enum.join("")
-      "000010100000101100001100"
+      iex> fields("10.11.12.13", 8)
+      [{10, 8}, {11, 8}, {12, 8}, {13, 8}]
+
+      iex> fields({10, 11, 12, 13}, 8)
+      [{10, 8}, {11, 8}, {12, 8}, {13, 8}]
+
+      iex> fields({{10, 11, 12, 0}, 24}, 8)
+      [{10, 8}, {11, 8}, {12, 8}]
 
       # only 1 field with less bits than given width of 64
       iex> new(<<255, 255>>, 32) |> fields(64)
       [{65535, 16}]
 
   """
-  @spec fields(t, non_neg_integer) :: list({non_neg_integer, non_neg_integer})
+  @spec fields(prefix, non_neg_integer) :: list({non_neg_integer, non_neg_integer})
   def fields(pfx, width) when is_pfx(pfx) and is_integer(width) and width > 0,
     do: fields([], pfx.bits, width)
 
   def fields(pfx, width) when is_integer(width) and width > 0,
-    do: raise(arg_error(:pfx, pfx))
+    do: fields(new(pfx), width)
 
   def fields(_, width),
     do: raise(arg_error(:nowidth, width))
