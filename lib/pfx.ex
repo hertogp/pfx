@@ -1788,8 +1788,17 @@ defmodule Pfx do
       iex> contrast(new(<<10, 10>>, 32), new(<<10, 12>>, 32))
       :disjoint
 
+      iex> contrast("10.10.0.0/16", %Pfx{bits: <<10,12>>, maxlen: 32})
+      :disjoint
+
+      iex> contrast(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, {{10, 10, 0, 0}, 16})
+      :more
+
+      iex> contrast("10.10.10.0/24", "10.10.0.0/16")
+      :more
+
   """
-  @spec contrast(t, t) :: :equal | :more | :less | :left | :right | :disjoint
+  @spec contrast(prefix, prefix) :: :equal | :more | :less | :left | :right | :disjoint
   def contrast(pfx1, pfx2)
 
   def contrast(x, y) when is_comparable(x, y),
@@ -1798,11 +1807,8 @@ defmodule Pfx do
   def contrast(x, y) when is_pfx(x) and is_pfx(y),
     do: raise(arg_error(:nocompare, {x, y}))
 
-  def contrast(x, y) when is_pfx(y),
-    do: raise(arg_error(:pfx, x))
-
-  def contrast(_, y),
-    do: raise(arg_error(:pfx, y))
+  def contrast(x, y),
+    do: contrast(new(x), new(y))
 
   defp contrastp(x, y) when x == y,
     do: :equal
