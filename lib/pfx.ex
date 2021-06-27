@@ -1305,7 +1305,7 @@ defmodule Pfx do
   field `width`.
 
   The `pfx.bits` are formed by first concatenating the `digits` expressed as
-  bitstrings of `widht`-bits wide and then truncating to the `length`-msb bits.
+  bitstrings of `width`-bits wide and then truncating to the `length`-msb bits.
 
   The `pfx.maxlen` is inferred as `tuple_size(digits) * width`.
 
@@ -1362,15 +1362,14 @@ defmodule Pfx do
   ## Examples
 
       # next in line
-      iex> new(<<10, 11>>, 32) |> sibling(1)
+      iex> sibling(%Pfx{bits: <<10, 11>>, maxlen: 32}, 1)
       %Pfx{bits: <<10, 12>>, maxlen: 32}
 
       # the last shall be the first
-      iex> new(<<10, 11, 0>>, 32) |> sibling(255)
+      iex> sibling(%Pfx{bits: <<10, 11, 0>>, maxlen: 32}, 255)
       %Pfx{bits: <<10, 11, 255>>, maxlen: 32}
 
-      # still all in the family
-      iex> new(<<10, 11, 0>>, 32) |> sibling(256)
+      iex> sibling(%Pfx{bits: <<10, 11, 0>>, maxlen: 32}, 256)
       %Pfx{bits: <<10, 12, 0>>, maxlen: 32}
 
       # from one end to another
@@ -1378,30 +1377,30 @@ defmodule Pfx do
       %Pfx{bits: <<255, 255, 255, 255>>, maxlen: 32}
 
       # zero bit-length stays zero bit-length
-      iex> new(<<>>, 32) |> sibling(1)
-      %Pfx{bits: <<>>, maxlen: 32}
+      iex> sibling(%Pfx{bits: <<>>, maxlen: 0}, 1)
+      %Pfx{bits: <<>>, maxlen: 0}
+
+      iex> sibling("0.0.0.0", -1)
+      "255.255.255.255"
+
+      iex> sibling("1.2.3.0/24", -1)
+      "1.2.2.0/24"
+
+      iex> sibling({{1, 2, 3, 0}, 24}, 256)
+      {{1, 3, 3, 0}, 24}
 
   """
-  @spec sibling(t, integer) :: t
-  def sibling(pfx, offset) when is_integer(offset) do
-    x = new(pfx)
-    bsize = bit_size(x.bits)
-    n = castp(x.bits, bit_size(x.bits))
+  @spec sibling(prefix, integer) :: prefix
+  def sibling(pfx, offset) when is_pfx(pfx) and is_integer(offset) do
+    bsize = bit_size(pfx.bits)
+    n = castp(pfx.bits, bit_size(pfx.bits))
     n = n + offset
 
-    marshall(%Pfx{x | bits: <<n::size(bsize)>>}, pfx)
+    %Pfx{pfx | bits: <<n::size(bsize)>>}
   end
 
-  # def sibling(pfx, offset) when is_pfx(pfx) and is_integer(offset) do
-  #   bsize = bit_size(pfx.bits)
-  #   x = castp(pfx.bits, bit_size(pfx.bits))
-  #   x = x + offset
-
-  #   %Pfx{pfx | bits: <<x::size(bsize)>>}
-  # end
-
   def sibling(pfx, offset) when is_integer(offset),
-    do: raise(arg_error(:pfx, pfx))
+    do: sibling(new(pfx), offset) |> marshall(pfx)
 
   def sibling(_, offset),
     do: raise(arg_error(:noint, offset))
