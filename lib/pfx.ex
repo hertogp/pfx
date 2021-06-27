@@ -776,19 +776,32 @@ defmodule Pfx do
 
   Positive `n` rotates right, negative rotates left.
 
+  Note that the length of the resulting `pfx.bits` stays the same.
+
   ## Examples
 
-      iex> new(<<1, 2, 3, 4>>, 32) |> brot(8)
+      iex> brot(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}, 8)
       %Pfx{bits: <<4, 1, 2, 3>>, maxlen: 32}
 
       iex> new(<<1, 2, 3, 4>>, 32) |> brot(-8)
       %Pfx{bits: <<2, 3, 4, 1>>, maxlen: 32}
 
-      iex> new(<<1, 2, 3, 4>>, 32) |> brot(-1)
-      %Pfx{bits: <<2, 4, 6, 8>>, maxlen: 32}
+      iex> brot("1.2.3.4", 8)
+      "4.1.2.3"
+
+      iex> brot({1, 2, 3, 4}, 8)
+      {4, 1, 2, 3}
+
+      iex> brot({{1, 2, 3, 4}, 32}, -8)
+      {{2, 3, 4, 1}, 32}
+
+      # remember, its <<1, 2>> that gets rotated (!)
+      iex> brot({{1, 2, 3, 4}, 16}, 8)
+      {{2, 1, 0, 0}, 16}
+
 
   """
-  @spec brot(t, integer) :: t
+  @spec brot(prefix, integer) :: prefix
   def brot(pfx, n) when is_pfx(pfx) and is_integer(n) and n < 0 do
     plen = bit_size(pfx.bits)
     brot(pfx, plen + rem(n, plen))
@@ -806,7 +819,7 @@ defmodule Pfx do
   end
 
   def brot(pfx, n) when is_integer(n),
-    do: raise(arg_error(:pfx, pfx))
+    do: brot(new(pfx), n) |> marshall(pfx)
 
   def brot(_, n),
     do: raise(arg_error(:noint, n))
@@ -814,18 +827,27 @@ defmodule Pfx do
   @doc """
   Arithmetic shift left the `pfx.bits` by `n` positions.
 
-  A negative `n` actually shifts to the right.
+  A positive `n` shifts to the left, negative `n` shifts to the right.
+  Note that the length of `pfx.bits` stays the same.
 
   ## Examples
 
-      iex> new(<<1, 2>>, 32) |> bsl(2)
+      iex> bsl(%Pfx{bits: <<1, 2>>, maxlen: 32}, 2)
       %Pfx{bits: <<4, 8>>, maxlen: 32}
 
-      # negative `n` shifts to the right, so:
-      # 0000.0001.0000.0010 becomes
-      # 0000.0000.0100.0000 which is <<0, 64>>
-      iex> new(<<1, 2>>, 32) |> bsl(-2)
+      iex> bsl(%Pfx{bits: <<1, 2>>, maxlen: 32}, -2)
       %Pfx{bits: <<0, 64>>, maxlen: 32}
+
+      # mask is applied when creating a `Pfx` out of "1.2.3.4/16"
+      iex> bsl("1.2.3.4/16", 2)
+      "4.8.0.0/16"
+
+      iex> bsl({1, 2, 3, 4}, 2)
+      {4, 8, 12, 16}
+
+      # remember, its <<1, 2>> that gets shifted left 2 bits
+      iex> bsl({{1, 2, 3, 4}, 16}, 2)
+      {{4, 8, 0, 0}, 16}
 
   """
   @spec bsl(t, integer) :: t
@@ -840,7 +862,7 @@ defmodule Pfx do
   end
 
   def bsl(pfx, n) when is_integer(n),
-    do: raise(arg_error(:pfx, pfx))
+    do: bsl(new(pfx), n) |> marshall(pfx)
 
   def bsl(_, n),
     do: raise(arg_error(:noint, n))
@@ -849,15 +871,27 @@ defmodule Pfx do
   Arithmetic shift right the `pfx.bits` by `n` positions.
 
   A negative `n` actually shifts to the left.
+  Note that the `pfx.bits` stays stays the same.
 
   ## Examples
 
-      iex> new(<<1, 2>>, 32) |> bsr(2)
+      iex> bsr(%Pfx{bits: <<1, 2>>, maxlen: 32}, 2)
       %Pfx{bits: <<0, 64>>, maxlen: 32}
 
-      # acutally shifts left
-      iex> new(<<1, 2>>, 32) |> bsr(-2)
+      # now shift to the left
+      iex> bsr(%Pfx{bits: <<1, 2>>, maxlen: 32}, -2)
       %Pfx{bits: <<4, 8>>, maxlen: 32}
+
+      # mask get applied when creating a `Pfx`
+      iex> bsr("1.2.3.4/16", 2)
+      "0.64.0.0/16"
+
+      # no mask, so all 32 bits get shifted
+      iex> bsr({1, 2, 0, 0}, 2)
+      {0, 64, 128, 0}
+
+      iex> bsr({{1, 2, 3, 4}, 16}, 2)
+      {{0, 64, 0, 0}, 16}
 
   """
   @spec bsr(t, integer) :: t
@@ -872,7 +906,7 @@ defmodule Pfx do
   end
 
   def bsr(pfx, n) when is_integer(n),
-    do: raise(arg_error(:pfx, pfx))
+    do: bsr(new(pfx), n) |> marshall(pfx)
 
   def bsr(_, n),
     do: raise(arg_error(:noint, n))
