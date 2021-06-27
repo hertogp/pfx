@@ -1889,7 +1889,7 @@ defmodule Pfx do
       %Pfx{bits: <<0xACDC::16, 0x1976::16, -1::96>>, maxlen: 128}
 
   """
-  @spec broadcast(t | String.t()) :: t | String.t()
+  @spec broadcast(prefix) :: prefix
   def broadcast(pfx),
     do: new(pfx) |> padr(1) |> marshall(pfx)
 
@@ -1925,7 +1925,7 @@ defmodule Pfx do
       ]
 
   """
-  @spec hosts(t | String.t()) :: list(t) | list(String.t())
+  @spec hosts(prefix) :: list(prefix)
   def hosts(pfx),
     do: for(ip <- new(pfx), do: marshall(ip, pfx))
 
@@ -1951,7 +1951,7 @@ defmodule Pfx do
       "10.10.10.128"
 
   """
-  @spec host(t | String.t(), integer) :: t | String.t()
+  @spec host(prefix, integer) :: prefix
   def host(pfx, nth) when is_integer(nth),
     do: new(pfx) |> member(nth) |> marshall(pfx)
 
@@ -2544,7 +2544,7 @@ defmodule Pfx do
 
   """
   @doc section: :ip
-  @spec dns_ptr(prefix()) :: String.t()
+  @spec dns_ptr(prefix) :: String.t()
   def dns_ptr(pfx) do
     x = new(pfx)
 
