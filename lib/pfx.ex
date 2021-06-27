@@ -1105,14 +1105,25 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> new(<<1, 1, 1>>, 32) |> bset()
+      iex> bset(%Pfx{bits: <<1, 1, 1>>, maxlen: 32})
       %Pfx{bits: <<0, 0, 0>>, maxlen: 32}
 
-      iex> new(<<1, 1, 1>>, 32) |> bset(1)
+      iex> bset(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, 1)
       %Pfx{bits: <<255, 255, 255>>, maxlen: 32}
 
+      # defaults to `0`-bit
+      iex> bset("1.1.1.0/24")
+      "0.0.0.0/24"
+
+      iex> bset("1.1.1.0/24", 1)
+      "255.255.255.0/24"
+
+      iex> bset({{1, 1, 1, 0}, 24}, 1)
+      {{255, 255, 255, 0}, 24}
+
+
   """
-  @spec bset(t, 0 | 1) :: t
+  @spec bset(prefix, 0 | 1) :: prefix
   def bset(pfx, bit \\ 0)
 
   def bset(pfx, bit) when is_pfx(pfx) and (bit === 0 or bit === 1) do
@@ -1122,7 +1133,7 @@ defmodule Pfx do
   end
 
   def bset(pfx, bit) when bit === 0 or bit === 1,
-    do: raise(arg_error(:pfx, pfx))
+    do: bset(new(pfx), bit) |> marshall(pfx)
 
   def bset(_, bit),
     do: raise(arg_error(:nobit, bit))
