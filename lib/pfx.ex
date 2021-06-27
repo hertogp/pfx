@@ -1148,7 +1148,7 @@ defmodule Pfx do
   ## Examples
 
       # break out the /26's in a /24
-      iex> new(<<10, 11, 12>>, 32)|> partition(26)
+      iex> partition(%Pfx{bits: <<10, 11, 12>>, maxlen: 32}, 26)
       [
         %Pfx{bits: <<10, 11, 12, 0::size(2)>>, maxlen: 32},
         %Pfx{bits: <<10, 11, 12, 1::size(2)>>, maxlen: 32},
@@ -1156,8 +1156,24 @@ defmodule Pfx do
         %Pfx{bits: <<10, 11, 12, 3::size(2)>>, maxlen: 32}
       ]
 
+      iex> partition("10.11.12.0/24", 26)
+      [
+        "10.11.12.0/26",
+        "10.11.12.64/26",
+        "10.11.12.128/26",
+        "10.11.12.192/26"
+      ]
+
+      iex> partition({{10, 11, 12, 0}, 24}, 26)
+      [
+        {{10, 11, 12, 0}, 26},
+        {{10, 11, 12, 64}, 26},
+        {{10, 11, 12, 128}, 26},
+        {{10, 11, 12, 192}, 26},
+      ]
+
   """
-  @spec partition(t, non_neg_integer) :: list(t)
+  @spec partition(prefix, non_neg_integer) :: list(prefix)
   def partition(pfx, bitlen)
       when is_pfx(pfx) and is_inrange(bitlen, bit_size(pfx.bits), pfx.maxlen) do
     width = bitlen - bit_size(pfx.bits)
@@ -1171,8 +1187,8 @@ defmodule Pfx do
   def partition(pfx, bitlen) when is_pfx(pfx),
     do: arg_error(:nopart, bitlen)
 
-  def partition(pfx, _),
-    do: raise(arg_error(:pfx, pfx))
+  def partition(pfx, bitlen),
+    do: partition(new(pfx), bitlen) |> Enum.map(fn x -> marshall(x, pfx) end)
 
   @doc """
   Turn a `Pfx` into a list of `{number, width}`-fields.
