@@ -1603,12 +1603,12 @@ defmodule Pfx do
       "10.11.12.0/24"
 
       # bitstring, note that mask is applied when new creates the `pfx`
-      iex> new("1.2.3.4/24") |> format(width: 1, base: 2, unit: 8, mask: false)
+      iex> format("1.2.3.4/24", width: 1, base: 2, unit: 8, mask: false)
       "00000001.00000010.00000011.00000000"
 
       # mask not appended as its redundant for a full-sized prefix
-      iex> new(<<10, 11, 12, 128>>, 32) |> format()
-      "10.11.12.128"
+      iex> format(%Pfx{bits: <<10, 11, 12, 13>>, maxlen: 32})
+      "10.11.12.13"
 
       iex> pfx = new(<<0xacdc::16, 0x1976::16>>, 128)
       iex> format(pfx, width: 16, base: 16, ssep: ":")
@@ -1639,9 +1639,8 @@ defmodule Pfx do
       ...> |> (&"#{&1}.in-addr.arpa.").()
       "12.11.10.in-addr.arpa."
 
-
   """
-  @spec format(t, Keyword.t()) :: String.t()
+  @spec format(prefix, Keyword.t()) :: String.t()
   def format(pfx, opts \\ [])
 
   def format(pfx, opts) when is_pfx(pfx) do
