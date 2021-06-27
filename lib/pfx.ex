@@ -1453,30 +1453,43 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> new(<<10, 10, 10>>, 32) |> member(0)
+      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 0)
       %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
 
-      iex> new(<<10, 10, 10>>, 32) |> member(255)
+      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 255)
       %Pfx{bits: <<10, 10, 10, 255>>, maxlen: 32}
 
       # wraps around
-      iex> new(<<10, 10, 10>>, 32) |> member(256)
+      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 256)
       %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
 
-      iex> new(<<10, 10, 10>>, 32) |> member(-1)
+      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, -1)
       %Pfx{bits: <<10, 10, 10, 255>>, maxlen: 32}
 
       # a full prefix always returns itself
-      iex> new(<<10, 10, 10, 10>>, 32) |> member(0)
+      iex> member(%Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}, 0)
       %Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}
 
+      iex> member(%Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}, 3)
+      %Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}
+
+      # other representations work too
+      iex> member("10.10.10.0/24", 255)
+      "10.10.10.255"
+
+      iex> member("10.10.10.0/24", 256)
+      "10.10.10.0"
+
+      iex> member({{10, 10, 10, 0}, 24}, 255)
+      {{10, 10, 10, 255}, 32}
+
   """
-  @spec member(t, integer) :: t
+  @spec member(prefix, integer) :: prefix
   def member(pfx, nth) when is_pfx(pfx) and is_integer(nth),
     do: member(pfx, nth, pfx.maxlen - bit_size(pfx.bits))
 
   def member(pfx, nth) when is_integer(nth),
-    do: raise(arg_error(:pfx, pfx))
+    do: member(new(pfx), nth) |> marshall(pfx)
 
   def member(_, nth),
     do: raise(arg_error(:noint, nth))
