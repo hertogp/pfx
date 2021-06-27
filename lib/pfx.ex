@@ -756,7 +756,7 @@ defmodule Pfx do
       {{245, 244, 12, 13}, 32}
 
   """
-  @spec bxor(t, t) :: t
+  @spec bxor(prefix, prefix) :: prefix
   def bxor(pfx1, pfx2) when is_comparable(pfx1, pfx2) do
     width = max(bit_size(pfx1.bits), bit_size(pfx2.bits))
     x = castp(pfx1.bits, width)
@@ -850,7 +850,7 @@ defmodule Pfx do
       {{4, 8, 0, 0}, 16}
 
   """
-  @spec bsl(t, integer) :: t
+  @spec bsl(prefix, integer) :: prefix
   def bsl(pfx, n) when is_pfx(pfx) and is_integer(n) do
     width = bit_size(pfx.bits)
 
@@ -894,7 +894,7 @@ defmodule Pfx do
       {{0, 64, 0, 0}, 16}
 
   """
-  @spec bsr(t, integer) :: t
+  @spec bsr(prefix, integer) :: prefix
   def bsr(pfx, n) when is_pfx(pfx) and is_integer(n) do
     width = bit_size(pfx.bits)
 
@@ -914,18 +914,32 @@ defmodule Pfx do
   @doc """
   Right pad the `pfx.bits` to its full length using `0`-bits.
 
+  The result is always a full prefix with `maxlen` bits.
+
   ## Example
 
-      iex> new(<<1, 2>>, 32) |> padr()
+      iex> padr(%Pfx{bits: <<1, 2>>, maxlen: 32})
       %Pfx{bits: <<1, 2, 0, 0>>, maxlen: 32}
 
+      # already a full address
+      iex> padr("1.2.0.0")
+      "1.2.0.0"
+
+      # mask applied first, then padded with zero's
+      iex> padr("1.2.3.4/16")
+      "1.2.0.0"
+
+      # mask applied first, than padded with zero's
+      iex> padr({{1,2,3,4}, 16})
+      {{1, 2, 0, 0}, 32}
+
   """
-  @spec padr(t) :: t
+  @spec padr(prefix) :: prefix
   def padr(pfx) when is_pfx(pfx),
     do: padr(pfx, 0, pfx.maxlen)
 
   def padr(pfx),
-    do: raise(arg_error(:pfx, pfx))
+    do: padr(new(pfx)) |> marshall(pfx)
 
   @doc """
   Right pad the `pfx.bits` to its full length using either `0` or `1`-bits.
