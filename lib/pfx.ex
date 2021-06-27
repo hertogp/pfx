@@ -383,7 +383,6 @@ defmodule Pfx do
       bits = bits(pfx, start, length)
       new(bits, bit_size(bits))
     rescue
-      # `cut` raises its own
       ArgumentError -> raise arg_error(:range, {start, length})
     end
   end
@@ -394,27 +393,43 @@ defmodule Pfx do
   end
 
   @doc """
-  Return Pfx's bit-value at given `position`.
+  Return `pfx` prefix's bit-value at given `position`.
 
-  A bit position is a `0`-based index from the left.  A negative bit position
-  is taken relative to `Pfx.maxlen`. A bit position in the range of
-  `bit_size(pfx.bits)`..`pfx.maxlen - 1` always yields `0`.
+  A bit position is a `0`-based index from the left with range `0..maxlen-1`.
+  A negative bit position is taken relative to `Pfx.maxlen`. A actual bit
+  position in the range of `bit_size(pfx.bits)`..`pfx.maxlen - 1` always yields
+  `0`.
 
   ## Examples
 
-      iex> x = new(<<0, 1>>, 32)
-      iex> bit(x, 15)
+      iex> bit(%Pfx{bits: <<1, 2>>, maxlen: 32}, 14)
       1
-      iex> bit(x, -17)  # same bit
+
+      iex> bit("1.2.0.0/16", 14)
       1
-      iex> bit(x, 24)
+
+      iex> bit({1, 2, 0, 0}, 14)
+      1
+
+      iex> bit({{1, 2, 0, 0}, 16}, 14)
+      1
+
+      # 'missing' bits inside the prefix are deemed to be `0`
+      iex> bit("1.2.0.0/16", 24)
       0
+
+      iex> bit("1.2.0.0/16", -8) # same bit, 32 - 8 = 24
+      0
+
       # errors out on invalid positions
-      iex> bit(x, 33)
+      iex> bit("255.255.255.255", 33)
       ** (ArgumentError) invalid bit position: 33
 
+      iex> bit("10.10.0.0/16", -33)
+      ** (ArgumentError) invalid bit position: -33
+
   """
-  @spec bit(t, integer) :: 0 | 1
+  @spec bit(prefix, integer) :: 0 | 1
   def bit(pfx, position) when position + pfx.maxlen < 0 or position >= pfx.maxlen,
     do: raise(arg_error(:bitpos, position))
 
@@ -429,7 +444,8 @@ defmodule Pfx do
   def bit(pfx, pos) when pos < pfx.maxlen,
     do: 0
 
-  def bit(x, _), do: raise(arg_error(:pfx, x))
+  def bit(pfx, pos),
+    do: new(pfx) |> bit(pos)
 
   @doc """
   Return a series of bits for given `pfx`, starting bit `position` & `length`.
@@ -444,31 +460,36 @@ defmodule Pfx do
 
       # first byte
       iex> x = new(<<128, 0, 0, 1>>, 32)
-      iex> x |> bits(0, 8)
+      iex> bits(x, 0, 8)
       <<128>>
       # same as
-      iex> x |> bits(7, -8)
+      iex> bits(x, 7, -8)
       <<128>>
 
       # last two bytes
-      iex> x = new(<<128, 0, 128, 1>>, 32)
-      iex> x |> bits(16, 16)
+      iex> bits("128.0.128.1", 16, 16)
       <<128, 1>>
-      # same as
-      iex> x |> bits(-1, -16)
+
+      iex> bits({128, 0, 128, 1}, 16, 16) # same
+      <<128, 1>>
+
+      iex> bits({128, 0, 128, 1}, 31, -16) # same
+      <<128, 1>>
+
+      iex> bits({{128, 0, 128, 1}, 32}, 31, -16) # same
       <<128, 1>>
 
       # missing bits are filled in as `0`
       iex> x = new(<<128>>, 32)
-      iex> x |> bits(0, 32)
+      iex> bits(x, 0, 32)
       <<128, 0, 0, 0>>
 
       iex> x = new(<<128>>, 32)
-      iex> x |> bits(0, 16)
+      iex> bits(x, 0, 16)
       <<128, 0>>
 
       iex> x = new(<<128>>, 32)
-      iex> x |> bits(15, -16)
+      iex> bits(x, 15, -16)
       <<128, 0>>
 
       # the last 5 bits
@@ -477,7 +498,7 @@ defmodule Pfx do
       <<0b11111::size(5)>>
 
   """
-  @spec bits(t, integer, integer) :: bitstring()
+  @spec bits(prefix, integer, integer) :: bitstring()
   def bits(pfx, position, length) when is_pfx(pfx) and is_integer(position * length) do
     pos = if position < 0, do: pfx.maxlen + position, else: position
     {pos, len} = if length < 0, do: {pos + 1 + length, -length}, else: {pos, length}
@@ -492,8 +513,8 @@ defmodule Pfx do
   def bits(pfx, position, length) when is_pfx(pfx),
     do: raise(arg_error(:range, {position, length}))
 
-  def bits(pfx, _, _),
-    do: raise(arg_error(:pfx, pfx))
+  def bits(pfx, position, length),
+    do: new(pfx) |> bits(position, length)
 
   defp bitsp(pfx, pos, len) do
     pfx = padr(pfx)

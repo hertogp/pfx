@@ -23,8 +23,8 @@ The first option allows for the creation of any sort of prefix, the latter
 three yield either an IPv4 or IPv6 prefix.
 
 Several functions, like `Pfx.unique_local?/1` are more IP oriented, and are
-included along with the more generic `Pfx` functions like `Pfx.cut/3` in
-order to have "one module to rule them all".
+included along with the more generic `Pfx` functions (like `Pfx.cut/3`) in
+order to have one module to rule them all.
 
 
 ## Validity
@@ -81,6 +81,25 @@ digits in a CIDR string.
 
 Bottom line: never go short, you may be unpleasantly surprised.
 
+
+## Limitations
+
+A lot of `Pfx`-functions convert the `Pfx.bits` bitstring to an integer using
+`Pfx.cast/1`, before performing some, often `Bitwise`-related, calculation on
+them.  Luckily [Elixir](https://elixir-lang.org/docs.html) can handle pretty
+large numbers which seem mostly limited by the available system memory.
+
+Other functions, like `Pfx.digits/2` return a tuple with numbers and are so
+limited by the maximum number of elements in a tuple (~16M+).
+
+So if you're taking this somewhere far, far away, heed these limitations before
+leaving.
+
+Also, everything is done in Elixir with no extra, external dependencies.
+Usually fast enough, but if you really feel the need for speed, you might want
+to look elsewhere.
+
+Ayway, enough downplay, here are some examples.
 
 ## Examples
 
