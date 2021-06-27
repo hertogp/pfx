@@ -1045,8 +1045,14 @@ defmodule Pfx do
 
   ## Example
 
-      iex> new(<<1, 2>>, 32) |> padl(1)
+      iex> padl(%Pfx{bits: <<1, 2>>, maxlen: 32}, 1)
       %Pfx{bits: <<255, 255, 1, 2>>, maxlen: 32}
+
+      iex> padl("1.2.0.0/16", 1)
+      "255.255.1.2"
+
+      iex> padl({{1, 2, 0, 0}, 16}, 1)
+      {{255, 255, 1, 2}, 32}
 
   """
   @spec padl(t, 0 | 1) :: t
@@ -1054,7 +1060,7 @@ defmodule Pfx do
     do: padl(pfx, bit, pfx.maxlen)
 
   def padl(pfx, bit) when bit === 0 or bit === 1,
-    do: raise(arg_error(:pfx, pfx))
+    do: padl(new(pfx), bit) |> marshall(pfx)
 
   def padl(_, bit),
     do: raise(arg_error(:nobit, bit))
