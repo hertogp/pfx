@@ -1589,7 +1589,17 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> new(<<10, 11, 12>>, 32) |> format()
+      iex> format(%Pfx{bits: <<10, 11, 12>>, maxlen: 32})
+      "10.11.12.0/24"
+
+      iex> format({{10, 11, 12, 0}, 24})
+      "10.11.12.0/24"
+
+      iex> format({10, 11, 12, 0})
+      "10.11.12.0"
+
+      # non-sensical, but there you go
+      iex> format("10.11.12.0/24")
       "10.11.12.0/24"
 
       # bitstring, note that mask is applied when new creates the `pfx`
@@ -1660,8 +1670,8 @@ defmodule Pfx do
     end
   end
 
-  def format(pfx, _opts),
-    do: raise(arg_error(:pfx, pfx))
+  def format(pfx, opts),
+    do: new(pfx) |> format(opts)
 
   # Sorting
 
