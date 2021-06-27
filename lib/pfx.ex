@@ -1500,15 +1500,24 @@ defmodule Pfx do
   ## Examples
 
       # the first sub-prefix that is 2 bits longer
-      iex> new(<<10, 10, 10>>, 32) |> member(0, 2)
+      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 0, 2)
       %Pfx{bits: <<10, 10, 10, 0::2>>, maxlen: 32}
 
       # the second sub-prefix that is 2 bits longer
-      iex> new(<<10, 10, 10>>, 32) |> member(1, 2)
+      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 1, 2)
       %Pfx{bits: <<10, 10, 10, 1::2>>, maxlen: 32}
 
+      iex> member("10.10.10.0/24", 1, 2)
+      "10.10.10.64/26"
+
+      iex> member("10.10.10.0/24", 2, 2)
+      "10.10.10.128/26"
+
+      iex> member({{10, 10, 10, 0}, 24}, 2, 2)
+      {{10, 10, 10, 128}, 26}
+
   """
-  @spec member(t, integer, pos_integer) :: t
+  @spec member(prefix, integer, pos_integer) :: t
   def member(pfx, nth, width)
       when is_pfx(pfx) and is_integer(nth) and
              is_inrange(width, 0, pfx.maxlen - bit_size(pfx.bits)),
@@ -1521,11 +1530,8 @@ defmodule Pfx do
       when is_pfx(pfx) and is_inrange(width, 0, pfx.maxlen - bit_size(pfx.bits)),
       do: raise(arg_error(:noint, nth))
 
-  def member(pfx, _nth, width) when is_pfx(pfx),
-    do: raise(arg_error(:nowidth, width))
-
-  def member(pfx, _, _),
-    do: raise(arg_error(:pfx, pfx))
+  def member(pfx, nth, width),
+    do: member(new(pfx), nth, width) |> marshall(pfx)
 
   @doc """
   Returns true is prefix `pfx1` is a member of prefix `pfx2`
