@@ -594,6 +594,8 @@ defmodule Pfx do
   @doc """
   A bitwise NOT of the `pfx.bits`.
 
+  Results are returned in the same representation as given `pfx`.
+
   ## Examples
 
       iex> new(<<255, 255, 0, 0>>, 32) |> bnot()
@@ -601,6 +603,16 @@ defmodule Pfx do
 
       iex> new(<<255, 0>>, 32) |> bnot()
       %Pfx{bits: <<0, 255>>, maxlen: 32}
+
+      iex> bnot("255.255.0.0")
+      "0.0.255.255"
+
+      iex> bnot({255, 255, 0, 0})
+      {0, 0, 255, 255}
+
+      iex> bnot({{255, 255, 0, 0}, 32})
+      {{0, 0, 255, 255}, 32}
+
 
   """
   @spec bnot(t) :: t
@@ -615,7 +627,7 @@ defmodule Pfx do
   end
 
   def bnot(pfx),
-    do: raise(arg_error(:pfx, pfx))
+    do: new(pfx) |> bnot() |> marshall(pfx)
 
   @doc """
   A bitwise AND of two prefixes.
