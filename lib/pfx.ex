@@ -728,24 +728,32 @@ defmodule Pfx do
     do: bor(new(pfx1), new(pfx2)) |> marshall(pfx1)
 
   @doc """
-  A bitwise XOR of two prefixes.
+  A bitwise XOR of two `t:prefix`'s.
 
-  Both prefixes should have the same `Pfx.maxlen`
+  Both prefixes should, ultimately, have the same `maxlen`.
+  If one or more arguments are nog a `Pfx`-struct they are
+  are converted using `Pfx.new/1`.
+
+  Note that the result is always a full length address whithin given prefix.
 
   ## Examples
-
-      iex> x = new(<<10, 11, 12, 13>>, 32)
-      iex> y = new(<<255, 255, 0, 0>>, 32)
-      iex> bxor(x, y)
-      %Pfx{bits: <<245, 244, 12, 13>>, maxlen: 32}
 
       iex> x = new(<<10, 11, 12, 13>>, 32)
       iex> y = new(<<255, 255>>, 32)
       iex> bxor(x, y)
       %Pfx{bits: <<245, 244, 12, 13>>, maxlen: 32}
-      iex>
-      iex> bxor(y, x)
+
+      iex> bxor(%Pfx{bits: <<10, 11, 12, 13>>, maxlen: 32}, "255.255.0.0")
       %Pfx{bits: <<245, 244, 12, 13>>, maxlen: 32}
+
+      iex> bxor("10.11.12.13", {255, 255, 0, 0})
+      "245.244.12.13"
+
+      iex> bxor({10, 11, 12, 13}, "255.255.0.0")
+      {245, 244, 12, 13}
+
+      iex> bxor({{10, 11, 12, 13}, 32}, "255.255.0.0")
+      {{245, 244, 12, 13}, 32}
 
   """
   @spec bxor(t, t) :: t
@@ -760,11 +768,8 @@ defmodule Pfx do
   def bxor(pfx1, pfx2) when is_pfx(pfx1) and is_pfx(pfx2),
     do: raise(arg_error(:nocompare, {pfx1, pfx2}))
 
-  def bxor(pfx1, pfx2) when is_pfx(pfx2),
-    do: raise(arg_error(:pfx, pfx1))
-
-  def bxor(_, pfx2),
-    do: raise(arg_error(:pfx, pfx2))
+  def bxor(pfx1, pfx2),
+    do: bxor(new(pfx1), new(pfx2)) |> marshall(pfx1)
 
   @doc """
   Rotate the `pfx.bits` by `n` positions.
