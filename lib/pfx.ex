@@ -1538,13 +1538,34 @@ defmodule Pfx do
 
   If either `prfx1` or `pfx2` is invalid, member? simply returns false
 
+  ## Examples
+
+      iex> member?(%Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}, %Pfx{bits: <<10>>, maxlen: 32})
+      true
+
+      iex> member?("10.10.10.10", "10.0.0.0/8")
+      true
+
+      iex> member?({10, 10, 10, 10}, "10.0.0.0/8")
+      true
+
+      iex> member?({{10, 10, 10, 10}, 24}, "10.0.0.0/8")
+      true
+
+      iex> member?({{11, 0, 0, 0}, 8}, {{10, 0, 0, 0}, 8})
+      false
+
   """
-  @spec member?(t, t) :: boolean
+  @spec member?(prefix, prefix) :: boolean
   def member?(pfx1, pfx2)
       when is_comparable(pfx1, pfx2) and bit_size(pfx2.bits) <= bit_size(pfx1.bits),
       do: pfx2.bits == truncate(pfx1.bits, bit_size(pfx2.bits))
 
-  def member?(_, _), do: false
+  def member?(pfx1, pfx2) when is_pfx(pfx1) and is_pfx(pfx2),
+    do: false
+
+  def member?(pfx1, pfx2),
+    do: member?(new(pfx1), new(pfx2))
 
   # Format
 
