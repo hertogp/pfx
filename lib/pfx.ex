@@ -33,7 +33,7 @@ defmodule Pfx do
   address,length-tuple or a CIDR string.
 
   """
-  @type prefix :: t | ip_address | ip_prefix | String.t()
+  @type prefix :: Pfx.t() | ip_address | ip_prefix | String.t()
 
   # valid prefix lengths to use for nat64
   @nat64_lengths [96, 64, 56, 48, 40, 32]
@@ -157,26 +157,26 @@ defmodule Pfx do
   end
 
   # given a valid %Pfx{}=x, turn it into same format as y
-  defp marshall(%Pfx{} = x, {_, _, _, _}),
+  defp marshall(x, {_, _, _, _}) when is_pfx(x),
     do: digits(x, 8) |> elem(0)
 
-  defp marshall(%Pfx{} = x, {_, _, _, _, _, _, _, _}),
+  defp marshall(x, {_, _, _, _, _, _, _, _}) when is_pfx(x),
     do: digits(x, 16) |> elem(0)
 
-  defp marshall(%Pfx{} = x, {{_, _, _, _}, _}),
+  defp marshall(x, {{_, _, _, _}, _}) when is_pfx(x),
     do: digits(x, 8)
 
-  defp marshall(%Pfx{} = x, {{_, _, _, _, _, _, _, _}, _}),
+  defp marshall(x, {{_, _, _, _, _, _, _, _}, _}) when is_pfx(x),
     do: digits(x, 16)
 
-  defp marshall(%Pfx{} = x, y) when is_binary(y),
+  defp marshall(x, y) when is_pfx(x) and is_binary(y),
     do: "#{x}"
 
-  defp marshall(%Pfx{} = x, y) when is_pfx(y),
+  defp marshall(x, _y),
     do: x
 
-  defp marshall(x, y),
-    do: raise(arg_error(:marshall, {x, y}))
+  # defp marshall(x, y),
+  #   do: raise(arg_error(:marshall, {x, y}))
 
   # API
   # - new/1 and new/2 *MUST* return a `Pfx` struct or raise an ArgumentError
@@ -377,7 +377,6 @@ defmodule Pfx do
 
   """
   @spec cut(prefix, integer, integer) :: prefix
-  @spec cut(prefix, integer, integer) :: t()
   def cut(pfx, start, length) when is_pfx(pfx) do
     try do
       bits = bits(pfx, start, length)
@@ -388,7 +387,6 @@ defmodule Pfx do
   end
 
   def cut(pfx, start, length) do
-    IO.inspect(pfx, label: :notanpfx)
     new(pfx) |> cut(start, length) |> marshall(pfx)
   end
 
@@ -459,11 +457,11 @@ defmodule Pfx do
   ## Examples
 
       # first byte
-      iex> x = new(<<128, 0, 0, 1>>, 32)
-      iex> bits(x, 0, 8)
+      iex> bits(%Pfx{bits: <<128, 0, 0, 1>>, maxlen: 32}, 0, 8)
       <<128>>
+
       # same as
-      iex> bits(x, 7, -8)
+      iex> bits(%Pfx{bits: <<128, 0, 0, 1>>, maxlen: 32}, 7, -8)
       <<128>>
 
       # last two bytes
@@ -498,7 +496,9 @@ defmodule Pfx do
       <<0b11111::size(5)>>
 
   """
-  @spec bits(prefix, integer, integer) :: bitstring()
+  @spec bits(prefix(), integer, integer) :: bitstring()
+  def bits(prefix, position, length)
+
   def bits(pfx, position, length) when is_pfx(pfx) and is_integer(position * length) do
     pos = if position < 0, do: pfx.maxlen + position, else: position
     {pos, len} = if length < 0, do: {pos + 1 + length, -length}, else: {pos, length}
@@ -516,10 +516,13 @@ defmodule Pfx do
   def bits(pfx, position, length),
     do: new(pfx) |> bits(position, length)
 
-  defp bitsp(pfx, pos, len) do
-    pfx = padr(pfx)
-    <<_::size(pos), bits::bitstring-size(len), _::bitstring>> = pfx.bits
-    bits
+  @spec bitsp(Pfx.t(), integer, integer) :: bitstring()
+  defp bitsp(pfx, pos, len) when is_pfx(pfx) do
+    # XXX: new() is required, otherwise dialyzer chokes on padr(pfx) and won't
+    # see that padr(pfx) actually returns a %Pfx{}-struct ...?
+    pfx = padr(pfx) |> new()
+    <<_::size(pos), part::bitstring-size(len), _::bitstring>> = pfx.bits
+    part
   end
 
   @doc """
@@ -564,24 +567,24 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> %Pfx{bits: <<255, 255>>, maxlen: 16} |> cast()
+      iex> cast(%Pfx{bits: <<255, 255>>, maxlen: 16})
       65535
 
       # missing bits filled in as `0`s
-      iex> %Pfx{bits: <<255>>, maxlen: 16} |> cast()
+      iex> cast(%Pfx{bits: <<255>>, maxlen: 16})
       65280
 
-      iex> %Pfx{bits: <<-1::128>>, maxlen: 128} |> cast()
+      iex> cast(%Pfx{bits: <<-1::128>>, maxlen: 128})
       340282366920938463463374607431768211455
 
-      iex> %Pfx{bits: <<>>, maxlen: 8} |> cast()
+      iex> cast(%Pfx{bits: <<>>, maxlen: 8})
       0
 
       # a bit weird, but:
-      iex> %Pfx{bits: <<>>, maxlen: 0} |> cast()
+      iex> cast(%Pfx{bits: <<>>, maxlen: 0})
       0
 
-      iex> %Pfx{bits: <<255, 255, 0, 0>>, maxlen: 32} |> cast()
+      iex> cast(%Pfx{bits: <<255, 255, 0, 0>>, maxlen: 32})
       4294901760
 
       iex> cast({255, 255, 0, 0})
@@ -949,7 +952,7 @@ defmodule Pfx do
     do: padr(pfx, 0, pfx.maxlen)
 
   def padr(pfx),
-    do: padr(new(pfx)) |> marshall(pfx)
+    do: new(pfx) |> padr() |> marshall(pfx)
 
   @doc """
   Right pad the `pfx.bits` to its full length using either `0` or `1`-bits.
@@ -2545,10 +2548,14 @@ defmodule Pfx do
   def nat64_decode(pfx, len \\ 96)
 
   def nat64_decode(pfx, len) when len in @nat64_lengths do
-    x = new(pfx)
-    unless bit_size(x.bits) == 128, do: raise(arg_error(:nat64, x))
-    x = if len < 96, do: %{x | bits: bits(x, [{0, 64}, {72, 56}])}, else: x
-    "#{%Pfx{bits: bits(x, len, 32), maxlen: 32}}"
+    try do
+      x = new(pfx)
+      unless bit_size(x.bits) == 128, do: raise(arg_error(:nat64, pfx))
+      x = if len < 96, do: %{x | bits: bits(x, 0, 64) <> bits(x, 72, 56)}, else: x
+      "#{%Pfx{bits: bits(x, len, 32), maxlen: 32}}"
+    rescue
+      ArgumentError -> raise arg_error(:nat64, pfx)
+    end
   end
 
   def nat64_decode(_, len),
@@ -2609,8 +2616,8 @@ defmodule Pfx do
       %{
         ip6
         | bits:
-            <<bits(ip6, [{0, 64}])::bitstring, 0::8,
-              bits(ip6, [{64, bit_size(ip6.bits) - 64}])::bitstring>>
+            <<bits(ip6, 0, 64)::bitstring, 0::8,
+              bits(ip6, 64, bit_size(ip6.bits) - 64)::bitstring>>
       }
       |> padr(0)
       |> marshall(pfx6)

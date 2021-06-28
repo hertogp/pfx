@@ -119,8 +119,7 @@ Ayway, enough downplay, here are some examples.
     iex> cut(vrrp_mac, 47, -8) |> cast()
     15
 
-    # IPv4
-
+    # IPv4 examples
     iex> new(<<10, 10, 10>>, 32)
     %Pfx{bits: <<10, 10, 10>>, maxlen: 32}
 
@@ -133,7 +132,7 @@ Ayway, enough downplay, here are some examples.
     iex> new({{10, 10, 10, 10}, 24})
     %Pfx{bits: <<10, 10, 10>>, maxlen: 32}
 
-    # IPv6
+    # IPv6 examples
     iex> new(<<44252::16, 6518::16>>, 128)
     %Pfx{bits: <<0xACDC::16, 0x1976::16>>, maxlen: 128}
 
@@ -209,8 +208,7 @@ Functions are sometimes IP specific, like:
 But most of the times, functions have generic names, since they apply to all
 sorts of prefixes, e.g.
 
-    iex> pfx = new("10.10.10.0/24")
-    iex> partition(pfx, 26)
+    iex> partition(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 26)
     [
       %Pfx{bits: <<10, 10, 10, 0::size(2)>>, maxlen: 32},
       %Pfx{bits: <<10, 10, 10, 1::size(2)>>, maxlen: 32},
@@ -230,7 +228,6 @@ given.  So the above could also be done as:
     ]
 
     # or
-
     iex> partition({{10, 10, 10, 0}, 24}, 26)
     [ {{10, 10, 10, 0}, 26},
       {{10, 10, 10, 64}, 26},
