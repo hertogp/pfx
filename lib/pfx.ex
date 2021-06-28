@@ -29,7 +29,7 @@ defmodule Pfx do
   @type ip_prefix :: {:inet.ip4_address(), 0..32} | {:inet.ip6_address(), 0..128}
 
   @typedoc """
-  A prefix expressed as either a `Pfx`, an address-tuple, an
+  A prefix expressed as either a `t:Pfx.t/0` struct, an IP address-tuple, an
   address,length-tuple or a CIDR string.
 
   """
@@ -1885,8 +1885,6 @@ defmodule Pfx do
     end
   end
 
-  # IP conveniences
-
   @doc """
   Returns the this-network prefix (full address) for given `pfx`.
 
@@ -2091,6 +2089,7 @@ defmodule Pfx do
     sibling(x, offset) |> marshall(pfx)
   end
 
+  # IP oriented
   @doc """
   Returns true if *prefix* is a teredo address, false otherwise
 

@@ -31,7 +31,7 @@ order to have one module to rule them all.
 
 The `Pfx.new/2` function will silently clip the provided `bits`-string to
 `maxlen`-bits when needed, since a `Pfx` struct named `pfx` is valid, iff:
-- `bit_size(pfx.bits)` is in range `0..pfx.maxlen-1`, and where
+- `bit_size(pfx.bits)` <= `pfx.maxlen`, and where
 - `pfx.maxlen` is a `t:non_neg_integer/0`
 
 Keep that in mind when instantiating directly or updating a `Pfx`, otherwise
@@ -154,7 +154,7 @@ followed by `/num_of_bits`. The latter is omitted if equal to `pfx.bits`
 length.
 
 If other formatting is required, use the `Pfx.format/2` function, which takes
-some options and creates a string representation out of a `Pfx` struct.
+some options that help shape the string representation for a `Pfx` struct.
 
     # a subnet
     iex> "#{new(<<10, 11, 12>>, 32)}"
@@ -181,7 +181,7 @@ some options and creates a string representation out of a `Pfx` struct.
     "00000001.00000010.00000011.00000100"
 
 
-A `t:Pfx.t/0` is also enumerable:
+A `t:Pfx.t/0` struct is also enumerable:
 
     iex> pfx = new("10.10.10.0/30")
     iex> for ip <- pfx do "#{ip}" end
@@ -192,17 +192,51 @@ A `t:Pfx.t/0` is also enumerable:
       "10.10.10.3"
     ]
 
-Functions sometimes have generic names, since they apply to all sorts of
-prefixes, e.g.
+Functions are sometimes IP specific, like:
+
+    iex> dns_ptr("acdc:1975::b1ba:2021")
+    "1.2.0.2.a.b.1.b.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.5.7.9.1.c.d.c.a.ip6.arpa"
+
+    iex> teredo("2001:0000:4136:e378:8000:63bf:3fff:fdd2")
+    %{
+      server: "65.54.227.120",
+      client: "192.0.2.45",
+      port: 40000,
+      flags: {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+      prefix: "2001:0000:4136:e378:8000:63bf:3fff:fdd2"
+    }
+
+But most of the times, functions have generic names, since they apply to all
+sorts of prefixes, e.g.
 
     iex> pfx = new("10.10.10.0/24")
-    iex> partition(pfx, 26) |> Enum.map(fn x -> "#{x}" end)
+    iex> partition(pfx, 26)
+    [
+      %Pfx{bits: <<10, 10, 10, 0::size(2)>>, maxlen: 32},
+      %Pfx{bits: <<10, 10, 10, 1::size(2)>>, maxlen: 32},
+      %Pfx{bits: <<10, 10, 10, 2::size(2)>>, maxlen: 32},
+      %Pfx{bits: <<10, 10, 10, 3::size(2)>>, maxlen: 32}
+    ]
+
+The `Pfx.new/1` and `Pfx.new/2` always return a `t:Pfx.t/0` struct, but most
+other functions will return their results in the same representation they were
+given.  So the above could also be done as:
+
+    iex> partition("10.10.10.0/24", 26)
     [ "10.10.10.0/26",
       "10.10.10.64/26",
       "10.10.10.128/26",
       "10.10.10.192/26"
     ]
 
+    # or
+
+    iex> partition({{10, 10, 10, 0}, 24}, 26)
+    [ {{10, 10, 10, 0}, 26},
+      {{10, 10, 10, 64}, 26},
+      {{10, 10, 10, 128}, 26},
+      {{10, 10, 10, 192}, 26}
+    ]
 
 
 <!-- @MODULEDOC -->
