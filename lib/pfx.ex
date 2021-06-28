@@ -1682,6 +1682,41 @@ defmodule Pfx do
   def format(pfx, opts),
     do: new(pfx) |> format(opts)
 
+  @doc """
+  Returns boolean indicating whether `pfx` is a valid `t:prefix/0` or not.
+
+  ## Examples
+
+      iex> valid?(%Pfx{bits: <<1,2,3,4>>, maxlen: 32})
+      true
+
+      # bits exceed maxlen
+      iex> valid?(%Pfx{bits: <<1,2,3,4>>, maxlen: 16})
+      false
+
+      iex> valid?({{1, 2, 3, 4}, 24})
+      true
+
+      iex> valid?({1, 2, 3, 4})
+      true
+
+      iex> valid?("1.2.3.4")
+      true
+
+      iex> valid?("1.2.3.4/8")
+      true
+
+  """
+  @spec valid?(prefix) :: boolean
+  def valid?(prefix) do
+    try do
+      new(prefix)
+      true
+    rescue
+      ArgumentError -> false
+    end
+  end
+
   # Sorting
 
   @doc ~S"""
