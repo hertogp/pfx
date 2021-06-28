@@ -527,17 +527,27 @@ defmodule Pfx do
 
   ## Example
 
-      iex> x = new(<<1, 2, 3, 4>>, 32)
-      iex> x |> bits([{0,8}, {-1, -8}])
+      iex> bits(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}, [{0,8}, {-1, -8}])
       <<1, 4>>
-      #
-      iex> x |> bits([{0, 8}, {-1, 8}])
-      ** (ArgumentError) invalid index range: {-1, 8}
+
+      iex> bits({{1, 2, 3, 4}, 32}, [{0,8}, {-1, -8}])
+      <<1, 4>>
+
+      iex> bits({1, 2, 3, 4}, [{0, 8}, {-1, -8}])
+      <<1, 4>>
+
+      iex> bits("1.2.3.4", [{0, 8}, {-1, -8}])
+      <<1, 4>>
+
+      iex> bits("1.2.3.4/24", [{0, 8}, {-1, -8}])
+      <<1, 0>>
 
   """
-  @spec bits(t, [{integer, integer}]) :: bitstring
-  def bits(pfx, ranges) when is_pfx(pfx) and is_list(ranges) do
-    Enum.map(ranges, fn {pos, len} -> bits(pfx, pos, len) end)
+  @spec bits(prefix, [{integer, integer}]) :: bitstring
+  def bits(pfx, ranges) when is_list(ranges) do
+    x = new(pfx)
+
+    Enum.map(ranges, fn {pos, len} -> bits(x, pos, len) end)
     |> Enum.reduce(<<>>, &joinbitsp/2)
   end
 
