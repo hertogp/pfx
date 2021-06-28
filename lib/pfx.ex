@@ -14,7 +14,7 @@ defmodule Pfx do
   A prefix struct with fields: `bits` and `maxlen`.
 
   """
-  @type t :: %__MODULE__{bits: <<_::_*1>>, maxlen: non_neg_integer}
+  @type t :: %__MODULE__{bits: bitstring, maxlen: non_neg_integer}
 
   @typedoc """
   An :inet IPv4 or IPv6 address (tuple)
@@ -67,7 +67,7 @@ defmodule Pfx do
   - `bit_size(pfx.bits) <= pfx.maxlen`
 
   """
-
+  @doc section: :guard
   defguard is_pfx(pfx)
            when pfx.__struct__ == __MODULE__ and
                   is_non_neg_integer(pfx.maxlen) and
@@ -77,6 +77,7 @@ defmodule Pfx do
   Guard that ensures both prefixes are valid and comparable (same maxlen).
 
   """
+  @doc section: :guard
   defguard is_comparable(x, y)
            when is_pfx(x) and is_pfx(y) and x.maxlen == y.maxlen
 
@@ -157,6 +158,7 @@ defmodule Pfx do
   end
 
   # given a valid %Pfx{}=x, turn it into same format as y
+  @spec marshall(t, prefix) :: prefix
   defp marshall(x, {_, _, _, _}) when is_pfx(x),
     do: digits(x, 8) |> elem(0)
 
@@ -172,11 +174,15 @@ defmodule Pfx do
   defp marshall(x, y) when is_pfx(x) and is_binary(y),
     do: "#{x}"
 
-  defp marshall(x, _y),
+  # TODO: adding is_pfx(y) here (=wanted) makes dialyzer unhappy, why?
+  # - dialyzer seems to NOT recognize y as possible a Pfx.t, and
+  # - there are actually calls that marshall a Pfx.t to a Pfx.t
+  defp marshall(x, _) when is_pfx(x),
     do: x
 
-  # defp marshall(x, y),
-  #   do: raise(arg_error(:marshall, {x, y}))
+  # x is not a Pfx.t, if this happens it's an internal error!
+  defp marshall(x, y),
+    do: raise(arg_error(:marshall, {x, y}))
 
   # API
   # - new/1 and new/2 *MUST* return a `Pfx` struct or raise an ArgumentError
@@ -516,10 +522,9 @@ defmodule Pfx do
   def bits(pfx, position, length),
     do: new(pfx) |> bits(position, length)
 
-  @spec bitsp(Pfx.t(), integer, integer) :: bitstring()
+  @spec bitsp(t, integer, integer) :: bitstring
   defp bitsp(pfx, pos, len) when is_pfx(pfx) do
     # XXX: new() is required, otherwise dialyzer chokes on padr(pfx) and won't
-    # see that padr(pfx) actually returns a %Pfx{}-struct ...?
     pfx = padr(pfx) |> new()
     <<_::size(pos), part::bitstring-size(len), _::bitstring>> = pfx.bits
     part
