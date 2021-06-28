@@ -1565,6 +1565,10 @@ defmodule Pfx do
       iex> member?({{11, 0, 0, 0}, 8}, {{10, 0, 0, 0}, 8})
       false
 
+      # bad prefix
+      iex> member?("10.10.10.10", "10.10.10.256/24")
+      false
+
   """
   @spec member?(prefix, prefix) :: boolean
   def member?(pfx1, pfx2)
@@ -1574,8 +1578,13 @@ defmodule Pfx do
   def member?(pfx1, pfx2) when is_pfx(pfx1) and is_pfx(pfx2),
     do: false
 
-  def member?(pfx1, pfx2),
-    do: member?(new(pfx1), new(pfx2))
+  def member?(pfx1, pfx2) do
+    try do
+      member?(new(pfx1), new(pfx2))
+    rescue
+      ArgumentError -> false
+    end
+  end
 
   # Format
 
@@ -2095,11 +2104,21 @@ defmodule Pfx do
       iex> teredo?("1.1.1.1")
       false
 
+      iex> teredo?(42)
+      false
+
   """
   @doc section: :ip
   @spec teredo?(prefix) :: boolean
-  def teredo?(pfx),
-    do: new(pfx) |> member?(%Pfx{bits: <<0x2001::16, 0::16>>, maxlen: 128})
+  def teredo?(pfx) do
+    try do
+      pfx
+      |> new()
+      |> member?(%Pfx{bits: <<0x2001::16, 0::16>>, maxlen: 128})
+    rescue
+      ArgumentError -> false
+    end
+  end
 
   @doc """
   Returns a map with the teredo address components of `pfx` or nil.
@@ -2173,16 +2192,24 @@ defmodule Pfx do
       iex> multicast?("1.1.1.1")
       false
 
+      # bad prefix
+      iex> multicast?("224.0.0.256")
+      false
+
   """
   @doc section: :ip
   @spec multicast?(prefix) :: boolean
   def multicast?(pfx) do
-    x = new(pfx)
+    try do
+      x = new(pfx)
 
-    cond do
-      member?(x, %Pfx{bits: <<14::4>>, maxlen: 32}) -> true
-      member?(x, %Pfx{bits: <<0xFF>>, maxlen: 128}) -> true
-      true -> false
+      cond do
+        member?(x, %Pfx{bits: <<14::4>>, maxlen: 32}) -> true
+        member?(x, %Pfx{bits: <<0xFF>>, maxlen: 128}) -> true
+        true -> false
+      end
+    rescue
+      ArgumentError -> false
     end
   end
 
@@ -2291,22 +2318,33 @@ defmodule Pfx do
       iex> link_local?("fe80::acdc:1975")
       true
 
+      iex> link_local?("1.1.1.1")
+      false
+
+      # bad prefix
+      iex> link_local?("10.10.10.256")
+      false
+
   """
   @doc section: :ip
   @spec link_local?(prefix) :: boolean
   def link_local?(pfx) do
     # rfc3927 and rfc4271 & friends
     # and https://en.wikipedia.org/wiki/IPv6_address#Default_address_selection
-    x = new(pfx)
+    try do
+      x = new(pfx)
 
-    cond do
-      member?(x, %Pfx{bits: <<169, 254, 0>>, maxlen: 32}) -> false
-      member?(x, %Pfx{bits: <<169, 254, 255>>, maxlen: 32}) -> false
-      member?(x, %Pfx{bits: <<169, 254>>, maxlen: 32}) -> true
-      member?(x, %Pfx{bits: <<0>>, maxlen: 32}) -> true
-      member?(x, %Pfx{bits: <<255, 255, 255, 255>>, maxlen: 32}) -> true
-      member?(x, %Pfx{bits: <<0xFE80::16, 0::48>>, maxlen: 128}) -> true
-      true -> false
+      cond do
+        member?(x, %Pfx{bits: <<169, 254, 0>>, maxlen: 32}) -> false
+        member?(x, %Pfx{bits: <<169, 254, 255>>, maxlen: 32}) -> false
+        member?(x, %Pfx{bits: <<169, 254>>, maxlen: 32}) -> true
+        member?(x, %Pfx{bits: <<0>>, maxlen: 32}) -> true
+        member?(x, %Pfx{bits: <<255, 255, 255, 255>>, maxlen: 32}) -> true
+        member?(x, %Pfx{bits: <<0xFE80::16, 0::48>>, maxlen: 128}) -> true
+        true -> false
+      end
+    rescue
+      ArgumentError -> false
     end
   end
 
@@ -2395,20 +2433,31 @@ defmodule Pfx do
       iex> unique_local?("172.32.0.0")
       false
 
+      iex> unique_local?("10.255.255.255")
+      true
+
+      # bad prefix
+      iex> unique_local?("10.255.255.256")
+      false
+
   """
   @doc section: :ip
   @spec unique_local?(prefix) :: boolean
   def unique_local?(pfx) do
     # TODO: what about the well-known nat64 address(es) that are used only
     # locally?
-    x = new(pfx)
+    try do
+      x = new(pfx)
 
-    cond do
-      member?(x, %Pfx{bits: <<10>>, maxlen: 32}) -> true
-      member?(x, %Pfx{bits: <<172, 1::4>>, maxlen: 32}) -> true
-      member?(x, %Pfx{bits: <<192, 168>>, maxlen: 32}) -> true
-      member?(x, %Pfx{bits: <<126::7>>, maxlen: 128}) -> true
-      true -> false
+      cond do
+        member?(x, %Pfx{bits: <<10>>, maxlen: 32}) -> true
+        member?(x, %Pfx{bits: <<172, 1::4>>, maxlen: 32}) -> true
+        member?(x, %Pfx{bits: <<192, 168>>, maxlen: 32}) -> true
+        member?(x, %Pfx{bits: <<126::7>>, maxlen: 128}) -> true
+        true -> false
+      end
+    rescue
+      ArgumentError -> false
     end
   end
 
@@ -2436,14 +2485,22 @@ defmodule Pfx do
       iex> nat64?("64:ff9b:1::10.10.10.10")
       true
 
+      # bad prefix
+      iex> nat64?("64:ff9b:1::10.10.10.256")
+      false
+
   """
   @doc section: :ip
   @spec nat64?(prefix) :: boolean
   def nat64?(pfx) do
-    x = new(pfx)
+    try do
+      x = new(pfx)
 
-    member?(x, %Pfx{bits: <<0x0064::16, 0xFF9B::16, 0::64>>, maxlen: 128}) or
-      member?(x, %Pfx{bits: <<0x0064::16, 0xFF9B::16, 1::16>>, maxlen: 128})
+      member?(x, %Pfx{bits: <<0x0064::16, 0xFF9B::16, 0::64>>, maxlen: 128}) or
+        member?(x, %Pfx{bits: <<0x0064::16, 0xFF9B::16, 1::16>>, maxlen: 128})
+    rescue
+      ArgumentError -> false
+    end
   end
 
   @doc """
