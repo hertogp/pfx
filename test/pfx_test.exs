@@ -214,9 +214,9 @@ defmodule PfxTest do
   test "bit/2 yields bit value for all representations" do
     assert 0 == bit(%Pfx{bits: <<255, 255, 0, 0>>, maxlen: 32}, 16)
     assert 0 == bit("255.255.0.0", 16)
-    assert 0 == bit("255.255.0.0/32", 15)
-    assert 0 == bit({255, 255, 0, 0}, 15)
-    assert 0 == bit({{255, 255, 0, 0}, 32}, 15)
+    assert 0 == bit("255.255.0.0/32", 16)
+    assert 0 == bit({255, 255, 0, 0}, 16)
+    assert 0 == bit({{255, 255, 0, 0}, 32}, 16)
 
     assert 1 == bit(%Pfx{bits: <<255, 255, 0, 0>>, maxlen: 32}, 15)
     assert 1 == bit("255.255.0.0", 15)
