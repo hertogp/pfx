@@ -69,8 +69,9 @@ defmodule Pfx do
   """
   @doc section: :guard
   defguard is_pfx(pfx)
-           when pfx.__struct__ == __MODULE__ and
+           when is_struct(pfx, __MODULE__) and
                   is_non_neg_integer(pfx.maxlen) and
+                  is_bitstring(pfx.bits) and
                   bit_size(pfx.bits) <= pfx.maxlen
 
   @doc """
