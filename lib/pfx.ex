@@ -202,7 +202,6 @@ defmodule Pfx do
   The last form sets the `maxlen` according to the IP protocol version used,
   while the `length` parameter is used to truncate the `bits` for the prefix.
 
-
   ## Examples
 
       iex> new(<<10, 10>>, 32)
@@ -435,22 +434,21 @@ defmodule Pfx do
 
   """
   @spec bit(prefix, integer) :: 0 | 1
-  def bit(pfx, position) when position + pfx.maxlen < 0 or position >= pfx.maxlen,
-    do: raise(arg_error(:bitpos, position))
+  def bit(pfx, position) when is_pfx(pfx) do
+    pos = if position < 0, do: position + pfx.maxlen, else: position
+    if pos < 0 or pos >= pfx.maxlen, do: raise(arg_error(:bitpos, position))
+    bitp(pfx, pos)
+  end
 
-  def bit(pfx, position) when is_pfx(pfx) and position < 0,
-    do: bit(pfx, pfx.maxlen + position)
+  def bit(pfx, pos),
+    do: new(pfx) |> bit(pos)
 
-  def bit(pfx, pos) when pos < bit_size(pfx.bits) do
+  defp bitp(pfx, pos) when pos < bit_size(pfx.bits) do
     <<_::size(pos), bit::1, _::bitstring>> = pfx.bits
     bit
   end
 
-  def bit(pfx, pos) when pos < pfx.maxlen,
-    do: 0
-
-  def bit(pfx, pos),
-    do: new(pfx) |> bit(pos)
+  defp bitp(_, _), do: 0
 
   @doc """
   Return a series of bits for given `pfx`, starting bit `position` & `length`.
@@ -825,6 +823,9 @@ defmodule Pfx do
     plen = bit_size(pfx.bits)
     brot(pfx, plen + rem(n, plen))
   end
+
+  def brot(%Pfx{bits: <<>>} = pfx, _) when is_pfx(pfx),
+    do: pfx
 
   def brot(pfx, n) when is_pfx(pfx) and is_integer(n) do
     width = bit_size(pfx.bits)
