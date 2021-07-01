@@ -50,8 +50,6 @@ defmodule PfxTest do
     {{1, 2, 3, 4, 0, 0, 0, 0}, 65}
   ]
 
-  # Guard
-
   # Is_pfx/1
   test "is_pfx/1" do
     # handle zero bits
@@ -249,70 +247,101 @@ defmodule PfxTest do
 
   # Cast/1
   test "cast/1" do
+    Enum.all?(@ip4_representations, fn x -> assert cast(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert cast(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> cast(x) end end)
   end
 
   # Bnot/1
   test "bnot/1" do
+    Enum.all?(@ip4_representations, fn x -> assert bnot(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert bnot(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> bnot(x) end end)
   end
 
   # Band/2
   test "band/2" do
+    Enum.all?(@ip4_representations, fn x -> assert band(x, x) end)
+    Enum.all?(@ip6_representations, fn x -> assert band(x, x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> band(x, x) end end)
   end
 
   # Bor/2
   test "bor/2" do
+    Enum.all?(@ip4_representations, fn x -> assert bor(x, x) end)
+    Enum.all?(@ip6_representations, fn x -> assert bor(x, x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> bor(x, x) end end)
   end
 
   # Bxor/2
   test "bxor/2" do
+    Enum.all?(@ip4_representations, fn x -> assert bxor(x, x) end)
+    Enum.all?(@ip6_representations, fn x -> assert bxor(x, x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> bxor(x, x) end end)
   end
 
   # Brot/2
   test "brot/2" do
+    Enum.all?(@ip4_representations, fn x -> assert brot(x, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert brot(x, 0) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> brot(x, 0) end end)
   end
 
   # Bsl/2
   test "bsl/2" do
+    Enum.all?(@ip4_representations, fn x -> assert bsl(x, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert bsl(x, 0) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> bsl(x, 0) end end)
   end
 
   # Bsr/2
   test "bsr/2" do
+    Enum.all?(@ip4_representations, fn x -> assert bsr(x, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert bsr(x, 0) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> bsr(x, 0) end end)
   end
 
   # Padr/1
   test "padr/1" do
+    Enum.all?(@ip4_representations, fn x -> assert padr(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert padr(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> padr(x) end end)
   end
 
   # Padr/2
   test "padr/2" do
+    Enum.all?(@ip4_representations, fn x -> assert padr(x, 0) end)
+    Enum.all?(@ip4_representations, fn x -> assert padr(x, 1) end)
+    Enum.all?(@ip6_representations, fn x -> assert padr(x, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert padr(x, 1) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> padr(x, 0) end end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> padr(x, 1) end end)
   end
 
   # Padl/1
   test "padl/1" do
+    Enum.all?(@ip4_representations, fn x -> assert padl(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert padl(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> padl(x) end end)
   end
 
   # Padl/2
   test "padl/2" do
+    Enum.all?(@ip4_representations, fn x -> assert padl(x, 0) end)
+    Enum.all?(@ip4_representations, fn x -> assert padl(x, 1) end)
+    Enum.all?(@ip6_representations, fn x -> assert padl(x, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert padl(x, 1) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> padl(x, 0) end end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> padl(x, 1) end end)
   end
 
   # Bset/2
   test "bset/2" do
+    Enum.all?(@ip4_representations, fn x -> assert bset(x, 0) end)
+    Enum.all?(@ip4_representations, fn x -> assert bset(x, 1) end)
+    Enum.all?(@ip6_representations, fn x -> assert bset(x, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert bset(x, 1) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> bset(x, 0) end end)
-
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> bset(x, 1) end end)
   end
 
@@ -322,16 +351,25 @@ defmodule PfxTest do
 
   # Fields/2
   test "fields/2" do
+    Enum.all?(@ip4_representations, fn x -> assert fields(x, 1) end)
+    Enum.all?(@ip6_representations, fn x -> assert fields(x, 1) end)
+
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> fields(x, 1) end end)
   end
 
   # Digits/2
   test "digits/2" do
+    Enum.all?(@ip4_representations, fn x -> assert digits(x, 1) end)
+    Enum.all?(@ip6_representations, fn x -> assert digits(x, 1) end)
+
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> digits(x, 1) end end)
   end
 
   # Sibling/2
   test "sibling/2" do
+    Enum.all?(@ip4_representations, fn x -> assert sibling(x, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert sibling(x, 0) end)
+
     Enum.all?(@bad_representations, fn x ->
       assert_raise ArgumentError, fn -> sibling(x, 0) end
     end)
@@ -339,11 +377,16 @@ defmodule PfxTest do
 
   # Size/1
   test "size/1" do
+    Enum.all?(@ip4_representations, fn x -> assert size(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert size(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> size(x) end end)
   end
 
   # Member/2
   test "member/2" do
+    Enum.all?(@ip4_representations, fn x -> assert member(x, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert member(x, 0) end)
+
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> member(x, 0) end end)
   end
 
@@ -353,11 +396,16 @@ defmodule PfxTest do
 
   # format/2
   test "format/2" do
+    Enum.all?(@ip4_representations, fn x -> assert format(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert format(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> format(x) end end)
   end
 
   # Compare/2
   test "compare/2" do
+    Enum.all?(@ip4_representations, fn x -> assert compare(x, x) end)
+    Enum.all?(@ip6_representations, fn x -> assert compare(x, x) end)
+
     Enum.all?(@bad_representations, fn x ->
       assert_raise ArgumentError, fn -> compare(x, x) end
     end)
@@ -365,6 +413,9 @@ defmodule PfxTest do
 
   # Contrast/2
   test "contrast/2" do
+    Enum.all?(@ip4_representations, fn x -> assert contrast(x, x) end)
+    Enum.all?(@ip6_representations, fn x -> assert contrast(x, x) end)
+
     Enum.all?(@bad_representations, fn x ->
       assert_raise ArgumentError, fn -> contrast(x, x) end
     end)
@@ -372,11 +423,16 @@ defmodule PfxTest do
 
   # Network/1
   test "network/1" do
+    Enum.all?(@ip4_representations, fn x -> assert network(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert network(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> network(x) end end)
   end
 
   # Broadcast/1
   test "broadcast/1" do
+    Enum.all?(@ip4_representations, fn x -> assert broadcast(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert broadcast(x) end)
+
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> broadcast(x) end end)
   end
 
@@ -387,26 +443,36 @@ defmodule PfxTest do
 
   # Host/2
   test "host/2" do
+    Enum.all?(@ip4_representations, fn x -> assert host(x, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert host(x, 0) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> host(x, 0) end end)
   end
 
   # Mask/1
   test "mask/1" do
+    Enum.all?(@ip4_representations, fn x -> assert mask(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert mask(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> mask(x) end end)
   end
 
   # Inv_mask/1
   test "inv_mask/1" do
+    Enum.all?(@ip4_representations, fn x -> assert inv_mask(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert inv_mask(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> inv_mask(x) end end)
   end
 
   # Neighbor/1
   test "neighbor/1" do
+    Enum.all?(@ip4_representations, fn x -> assert neighbor(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert neighbor(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> neighbor(x) end end)
   end
 
   # Teredo/1
   test "teredo/1" do
+    Enum.all?(@ip4_representations, fn x -> assert nil == teredo(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert nil == teredo(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> teredo(x) end end)
   end
 
@@ -420,6 +486,9 @@ defmodule PfxTest do
 
   # Multicast/1
   test "multicast/1" do
+    Enum.all?(@ip4_representations, fn x -> assert nil == multicast(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert nil == multicast(x) end)
+
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> multicast(x) end end)
   end
 
@@ -429,6 +498,8 @@ defmodule PfxTest do
 
   # Link_local/1
   test "link_local/1" do
+    Enum.all?(@ip6_representations, fn x -> assert nil == link_local(x) end)
+
     Enum.all?(@bad_representations, fn x ->
       assert_raise ArgumentError, fn -> link_local(x) end
     end)
@@ -436,6 +507,10 @@ defmodule PfxTest do
 
   # Nat64_encode/2
   test "nat64_encode/2" do
+    Enum.all?(@ip4_representations, fn x ->
+      assert_raise ArgumentError, fn -> nat64_encode(x, x) end
+    end)
+
     Enum.all?(@bad_representations, fn x ->
       assert_raise ArgumentError, fn -> nat64_encode(x, x) end
     end)
@@ -443,6 +518,10 @@ defmodule PfxTest do
 
   # Nat64_decode/1
   test "nat64_decode/1" do
+    Enum.all?(@ip4_representations, fn x ->
+      assert_raise ArgumentError, fn -> nat64_decode(x) end
+    end)
+
     Enum.all?(@bad_representations, fn x ->
       assert_raise ArgumentError, fn -> nat64_decode(x) end
     end)
@@ -450,105 +529,8 @@ defmodule PfxTest do
 
   # Dns_ptr/1
   test "dns_ptr/1" do
+    Enum.all?(@ip4_representations, fn x -> assert dns_ptr(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert dns_ptr(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> dns_ptr(x) end end)
-  end
-
-  test "functions accept valid ip4 input" do
-    list = @ip4_representations
-    Enum.all?(list, fn x -> assert cast(x) end)
-    Enum.all?(list, fn x -> assert bnot(x) end)
-    Enum.all?(list, fn x -> assert band(x, x) end)
-    Enum.all?(list, fn x -> assert bor(x, x) end)
-    Enum.all?(list, fn x -> assert bxor(x, x) end)
-    Enum.all?(list, fn x -> assert brot(x, 0) end)
-    Enum.all?(list, fn x -> assert bsl(x, 0) end)
-    Enum.all?(list, fn x -> assert bsr(x, 0) end)
-    Enum.all?(list, fn x -> assert padr(x) end)
-    Enum.all?(list, fn x -> assert padr(x, 0) end)
-    Enum.all?(list, fn x -> assert padr(x, 1) end)
-    Enum.all?(list, fn x -> assert padl(x) end)
-    Enum.all?(list, fn x -> assert padl(x, 0) end)
-    Enum.all?(list, fn x -> assert padl(x, 1) end)
-    Enum.all?(list, fn x -> assert bset(x, 0) end)
-    Enum.all?(list, fn x -> assert bset(x, 1) end)
-    # partition done separately
-    Enum.all?(list, fn x -> assert fields(x, 1) end)
-    Enum.all?(list, fn x -> assert digits(x, 1) end)
-    Enum.all?(list, fn x -> assert sibling(x, 0) end)
-    Enum.all?(list, fn x -> assert size(x) end)
-    Enum.all?(list, fn x -> assert member(x, 0) end)
-    # func? never raise errors, so
-    Enum.all?(list, fn x -> assert format(x) end)
-    Enum.all?(list, fn x -> assert compare(x, x) end)
-    Enum.all?(list, fn x -> assert contrast(x, x) end)
-    # IP'ish
-    Enum.all?(list, fn x -> assert network(x) end)
-    Enum.all?(list, fn x -> assert broadcast(x) end)
-    # hosts will try to enumerate, which for 0/0 is quite alot
-    # Enum.all?(list, fn x -> assert hosts(x) end)
-    Enum.all?(list, fn x -> assert host(x, 0) end)
-    Enum.all?(list, fn x -> assert mask(x) end)
-    Enum.all?(list, fn x -> assert inv_mask(x) end)
-    Enum.all?(list, fn x -> assert neighbor(x) end)
-    # IP specific
-    Enum.all?(list, fn x -> assert nil == teredo(x) end)
-    Enum.all?(list, fn x -> assert nil == multicast(x) end)
-    # link_local returns nil for some, a map for others
-    # Enum.all?(list, fn x -> assert nil == link_local(x) end)
-    # the next two raise arg error cause 1st arg is not ipv6 address
-    Enum.all?(list, fn x -> assert_raise ArgumentError, fn -> nat64_encode(x, x) end end)
-    Enum.all?(list, fn x -> assert_raise ArgumentError, fn -> nat64_decode(x) end end)
-    Enum.all?(list, fn x -> assert dns_ptr(x) end)
-  end
-
-  test "functions accept valid ip6 input" do
-    list = @ip6_representations
-    Enum.all?(list, fn x -> assert new(x) end)
-    Enum.all?(list, fn x -> assert cut(x, 0, 0) end)
-    Enum.all?(list, fn x -> assert bit(x, 0) end)
-    Enum.all?(list, fn x -> assert cast(x) end)
-    Enum.all?(list, fn x -> assert bnot(x) end)
-    Enum.all?(list, fn x -> assert band(x, x) end)
-    Enum.all?(list, fn x -> assert bor(x, x) end)
-    Enum.all?(list, fn x -> assert bxor(x, x) end)
-    Enum.all?(list, fn x -> assert brot(x, 0) end)
-    Enum.all?(list, fn x -> assert bsl(x, 0) end)
-    Enum.all?(list, fn x -> assert bsr(x, 0) end)
-    Enum.all?(list, fn x -> assert padr(x) end)
-    Enum.all?(list, fn x -> assert padr(x, 0) end)
-    Enum.all?(list, fn x -> assert padr(x, 1) end)
-    Enum.all?(list, fn x -> assert padl(x) end)
-    Enum.all?(list, fn x -> assert padl(x, 0) end)
-    Enum.all?(list, fn x -> assert padl(x, 1) end)
-    Enum.all?(list, fn x -> assert bset(x, 0) end)
-    Enum.all?(list, fn x -> assert bset(x, 1) end)
-    # partition done separately
-    Enum.all?(list, fn x -> assert fields(x, 1) end)
-    Enum.all?(list, fn x -> assert digits(x, 1) end)
-    Enum.all?(list, fn x -> assert sibling(x, 0) end)
-    Enum.all?(list, fn x -> assert size(x) end)
-    Enum.all?(list, fn x -> assert member(x, 0) end)
-    # func? never raise errors, so
-    Enum.all?(list, fn x -> assert format(x) end)
-    Enum.all?(list, fn x -> assert compare(x, x) end)
-    Enum.all?(list, fn x -> assert contrast(x, x) end)
-    # IP'ish
-    Enum.all?(list, fn x -> assert network(x) end)
-    Enum.all?(list, fn x -> assert broadcast(x) end)
-    # hosts will try to enumerate, which for 0/0 is quite alot
-    # Enum.all?(list, fn x -> assert hosts(x) end)
-    Enum.all?(list, fn x -> assert host(x, 0) end)
-    Enum.all?(list, fn x -> assert mask(x) end)
-    Enum.all?(list, fn x -> assert inv_mask(x) end)
-    Enum.all?(list, fn x -> assert neighbor(x) end)
-    # IP specific
-    Enum.all?(list, fn x -> assert nil == teredo(x) end)
-    Enum.all?(list, fn x -> assert nil == multicast(x) end)
-    # link_local returns nil for some, a map for others
-    Enum.all?(list, fn x -> assert nil == link_local(x) end)
-    # Enum.all?(list, fn x -> assert nat64_encode(x, x) end)
-    # there are non-nat64 addresses in the list
-    # Enum.all?(list, fn x -> assert nat64_decode(x) end)
-    Enum.all?(list, fn x -> assert dns_ptr(x) end)
   end
 end
