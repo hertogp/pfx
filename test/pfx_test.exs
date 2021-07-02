@@ -878,10 +878,49 @@ defmodule PfxTest do
     Enum.all?(@ip6_representations, fn x -> assert member(x, 0) end)
 
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> member(x, 0) end end)
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 0} == member(%Pfx{bits: <<>>, maxlen: 0}, 0)
+    # member wraps around
+    assert %Pfx{bits: <<>>, maxlen: 0} == member(%Pfx{bits: <<>>, maxlen: 0}, 1)
+
+    assert %Pfx{bits: <<1, 1, 1, 1>>, maxlen: 32} ==
+             member(%Pfx{bits: <<1, 1, 1, 1>>, maxlen: 32}, 345)
+
+    # some bits
+    assert %Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32} ==
+             member(%Pfx{bits: <<1, 2, 3>>, maxlen: 32}, 4)
+
+    # result mirrors format of first argument
+    assert "1.2.3.255" == member("1.2.3.0/24", 255)
+    assert "1.2.3.255" == member("1.2.0.0/16", 3 * 256 + 255)
+    assert "1.1.1.1" == member("1.1.1.0/31", 1)
   end
 
   # Member?/2
   test "member?/2" do
+    Enum.all?(@ip4_representations, fn x -> assert member?(x, x) end)
+    Enum.all?(@ip6_representations, fn x -> assert member?(x, x) end)
+    # member? wont raise, just says false
+    Enum.all?(@bad_representations, fn x -> refute member?(x, x) end)
+
+    # a prefix is always its own member
+    pfx = %Pfx{bits: <<>>, maxlen: 16}
+    assert true == member?(pfx, pfx)
+    pfx = %Pfx{bits: <<-1::128>>, maxlen: 128}
+    assert true == member?(pfx, pfx)
+    pfx = %Pfx{bits: <<0::32>>, maxlen: 32}
+    assert true == member?(pfx, pfx)
+    assert true == member?({{1, 1, 1, 1}, 8}, "1.0.0.0/8")
+
+    # member? accepts all formats
+    assert true == member?("1.1.1.1", "1.1.1.1/32")
+    assert true == member?("1.1.1.0", "1.1.1.0/31")
+    assert true == member?("1.1.1.1", "1.1.1.0/31")
+    assert true == member?("255.255.255.255", "0.0.0.0/0")
+
+    assert true == member?({1, 1, 1, 1}, "1.0.0.0/8")
+    assert true == member?({{1, 1, 1, 1}, 32}, "1.0.0.0/8")
   end
 
   # format/2
@@ -889,6 +928,45 @@ defmodule PfxTest do
     Enum.all?(@ip4_representations, fn x -> assert format(x) end)
     Enum.all?(@ip6_representations, fn x -> assert format(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> format(x) end end)
+
+    # IPv4 defaults
+    assert "1.2.3.4" == format(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32})
+
+    # IPv6 nibbles, width & base
+    opts = [width: 4, base: 16]
+
+    assert "A.C.D.C.1.9.7.6.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0" ==
+             format("acdc:1976::", opts)
+
+    # reverse
+    opts = Keyword.put(opts, :reverse, true)
+
+    assert "0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.6.7.9.1.C.D.C.A" ==
+             format("acdc:1976::", opts)
+
+    # unit
+    assert "1111.1111" == format(%Pfx{bits: <<255>>, maxlen: 8}, width: 1, unit: 4)
+    assert "11111111.00000000" == format(%Pfx{bits: <<255, 0>>, maxlen: 16}, width: 1, unit: 8)
+
+    # ssep
+    assert "AA-BB-CC-DD-EE-FF" ==
+             format(%Pfx{bits: <<0xAABBCCDDEEFF::48>>, maxlen: 48}, base: 16, ssep: "-")
+
+    # lsep
+    assert "1.2.3.0 / 24" == format(%Pfx{bits: <<1, 2, 3>>, maxlen: 32}, lsep: " / ")
+
+    # padding
+    assert "10/8" == format(%Pfx{bits: <<10>>, maxlen: 32}, padding: false)
+
+    # mask
+    assert "10" == format(%Pfx{bits: <<10>>, maxlen: 32}, padding: false, mask: false)
+
+    # accept all formats
+    assert "1.2.3.4" == format("1.2.3.4")
+    assert "1.2.3.4" == format({1, 2, 3, 4})
+    assert "1.2.3.4" == format({{1, 2, 3, 4}, 32})
+    assert "1.2.3.0/24" == format({{1, 2, 3, 4}, 24})
+    assert "1.2.3.0" == format({{1, 2, 3, 4}, 24}, mask: false)
   end
 
   # Compare/2
@@ -968,10 +1046,12 @@ defmodule PfxTest do
 
   # Teredo?/1
   test "teredo?/1" do
+    Enum.all?(@bad_representations, fn x -> refute teredo?(x) end)
   end
 
   # Multicast?/1
   test "multicast?/1" do
+    Enum.all?(@bad_representations, fn x -> refute multicast?(x) end)
   end
 
   # Multicast/1
