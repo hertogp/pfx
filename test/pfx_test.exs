@@ -76,7 +76,7 @@ defmodule PfxTest do
     refute is_pfx(%Pfx{bits: 42, maxlen: 0})
     refute is_pfx(%Pfx{bits: '11', maxlen: 0})
 
-    # use is_pfx as clause
+    # is_pfx as an actual guard
     f = fn
       x when is_pfx(x) -> true
       _ -> false
@@ -90,6 +90,8 @@ defmodule PfxTest do
 
     # other cases that are not a %Pfx{}
     refute f.('123')
+    refute f.("1.1.1.1")
+    refute f.("acdc:1976::")
     refute f.([])
     refute f.({1, 2, 3, 4})
     refute f.({{1, 2, 3, 4}, 32})
@@ -104,7 +106,7 @@ defmodule PfxTest do
 
   # New/1, New/2
 
-  test "new/1, new/2" do
+  test "new/{1,2}" do
     # good args
     f = fn x -> assert new(x) end
     Enum.all?(@ip4_representations, f)
@@ -113,6 +115,7 @@ defmodule PfxTest do
     # bad args
     f = fn x -> assert_raise ArgumentError, fn -> new(x) end end
     Enum.all?(@bad_representations, f)
+    assert_raise ArgumentError, fn -> new(<<>>, -1) end
 
     # identity
     null = %Pfx{bits: <<>>, maxlen: 0}
@@ -206,11 +209,8 @@ defmodule PfxTest do
   # Bit/2
 
   test "bit/2" do
-    # good args
     Enum.all?(@ip4_representations, fn x -> assert bit(x, 0) end)
     Enum.all?(@ip6_representations, fn x -> assert bit(x, 0) end)
-
-    # bad args
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> bit(x, 0) end end)
 
     # out of range
@@ -219,9 +219,11 @@ defmodule PfxTest do
 
     # first bit
     assert 1 == bit(%Pfx{bits: <<255, 0>>, maxlen: 16}, 0)
+    assert 1 == bit(%Pfx{bits: <<255, 0>>, maxlen: 16}, -16)
 
     # last bit
     assert 0 == bit(%Pfx{bits: <<255, 0>>, maxlen: 16}, 15)
+    assert 0 == bit(%Pfx{bits: <<255, 0>>, maxlen: 16}, -1)
 
     # inbetween bits
     assert 0 == bit(%Pfx{bits: <<255, 255, 0, 0>>, maxlen: 32}, 16)
@@ -239,17 +241,63 @@ defmodule PfxTest do
   # Bits/3
 
   test "bits/3" do
-    f = fn x -> assert_raise ArgumentError, fn -> bits(x, 0, 0) end end
-    Enum.all?(@bad_representations, f)
-  end
+    Enum.all?(@ip4_representations, fn x -> assert bits(x, 0, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert bits(x, 0, 0) end)
 
-  # Bitwise Ops
+    Enum.all?(@bad_representations, fn x ->
+      assert_raise ArgumentError, fn -> bits(x, 0, 0) end
+    end)
+
+    pfx = %Pfx{bits: <<0, 0, 128, 1>>, maxlen: 32}
+
+    # out of range
+    assert_raise ArgumentError, fn -> bits(pfx, 0, 33) end
+    assert_raise ArgumentError, fn -> bits(pfx, 31, 2) end
+    assert_raise ArgumentError, fn -> bits(pfx, 32, 0) end
+
+    # no bits
+    assert <<>> == bits(pfx, 0, 0)
+    assert <<>> == bits(pfx, 31, 0)
+
+    # first bits
+    assert <<0::1>> == bits(pfx, 0, 1)
+    assert <<0::2>> == bits(pfx, 0, 2)
+
+    # last bits
+    assert <<1::1>> == bits(pfx, 31, 1)
+    assert <<1::2>> == bits(pfx, 30, 2)
+
+    # other bits
+    assert <<0>> == bits(pfx, 0, 8)
+    assert <<0>> == bits(pfx, 8, 8)
+    assert <<128>> == bits(pfx, 16, 8)
+    assert <<1>> == bits(pfx, 24, 8)
+
+    # non byte boundary
+    assert <<1>> == bits(pfx, 9, 8)
+    assert <<1::5>> == bits(pfx, 12, 5)
+    assert <<2>> == bits(pfx, 10, 8)
+
+    # CIDR
+    assert <<0::1>> == bits("0.0.128.1", 0, 1)
+    assert <<1::1>> == bits("acdc::", 0, 1)
+    assert <<0xAC>> == bits("acdc::", 0, 8)
+  end
 
   # Cast/1
   test "cast/1" do
     Enum.all?(@ip4_representations, fn x -> assert cast(x) end)
     Enum.all?(@ip6_representations, fn x -> assert cast(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> cast(x) end end)
+
+    # empty bits
+    assert 0 == cast(%Pfx{bits: <<>>, maxlen: 32})
+    assert 0 == cast(%Pfx{bits: <<>>, maxlen: 0})
+
+    # cast pads right, then turns it into a number
+    assert 255 == cast(%Pfx{bits: <<255>>, maxlen: 8})
+    assert 128 == cast(%Pfx{bits: <<1::1>>, maxlen: 8})
+    assert 65535 - 255 == cast(%Pfx{bits: <<255>>, maxlen: 16})
   end
 
   # Bnot/1
@@ -257,6 +305,27 @@ defmodule PfxTest do
     Enum.all?(@ip4_representations, fn x -> assert bnot(x) end)
     Enum.all?(@ip6_representations, fn x -> assert bnot(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> bnot(x) end end)
+
+    # no bits, no inverted bits
+    assert %Pfx{bits: <<>>, maxlen: 10} == bnot(%Pfx{bits: <<>>, maxlen: 10})
+
+    # bnot inverts the bits
+    assert %Pfx{bits: <<0>>, maxlen: 8} == bnot(%Pfx{bits: <<255>>, maxlen: 8})
+    assert %Pfx{bits: <<127>>, maxlen: 8} == bnot(%Pfx{bits: <<128>>, maxlen: 8})
+
+    # bnot twice yields original
+    assert %Pfx{bits: <<123>>, maxlen: 16} == bnot(bnot(%Pfx{bits: <<123>>, maxlen: 16}))
+
+    # results mirror argument
+    assert "0.0.255.255" == bnot("255.255.0.0")
+    assert {0, 0, 0, 252} == bnot({255, 255, 255, 3})
+    assert {{0, 255, 0, 255}, 32} == bnot({{255, 0, 255, 0}, 32})
+
+    # mask is omitted if full length
+    assert "255.255.255.255" == bnot("0.0.0.0/32")
+
+    # mask is applied first
+    assert "255.255.255.0/24" == bnot("0.0.0.0/24")
   end
 
   # Band/2
@@ -264,6 +333,24 @@ defmodule PfxTest do
     Enum.all?(@ip4_representations, fn x -> assert band(x, x) end)
     Enum.all?(@ip6_representations, fn x -> assert band(x, x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> band(x, x) end end)
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 8} ==
+             band(%Pfx{bits: <<>>, maxlen: 8}, %Pfx{bits: <<>>, maxlen: 8})
+
+    assert %Pfx{bits: <<>>, maxlen: 8} ==
+             band(%Pfx{bits: <<>>, maxlen: 8}, %Pfx{bits: <<255>>, maxlen: 8})
+
+    assert %Pfx{bits: <<0>>, maxlen: 8} ==
+             band(%Pfx{bits: <<255>>, maxlen: 8}, %Pfx{bits: <<>>, maxlen: 8})
+
+    # results mirror form of 1st argument
+    assert "1.2.3.4" == band("1.2.3.4", "255.255.255.255")
+    assert "1.2.3.0" == band("1.2.3.4", "255.255.255.0")
+    assert {1, 2, 0, 4} == band({1, 2, 3, 4}, "255.255.0.255")
+
+    # band does not change bit_size of its first argument
+    assert {{1, 0, 0, 0}, 16} == band({{1, 2, 3, 4}, 16}, "255.0.0.0")
   end
 
   # Bor/2
@@ -271,6 +358,24 @@ defmodule PfxTest do
     Enum.all?(@ip4_representations, fn x -> assert bor(x, x) end)
     Enum.all?(@ip6_representations, fn x -> assert bor(x, x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> bor(x, x) end end)
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 8} ==
+             bor(%Pfx{bits: <<>>, maxlen: 8}, %Pfx{bits: <<>>, maxlen: 8})
+
+    assert %Pfx{bits: <<>>, maxlen: 8} ==
+             bor(%Pfx{bits: <<>>, maxlen: 8}, %Pfx{bits: <<255>>, maxlen: 8})
+
+    assert %Pfx{bits: <<255>>, maxlen: 8} ==
+             bor(%Pfx{bits: <<255>>, maxlen: 8}, %Pfx{bits: <<>>, maxlen: 8})
+
+    # results mirror form of 1st argument
+    assert "255.255.255.255" == bor("1.2.3.4", "255.255.255.255")
+    assert "255.255.255.4" == bor("1.2.3.4", "255.255.255.0")
+    assert {255, 255, 3, 255} == bor({1, 2, 3, 4}, "255.255.0.255")
+
+    # bor does not change bit_size of its first argument
+    assert {{255, 2, 0, 0}, 16} == bor({{1, 2, 3, 4}, 16}, "255.0.0.0")
   end
 
   # Bxor/2
@@ -278,6 +383,24 @@ defmodule PfxTest do
     Enum.all?(@ip4_representations, fn x -> assert bxor(x, x) end)
     Enum.all?(@ip6_representations, fn x -> assert bxor(x, x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> bxor(x, x) end end)
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 8} ==
+             bxor(%Pfx{bits: <<>>, maxlen: 8}, %Pfx{bits: <<>>, maxlen: 8})
+
+    assert %Pfx{bits: <<>>, maxlen: 8} ==
+             bxor(%Pfx{bits: <<>>, maxlen: 8}, %Pfx{bits: <<255>>, maxlen: 8})
+
+    assert %Pfx{bits: <<255>>, maxlen: 8} ==
+             bxor(%Pfx{bits: <<255>>, maxlen: 8}, %Pfx{bits: <<>>, maxlen: 8})
+
+    # results mirror form of 1st argument
+    assert "254.253.252.251" == bxor("1.2.3.4", "255.255.255.255")
+    assert "254.253.252.4" == bxor("1.2.3.4", "255.255.255.0")
+    assert {254, 253, 3, 251} == bxor({1, 2, 3, 4}, "255.255.0.255")
+
+    # bor does not change bit_size of its first argument
+    assert {{254, 2, 0, 0}, 16} == bxor({{1, 2, 3, 4}, 16}, "255.0.0.0")
   end
 
   # Brot/2
@@ -285,6 +408,28 @@ defmodule PfxTest do
     Enum.all?(@ip4_representations, fn x -> assert brot(x, 0) end)
     Enum.all?(@ip6_representations, fn x -> assert brot(x, 0) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> brot(x, 0) end end)
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 0} == brot(%Pfx{bits: <<>>, maxlen: 0}, 0)
+    assert %Pfx{bits: <<>>, maxlen: 0} == brot(%Pfx{bits: <<>>, maxlen: 0}, -1)
+    assert %Pfx{bits: <<>>, maxlen: 0} == brot(%Pfx{bits: <<>>, maxlen: 0}, 1)
+
+    assert %Pfx{bits: <<>>, maxlen: 120} == brot(%Pfx{bits: <<>>, maxlen: 120}, 0)
+    assert %Pfx{bits: <<>>, maxlen: 120} == brot(%Pfx{bits: <<>>, maxlen: 120}, -1)
+    assert %Pfx{bits: <<>>, maxlen: 120} == brot(%Pfx{bits: <<>>, maxlen: 120}, 1)
+
+    # some bits
+    assert %Pfx{bits: <<127>>, maxlen: 8} == brot(%Pfx{bits: <<127>>, maxlen: 8}, 0)
+    assert %Pfx{bits: <<127>>, maxlen: 8} == brot(%Pfx{bits: <<127>>, maxlen: 8}, 8)
+    assert %Pfx{bits: <<254>>, maxlen: 8} == brot(%Pfx{bits: <<127>>, maxlen: 8}, -1)
+    assert %Pfx{bits: <<191>>, maxlen: 8} == brot(%Pfx{bits: <<127>>, maxlen: 8}, 1)
+
+    # same representation for results
+    assert "2.3.4.1" == brot("1.2.3.4", -8)
+    assert {2, 3, 4, 1} == brot({1, 2, 3, 4}, -8)
+    # note {{1,2,3,4},24} => {1, 2, 3} => rotate left by 8 bits gives {2, 3, 1}
+    assert {{2, 3, 1, 0}, 24} == brot({{1, 2, 3, 4}, 24}, -8)
+    assert {{2, 3, 1, 0}, 24} == brot({{1, 2, 3, 4}, 24}, -8)
   end
 
   # Bsl/2
@@ -292,6 +437,25 @@ defmodule PfxTest do
     Enum.all?(@ip4_representations, fn x -> assert bsl(x, 0) end)
     Enum.all?(@ip6_representations, fn x -> assert bsl(x, 0) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> bsl(x, 0) end end)
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 0} == bsl(%Pfx{bits: <<>>, maxlen: 0}, 0)
+    assert %Pfx{bits: <<>>, maxlen: 0} == bsl(%Pfx{bits: <<>>, maxlen: 0}, -1)
+    assert %Pfx{bits: <<>>, maxlen: 0} == bsl(%Pfx{bits: <<>>, maxlen: 0}, 1)
+
+    # some bits
+    assert %Pfx{bits: <<254>>, maxlen: 16} == bsl(%Pfx{bits: <<255>>, maxlen: 16}, 1)
+    assert %Pfx{bits: <<127>>, maxlen: 16} == bsl(%Pfx{bits: <<255>>, maxlen: 16}, -1)
+    assert %Pfx{bits: <<0>>, maxlen: 16} == bsl(%Pfx{bits: <<255>>, maxlen: 16}, 8)
+    assert %Pfx{bits: <<0>>, maxlen: 16} == bsl(%Pfx{bits: <<255>>, maxlen: 16}, -8)
+    # bit_size doesn't change
+    assert %Pfx{bits: <<0>>, maxlen: 16} == bsl(%Pfx{bits: <<255>>, maxlen: 16}, 88)
+
+    # same representation for results
+    assert "2.3.4.0" == bsl("1.2.3.4", 8)
+    assert "2.3.0.0/24" == bsl("1.2.3.4/24", 8)
+    assert {2, 3, 4, 0} == bsl({1, 2, 3, 4}, 8)
+    assert {0, 1, 2, 3} == bsl({1, 2, 3, 4}, -8)
   end
 
   # Bsr/2
@@ -299,6 +463,25 @@ defmodule PfxTest do
     Enum.all?(@ip4_representations, fn x -> assert bsr(x, 0) end)
     Enum.all?(@ip6_representations, fn x -> assert bsr(x, 0) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> bsr(x, 0) end end)
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 0} == bsr(%Pfx{bits: <<>>, maxlen: 0}, 0)
+    assert %Pfx{bits: <<>>, maxlen: 0} == bsr(%Pfx{bits: <<>>, maxlen: 0}, -1)
+    assert %Pfx{bits: <<>>, maxlen: 0} == bsr(%Pfx{bits: <<>>, maxlen: 0}, 1)
+
+    # some bits
+    assert %Pfx{bits: <<254>>, maxlen: 16} == bsr(%Pfx{bits: <<255>>, maxlen: 16}, -1)
+    assert %Pfx{bits: <<127>>, maxlen: 16} == bsr(%Pfx{bits: <<255>>, maxlen: 16}, 1)
+    assert %Pfx{bits: <<0>>, maxlen: 16} == bsr(%Pfx{bits: <<255>>, maxlen: 16}, -8)
+    assert %Pfx{bits: <<0>>, maxlen: 16} == bsr(%Pfx{bits: <<255>>, maxlen: 16}, 8)
+    # bit_size doesn't change
+    assert %Pfx{bits: <<0>>, maxlen: 16} == bsr(%Pfx{bits: <<255>>, maxlen: 16}, 88)
+
+    # same representation for results
+    assert "2.3.4.0" == bsr("1.2.3.4", -8)
+    assert "2.3.0.0/24" == bsr("1.2.3.4/24", -8)
+    assert {2, 3, 4, 0} == bsr({1, 2, 3, 4}, -8)
+    assert {0, 1, 2, 3} == bsr({1, 2, 3, 4}, 8)
   end
 
   # Padr/1
@@ -306,6 +489,18 @@ defmodule PfxTest do
     Enum.all?(@ip4_representations, fn x -> assert padr(x) end)
     Enum.all?(@ip6_representations, fn x -> assert padr(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> padr(x) end end)
+
+    # no bits
+    assert %Pfx{bits: <<0::23>>, maxlen: 23} == padr(%Pfx{bits: <<>>, maxlen: 23})
+
+    # some bits
+    assert %Pfx{bits: <<255, 0::15>>, maxlen: 23} == padr(%Pfx{bits: <<255>>, maxlen: 23})
+    assert %Pfx{bits: <<255, 0::120>>, maxlen: 128} == padr(%Pfx{bits: <<255>>, maxlen: 128})
+
+    # same representation for results
+    assert "1.0.0.0" == padr("1.0.0.0/8")
+    assert {1, 0, 0, 0} == padr({1, 0, 0, 0})
+    assert {{1, 0, 0, 0}, 32} == padr({{1, 0, 0, 0}, 8})
   end
 
   # Padr/2
@@ -316,6 +511,84 @@ defmodule PfxTest do
     Enum.all?(@ip6_representations, fn x -> assert padr(x, 1) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> padr(x, 0) end end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> padr(x, 1) end end)
+
+    # bad input
+    assert_raise ArgumentError, fn -> padr("1.0.0.0/8", -1) end
+
+    # no bits
+    assert %Pfx{bits: <<0::23>>, maxlen: 23} == padr(%Pfx{bits: <<>>, maxlen: 23}, 0)
+    assert %Pfx{bits: <<-1::23>>, maxlen: 23} == padr(%Pfx{bits: <<>>, maxlen: 23}, 1)
+
+    # some bits
+    assert %Pfx{bits: <<255, 0::15>>, maxlen: 23} == padr(%Pfx{bits: <<255>>, maxlen: 23}, 0)
+    assert %Pfx{bits: <<255, -1::15>>, maxlen: 23} == padr(%Pfx{bits: <<255>>, maxlen: 23}, 1)
+    assert %Pfx{bits: <<255, 0::120>>, maxlen: 128} == padr(%Pfx{bits: <<255>>, maxlen: 128}, 0)
+    assert %Pfx{bits: <<255, -1::120>>, maxlen: 128} == padr(%Pfx{bits: <<255>>, maxlen: 128}, 1)
+
+    # same representation for results
+    assert "1.2.3.4" == padr("1.2.3.4", 0)
+    assert "1.2.3.4" == padr("1.2.3.4", 1)
+    assert "1.0.0.0" == padr("1.0.0.0/8", 0)
+    assert "1.255.255.255" == padr("1.0.0.0/8", 1)
+    assert {1, 0, 0, 0} == padr({1, 0, 0, 0}, 0)
+    assert {1, 0, 0, 0} == padr({1, 0, 0, 0}, 1)
+    assert {{1, 0, 0, 0}, 32} == padr({{1, 0, 0, 0}, 8}, 0)
+    assert {{1, 255, 255, 255}, 32} == padr({{1, 0, 0, 0}, 8}, 1)
+  end
+
+  # Padr/3
+  test "padr/3" do
+    Enum.all?(@ip4_representations, fn x -> assert padr(x, 0, 0) end)
+    Enum.all?(@ip4_representations, fn x -> assert padr(x, 1, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert padr(x, 0, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert padr(x, 1, 0) end)
+
+    Enum.all?(@bad_representations, fn x ->
+      assert_raise ArgumentError, fn -> padr(x, 0, 0) end
+    end)
+
+    Enum.all?(@bad_representations, fn x ->
+      assert_raise ArgumentError, fn -> padr(x, 1, 0) end
+    end)
+
+    # bad input
+    assert_raise ArgumentError, fn -> padr("1.0.0.0/8", -1, 0) end
+    assert_raise ArgumentError, fn -> padr("1.0.0.0/8", 0, -1) end
+
+    # no bits padded
+    assert %Pfx{bits: <<>>, maxlen: 23} == padr(%Pfx{bits: <<>>, maxlen: 23}, 0, 0)
+    assert %Pfx{bits: <<>>, maxlen: 23} == padr(%Pfx{bits: <<>>, maxlen: 23}, 1, 0)
+
+    # all bits padded
+    assert %Pfx{bits: <<0::23>>, maxlen: 23} == padr(%Pfx{bits: <<>>, maxlen: 23}, 0, 23)
+    assert %Pfx{bits: <<-1::23>>, maxlen: 23} == padr(%Pfx{bits: <<>>, maxlen: 23}, 1, 23)
+
+    # some bits padded
+    assert %Pfx{bits: <<255, 0>>, maxlen: 23} == padr(%Pfx{bits: <<255>>, maxlen: 23}, 0, 8)
+    assert %Pfx{bits: <<255, 255>>, maxlen: 23} == padr(%Pfx{bits: <<255>>, maxlen: 23}, 1, 8)
+
+    assert %Pfx{bits: <<255, 0::1>>, maxlen: 23} == padr(%Pfx{bits: <<255>>, maxlen: 23}, 0, 1)
+    assert %Pfx{bits: <<255, 1::1>>, maxlen: 23} == padr(%Pfx{bits: <<255>>, maxlen: 23}, 1, 1)
+
+    # padding is clipped to maxlen
+    assert %Pfx{bits: <<255, -1::15>>, maxlen: 23} ==
+             padr(%Pfx{bits: <<255>>, maxlen: 23}, 1, 500)
+
+    assert %Pfx{bits: <<255, 0::120>>, maxlen: 128} ==
+             padr(%Pfx{bits: <<255>>, maxlen: 128}, 0, 500)
+
+    assert %Pfx{bits: <<255, -1::120>>, maxlen: 128} ==
+             padr(%Pfx{bits: <<255>>, maxlen: 128}, 1, 300)
+
+    # same representation for results
+    assert "1.2.3.4" == padr("1.2.3.4", 0, 32)
+    assert "1.2.3.4" == padr("1.2.3.4", 1, 32)
+    assert "1.0.0.0" == padr("1.0.0.0/8", 0, 24)
+    assert "1.255.255.255" == padr("1.0.0.0/8", 1, 24)
+    assert {1, 0, 0, 0} == padr({1, 0, 0, 0}, 0, 1)
+    assert {1, 0, 0, 0} == padr({1, 0, 0, 0}, 1, 1)
+    assert {{1, 0, 0, 0}, 32} == padr({{1, 0, 0, 0}, 8}, 0, 24)
+    assert {{1, 255, 255, 255}, 32} == padr({{1, 0, 0, 0}, 8}, 1, 24)
   end
 
   # Padl/1
@@ -323,6 +596,18 @@ defmodule PfxTest do
     Enum.all?(@ip4_representations, fn x -> assert padl(x) end)
     Enum.all?(@ip6_representations, fn x -> assert padl(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> padl(x) end end)
+
+    # no bits
+    assert %Pfx{bits: <<0::23>>, maxlen: 23} == padl(%Pfx{bits: <<>>, maxlen: 23})
+
+    # some bits
+    assert %Pfx{bits: <<0::15, 255>>, maxlen: 23} == padl(%Pfx{bits: <<255>>, maxlen: 23})
+    assert %Pfx{bits: <<0::120, 255>>, maxlen: 128} == padl(%Pfx{bits: <<255>>, maxlen: 128})
+
+    # same representation for results
+    assert "0.0.0.1" == padl("1.0.0.0/8")
+    assert {1, 0, 0, 0} == padl({1, 0, 0, 0})
+    assert {{0, 0, 0, 1}, 32} == padl({{1, 0, 0, 0}, 8})
   end
 
   # Padl/2
@@ -333,6 +618,84 @@ defmodule PfxTest do
     Enum.all?(@ip6_representations, fn x -> assert padl(x, 1) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> padl(x, 0) end end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> padl(x, 1) end end)
+
+    # bad input
+    assert_raise ArgumentError, fn -> padl("1.0.0.0/8", -1) end
+
+    # no bits
+    assert %Pfx{bits: <<0::23>>, maxlen: 23} == padl(%Pfx{bits: <<>>, maxlen: 23}, 0)
+    assert %Pfx{bits: <<-1::23>>, maxlen: 23} == padl(%Pfx{bits: <<>>, maxlen: 23}, 1)
+
+    # some bits
+    assert %Pfx{bits: <<0::15, 255>>, maxlen: 23} == padl(%Pfx{bits: <<255>>, maxlen: 23}, 0)
+    assert %Pfx{bits: <<-1::15, 255>>, maxlen: 23} == padl(%Pfx{bits: <<255>>, maxlen: 23}, 1)
+    assert %Pfx{bits: <<0::120, 255>>, maxlen: 128} == padl(%Pfx{bits: <<255>>, maxlen: 128}, 0)
+    assert %Pfx{bits: <<-1::120, 255>>, maxlen: 128} == padl(%Pfx{bits: <<255>>, maxlen: 128}, 1)
+
+    # same representation for results
+    assert "1.2.3.4" == padl("1.2.3.4", 0)
+    assert "1.2.3.4" == padl("1.2.3.4", 1)
+    assert "0.0.0.1" == padl("1.0.0.0/8", 0)
+    assert "255.255.255.1" == padl("1.0.0.0/8", 1)
+    assert {1, 0, 0, 0} == padl({1, 0, 0, 0}, 0)
+    assert {1, 0, 0, 0} == padl({1, 0, 0, 0}, 1)
+    assert {{0, 0, 0, 1}, 32} == padl({{1, 0, 0, 0}, 8}, 0)
+    assert {{255, 255, 255, 1}, 32} == padl({{1, 0, 0, 0}, 8}, 1)
+  end
+
+  # Padl/3
+  test "padl/3" do
+    Enum.all?(@ip4_representations, fn x -> assert padl(x, 0, 0) end)
+    Enum.all?(@ip4_representations, fn x -> assert padl(x, 1, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert padl(x, 0, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert padl(x, 1, 0) end)
+
+    Enum.all?(@bad_representations, fn x ->
+      assert_raise ArgumentError, fn -> padl(x, 0, 0) end
+    end)
+
+    Enum.all?(@bad_representations, fn x ->
+      assert_raise ArgumentError, fn -> padl(x, 1, 0) end
+    end)
+
+    # bad input
+    assert_raise ArgumentError, fn -> padl("1.0.0.0/8", -1, 0) end
+    assert_raise ArgumentError, fn -> padl("1.0.0.0/8", 0, -1) end
+
+    # no bits padded
+    assert %Pfx{bits: <<>>, maxlen: 23} == padl(%Pfx{bits: <<>>, maxlen: 23}, 0, 0)
+    assert %Pfx{bits: <<>>, maxlen: 23} == padl(%Pfx{bits: <<>>, maxlen: 23}, 1, 0)
+
+    # all bits padded
+    assert %Pfx{bits: <<0::23>>, maxlen: 23} == padl(%Pfx{bits: <<>>, maxlen: 23}, 0, 23)
+    assert %Pfx{bits: <<-1::23>>, maxlen: 23} == padl(%Pfx{bits: <<>>, maxlen: 23}, 1, 23)
+
+    # some bits padded
+    assert %Pfx{bits: <<0, 255>>, maxlen: 23} == padl(%Pfx{bits: <<255>>, maxlen: 23}, 0, 8)
+    assert %Pfx{bits: <<255, 255>>, maxlen: 23} == padl(%Pfx{bits: <<255>>, maxlen: 23}, 1, 8)
+
+    assert %Pfx{bits: <<0::1, 255>>, maxlen: 23} == padl(%Pfx{bits: <<255>>, maxlen: 23}, 0, 1)
+    assert %Pfx{bits: <<1::1, 255>>, maxlen: 23} == padl(%Pfx{bits: <<255>>, maxlen: 23}, 1, 1)
+
+    # padding is clipped to maxlen
+    assert %Pfx{bits: <<-1::15, 255>>, maxlen: 23} ==
+             padl(%Pfx{bits: <<255>>, maxlen: 23}, 1, 500)
+
+    assert %Pfx{bits: <<0::120, 255>>, maxlen: 128} ==
+             padl(%Pfx{bits: <<255>>, maxlen: 128}, 0, 500)
+
+    assert %Pfx{bits: <<-1::120, 255>>, maxlen: 128} ==
+             padl(%Pfx{bits: <<255>>, maxlen: 128}, 1, 300)
+
+    # same representation for results
+    assert "1.2.3.4" == padl("1.2.3.4", 0, 32)
+    assert "1.2.3.4" == padl("1.2.3.4", 1, 32)
+    assert "0.0.0.1" == padl("1.0.0.0/8", 0, 24)
+    assert "255.255.255.1" == padl("1.0.0.0/8", 1, 24)
+    assert {1, 0, 0, 0} == padl({1, 0, 0, 0}, 0, 1)
+    assert {1, 0, 0, 0} == padl({1, 0, 0, 0}, 1, 1)
+    assert {{0, 0, 0, 1}, 32} == padl({{1, 0, 0, 0}, 8}, 0, 24)
+    assert {{255, 255, 255, 1}, 32} == padl({{1, 0, 0, 0}, 8}, 1, 24)
   end
 
   # Bset/2
@@ -343,10 +706,52 @@ defmodule PfxTest do
     Enum.all?(@ip6_representations, fn x -> assert bset(x, 1) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> bset(x, 0) end end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> bset(x, 1) end end)
+
+    # bad input
+    assert_raise ArgumentError, fn -> bset(%Pfx{bits: <<255>>, maxlen: 8}, -1) end
+    assert_raise ArgumentError, fn -> bset(%Pfx{bits: <<255>>, maxlen: 8}, 2) end
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 0} == bset(%Pfx{bits: <<>>, maxlen: 0}, 0)
+    assert %Pfx{bits: <<>>, maxlen: 0} == bset(%Pfx{bits: <<>>, maxlen: 0}, 1)
+
+    # some bits
+    assert %Pfx{bits: <<255>>, maxlen: 24} == bset(%Pfx{bits: <<0>>, maxlen: 24}, 1)
+    assert %Pfx{bits: <<0>>, maxlen: 24} == bset(%Pfx{bits: <<255>>, maxlen: 24}, 0)
+
+    # same representation for the result
+    assert "0.0.0.0" == bset("0.0.0.0", 0)
+    assert "255.255.255.255" == bset("0.0.0.0", 1)
+    assert "255.255.0.0/16" == bset("0.0.0.0/16", 1)
+    assert "255.255.0.0/16" == bset("0.0.1.2/16", 1)
+    assert {0, 0, 0, 0} == bset({0, 0, 0, 0}, 0)
+    assert {255, 255, 255, 255} == bset({0, 1, 2, 3}, 1)
+    assert {{255, 255, 255, 0}, 24} == bset({{0, 0, 0, 255}, 24}, 1)
   end
 
-  # Partition
+  # Partition/2
   test "partition/2" do
+    assert_raise ArgumentError, fn -> partition(%Pfx{bits: <<255>>, maxlen: 4}, 1) end
+    assert_raise ArgumentError, fn -> partition(%Pfx{bits: <<255>>, maxlen: 8.0}, 1) end
+
+    # try to use too many bits to partition
+    assert_raise ArgumentError, fn -> partition(%Pfx{bits: <<255>>, maxlen: 16}, 17) end
+
+    # no bits left
+    assert [%Pfx{bits: <<>>, maxlen: 0}] == partition(%Pfx{bits: <<>>, maxlen: 0}, 0)
+    assert [%Pfx{bits: <<255>>, maxlen: 8}] == partition(%Pfx{bits: <<255>>, maxlen: 8}, 8)
+    assert [%Pfx{bits: <<255>>, maxlen: 16}] == partition(%Pfx{bits: <<255>>, maxlen: 16}, 8)
+
+    # results mirror format of argument
+    assert ["1.1.1.0", "1.1.1.1"] == partition("1.1.1.0/31", 32)
+    assert [{{1, 1, 1, 0}, 32}, {{1, 1, 1, 1}, 32}] == partition({{1, 1, 1, 0}, 31}, 32)
+    assert [{1, 1, 1, 1}] == partition({1, 1, 1, 1}, 32)
+
+    assert 1 == partition("1.1.1.0", 32) |> length()
+    assert 1 == partition("1.1.1.0/32", 32) |> length()
+    assert 2 == partition("1.1.1.0/24", 25) |> length()
+    assert 256 == partition("1.1.1.0/24", 32) |> length()
+    assert 65536 == partition("acdc::1976/112", 128) |> length()
   end
 
   # Fields/2
@@ -355,6 +760,24 @@ defmodule PfxTest do
     Enum.all?(@ip6_representations, fn x -> assert fields(x, 1) end)
 
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> fields(x, 1) end end)
+
+    # bad width
+    assert_raise ArgumentError, fn -> fields(%Pfx{bits: <<255>>, maxlen: 8}, 0) end
+
+    # no bits
+    assert [] == fields(%Pfx{bits: <<>>, maxlen: 0}, 1)
+
+    # some bits
+    list = for _ <- 0..31, do: {0, 1}
+    assert list == fields("0.0.0.0", 1)
+
+    assert [{0, 4}, {1, 4}, {0, 4}, {1, 4}, {0, 4}, {1, 4}, {0, 4}, {1, 4}] ==
+             fields("1.1.1.1", 4)
+
+    assert [{1, 8}, {2, 8}, {3, 8}, {4, 8}] == fields("1.2.3.4", 8)
+
+    # last bitfield may differ in width
+    assert [{1, 8}, {2, 8}, {15, 4}] == fields("1.2.255.0/20", 8)
   end
 
   # Digits/2
@@ -363,6 +786,38 @@ defmodule PfxTest do
     Enum.all?(@ip6_representations, fn x -> assert digits(x, 1) end)
 
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> digits(x, 1) end end)
+
+    # no bits, means no actual digits and a 0 for length/mask
+    assert {{}, 0} == digits(%Pfx{bits: <<>>, maxlen: 0}, 1)
+
+    # just the bits
+    assert {{1, 1, 1, 1, 0, 0, 0, 0}, 8} == digits(%Pfx{bits: <<0b11110000>>, maxlen: 8}, 1)
+    assert {{1, 2, 3, 0}, 24} = digits("1.2.3.0/24", 8)
+    assert {{1, 2, 3, 0}, 32} = digits("1.2.3.0", 8)
+
+    assert {{0xACDC, 0x1976, 0, 0, 0, 0, 0, 0}, 32} == digits("acdc:1976::/32", 16)
+    assert {{0xACDC, 0x1976, 0, 0, 0, 0, 0, 0}, 128} == digits("acdc:1976::", 16)
+
+    # nibbles
+    assert {{0xA, 0xC, 0xD, 0xC, 0x1, 0x9, 0x7, 0x6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+             0, 0, 0, 0, 0, 0, 0, 0, 0}, 128} == digits("acdc:1976::", 4)
+  end
+
+  # Undigits/2
+  test "undigits/2" do
+    # bad input
+    assert_raise ArgumentError, fn -> undigits("1.1.1.1", 8) end
+    assert_raise ArgumentError, fn -> undigits({1, 1, 1, 1}, 8) end
+    assert_raise ArgumentError, fn -> undigits({{1, 1, 1, 1}, 32}, 1.0) end
+    assert_raise ArgumentError, fn -> undigits({{1, 1, 1, 1}, 32}, 0) end
+    assert_raise ArgumentError, fn -> undigits({{1, 1.0, 1, 1}, 32}, 8) end
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 32} == undigits({{0, 0, 0, 0}, 0}, 8)
+
+    # with bits
+    assert %Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32} == undigits({{1, 2, 3, 4}, 32}, 8)
+    assert %Pfx{bits: <<1, 2>>, maxlen: 16} == undigits({{1, 2}, 16}, 8)
   end
 
   # Sibling/2
@@ -373,6 +828,22 @@ defmodule PfxTest do
     Enum.all?(@bad_representations, fn x ->
       assert_raise ArgumentError, fn -> sibling(x, 0) end
     end)
+
+    # a prefix is its own sibling at distance 0
+    assert %Pfx{bits: <<1, 2, 3, 4, 5>>, maxlen: 48} ==
+             sibling(%Pfx{bits: <<1, 2, 3, 4, 5>>, maxlen: 48}, 0)
+
+    # result mirrors format of argument
+    assert "1.1.1.1" == sibling("1.1.1.1", 0)
+    assert "255.255.255.255" == sibling("0.0.0.0", -1)
+    assert "0.0.0.0" == sibling("255.255.255.255", 1)
+
+    assert {1, 1, 1, 1} == sibling({1, 1, 1, 1}, 0)
+    assert {1, 1, 1, 0} == sibling({1, 1, 1, 1}, -1)
+    assert {1, 1, 1, 2} == sibling({1, 1, 1, 1}, 1)
+
+    assert "1.1.1.0/24" == sibling("1.1.1.0/24", 0)
+    assert "1.1.2.0/24" == sibling("1.1.1.0/24", 1)
   end
 
   # Size/1
@@ -380,6 +851,25 @@ defmodule PfxTest do
     Enum.all?(@ip4_representations, fn x -> assert size(x) end)
     Enum.all?(@ip6_representations, fn x -> assert size(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> size(x) end end)
+
+    # no bits, but the empty prefix counts as well
+    assert 1 == size(%Pfx{bits: <<>>, maxlen: 0})
+
+    # no bits left, so again size of 1
+    assert 1 == size(%Pfx{bits: <<255>>, maxlen: 8})
+
+    # some bits left
+    assert 16 == size(%Pfx{bits: <<255>>, maxlen: 12})
+    assert 256 == size(%Pfx{bits: <<1, 2, 3>>, maxlen: 32})
+    assert 65536 == size(%Pfx{bits: <<1, 2>>, maxlen: 32})
+
+    # accepts all formats
+    assert 1 == size("1.1.1.1")
+    assert 1 == size({1, 1, 1, 1})
+    assert 1 == size({{1, 1, 1, 1}, 32})
+    assert 2 == size("acdc:1976::/127")
+    assert 256 == size("1.1.1.0/24")
+    assert 256 == size({{0, 0, 0, 0}, 24})
   end
 
   # Member/2

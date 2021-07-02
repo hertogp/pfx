@@ -104,6 +104,7 @@ defmodule Pfx do
         :nopart -> "cannot partition prefixes using #{inspect(data)}"
         :nopos -> "expected a pos_integer, got #{inspect(data)}"
         :nowidth -> "expected valid width, got #{inspect(data)}"
+        :noundig -> "expected {{n1, n2, ..}, length}, got #{inspect(data)}"
         :pfx -> "expected a valid Pfx struct, got #{inspect(data)}"
         :pfx4 -> "expected a valid IPv4 Pfx, got #{inspect(data)}"
         :pfx6 -> "expected a valid IPv6 Pfx, got #{inspect(data)}"
@@ -649,9 +650,7 @@ defmodule Pfx do
   @doc """
   A bitwise AND of two `t:prefix/0`'s.
 
-  Both prefixes should, ultimately, have the same `maxlen`.
-  If one or more arguments are nog a `Pfx`-struct they are
-  are converted using `Pfx.new/1`.
+  Both prefixes must have the same `maxlen`.
 
   ## Examples
 
@@ -662,7 +661,7 @@ defmodule Pfx do
       %Pfx{bits: <<128, 129, 0, 0>>, maxlen: 32}
       iex>
       iex> band(y,x)
-      %Pfx{bits: <<128, 129, 0, 0>>, maxlen: 32}
+      %Pfx{bits: <<128, 129>>, maxlen: 32}
 
       iex> band("1.2.3.4", "255.255.0.0")
       "1.2.0.0"
@@ -674,8 +673,8 @@ defmodule Pfx do
       {1, 2, 0, 0}
 
       # both will still have maxlen `32`
-      iex> band({{1, 2, 3, 4}, 24}, {{255, 255, 0, 0}, 32})
-      {{1, 2, 0, 0}, 32}
+      iex> band({{1, 2, 3, 4}, 24}, {255, 255, 0, 0})
+      {{1, 2, 0, 0}, 24}
 
       # the work of ancient astrounauts ..
       iex> band("1.2.3.4", "255.255")
@@ -683,11 +682,11 @@ defmodule Pfx do
   """
   @spec band(prefix, prefix) :: prefix
   def band(pfx1, pfx2) when is_comparable(pfx1, pfx2) do
-    width = max(bit_size(pfx1.bits), bit_size(pfx2.bits))
-    x = castp(pfx1.bits, width)
-    y = castp(pfx2.bits, width)
+    maxlen = pfx1.maxlen
+    x = castp(pfx1.bits, maxlen)
+    y = castp(pfx2.bits, maxlen)
     z = Bitwise.band(x, y)
-    %Pfx{pfx1 | bits: <<z::size(width)>>}
+    %Pfx{pfx1 | bits: truncate(<<z::size(maxlen)>>, bit_size(pfx1.bits))}
   end
 
   def band(pfx1, pfx2) when is_pfx(pfx1) and is_pfx(pfx2),
@@ -725,17 +724,17 @@ defmodule Pfx do
       iex> bor({1, 2, 3, 4}, "0.0.255.0")
       {1, 2, 255, 4}
 
-      iex> bor({{1, 2, 3, 4}, 16}, {0, 0, 255, 0})
-      {{1, 2, 255, 0}, 32}
+      iex> bor({{1, 2, 3, 4}, 16}, {0, 255, 255, 0})
+      {{1, 255, 0, 0}, 16}
 
   """
   @spec bor(prefix, prefix) :: prefix
   def bor(pfx1, pfx2) when is_comparable(pfx1, pfx2) do
-    width = max(bit_size(pfx1.bits), bit_size(pfx2.bits))
+    width = pfx1.maxlen
     x = castp(pfx1.bits, width)
     y = castp(pfx2.bits, width)
     z = Bitwise.bor(x, y)
-    %Pfx{pfx1 | bits: <<z::size(width)>>}
+    %Pfx{pfx1 | bits: truncate(<<z::size(width)>>, bit_size(pfx1.bits))}
   end
 
   def bor(pfx1, pfx2) when is_pfx(pfx1) and is_pfx(pfx2),
@@ -775,11 +774,11 @@ defmodule Pfx do
   """
   @spec bxor(prefix, prefix) :: prefix
   def bxor(pfx1, pfx2) when is_comparable(pfx1, pfx2) do
-    width = max(bit_size(pfx1.bits), bit_size(pfx2.bits))
+    width = pfx1.maxlen
     x = castp(pfx1.bits, width)
     y = castp(pfx2.bits, width)
     z = Bitwise.bxor(x, y)
-    %Pfx{pfx1 | bits: <<z::size(width)>>}
+    %Pfx{pfx1 | bits: truncate(<<z::size(width)>>, bit_size(pfx1.bits))}
   end
 
   def bxor(pfx1, pfx2) when is_pfx(pfx1) and is_pfx(pfx2),
@@ -819,13 +818,15 @@ defmodule Pfx do
 
   """
   @spec brot(prefix, integer) :: prefix
+  def brot(prefix, integer)
+
+  def brot(%Pfx{bits: <<>>} = pfx, _) when is_pfx(pfx),
+    do: pfx
+
   def brot(pfx, n) when is_pfx(pfx) and is_integer(n) and n < 0 do
     plen = bit_size(pfx.bits)
     brot(pfx, plen + rem(n, plen))
   end
-
-  def brot(%Pfx{bits: <<>>} = pfx, _) when is_pfx(pfx),
-    do: pfx
 
   def brot(pfx, n) when is_pfx(pfx) and is_integer(n) do
     width = bit_size(pfx.bits)
@@ -1205,7 +1206,7 @@ defmodule Pfx do
   end
 
   def partition(pfx, bitlen) when is_pfx(pfx),
-    do: arg_error(:nopart, bitlen)
+    do: raise(arg_error(:nopart, bitlen))
 
   def partition(pfx, bitlen),
     do: partition(new(pfx), bitlen) |> Enum.map(fn x -> marshall(x, pfx) end)
@@ -1369,6 +1370,9 @@ defmodule Pfx do
 
   def undigits({_digits, _length}, width),
     do: raise(arg_error(:nopos, width))
+
+  def undigits(digits, _),
+    do: raise(arg_error(:noundig, digits))
 
   @doc """
   Returns another `Pfx` at distance `offset`.
