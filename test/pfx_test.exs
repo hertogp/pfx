@@ -969,6 +969,16 @@ defmodule PfxTest do
     assert "1.2.3.0" == format({{1, 2, 3, 4}, 24}, mask: false)
   end
 
+  # Valid?/1
+  test "valid?/2" do
+    Enum.all?(@ip4_representations, fn x -> assert valid?(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert valid?(x) end)
+    Enum.all?(@bad_representations, fn x -> refute valid?(x) end)
+
+    # no bits
+    assert valid?(%Pfx{bits: <<>>, maxlen: 0})
+  end
+
   # Compare/2
   test "compare/2" do
     Enum.all?(@ip4_representations, fn x -> assert compare(x, x) end)
@@ -977,6 +987,16 @@ defmodule PfxTest do
     Enum.all?(@bad_representations, fn x ->
       assert_raise ArgumentError, fn -> compare(x, x) end
     end)
+
+    # full prefixes
+    assert :lt == compare("1.1.1.1", "1.1.1.2")
+    assert :gt == compare("1.1.1.1", "1.1.1.0")
+    assert :eq == compare("1.1.1.1", "1.1.1.1")
+
+    # networks
+    assert :lt == compare("10.11.12.0/24", "10.11.0.0/16")
+    assert :gt == compare("10.11.0.0/16", "10.11.12.0/24")
+    assert :eq == compare("10.11.0.0/16", "10.11.0.0/16")
   end
 
   # Contrast/2
@@ -987,6 +1007,16 @@ defmodule PfxTest do
     Enum.all?(@bad_representations, fn x ->
       assert_raise ArgumentError, fn -> contrast(x, x) end
     end)
+
+    assert :equal == contrast(new(<<10, 10>>, 32), new(<<10, 10>>, 32))
+    assert :more == contrast(new(<<10, 10, 10>>, 32), new(<<10, 10>>, 32))
+    assert :less == contrast(new(<<10, 10>>, 32), new(<<10, 10, 10>>, 32))
+    assert :left == contrast(new(<<10, 10>>, 32), new(<<10, 11>>, 32))
+    assert :right == contrast(new(<<10, 11>>, 32), new(<<10, 10>>, 32))
+    assert :disjoint == contrast(new(<<10, 10>>, 32), new(<<10, 12>>, 32))
+    assert :disjoint == contrast("10.10.0.0/16", %Pfx{bits: <<10, 12>>, maxlen: 32})
+    assert :more == contrast(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, {{10, 10, 0, 0}, 16})
+    assert :more == contrast("10.10.10.0/24", "10.10.0.0/16")
   end
 
   # Network/1

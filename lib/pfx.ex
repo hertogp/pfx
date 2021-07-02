@@ -1802,7 +1802,7 @@ defmodule Pfx do
         "10.11.0.0/16",
       ]
 
-      # Note: all prefixes must have the same `maxlen`
+      # note: all prefixes must have the same `maxlen`
       iex> compare(new(<<10>>, 32), new(<<10>>, 128))
       ** (ArgumentError) prefixes have different maxlen's: {%Pfx{bits: "\n", maxlen: 32}, %Pfx{bits: "\n", maxlen: 128}}
 
@@ -1838,32 +1838,26 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> contrast(new(<<10, 10>>, 32), new(<<10, 10>>, 32))
+      iex> contrast("10.10.0.0/16", "10.10.0.0/16")
       :equal
 
-      iex> contrast(new(<<10, 10, 10>>, 32), new(<<10, 10>>, 32))
+      iex> contrast("10.10.10.0/24", "10.10.0.0/16")
       :more
 
-      iex> contrast(new(<<10, 10>>, 32), new(<<10, 10, 10>>, 32))
+      iex> contrast("10.0.0.0/8", "10.255.255.0/24")
       :less
 
-      iex> contrast(new(<<10, 10>>, 32), new(<<10, 11>>, 32))
+      iex> contrast("1.2.3.0/24", "1.2.4.0/24")
       :left
 
-      iex> contrast(new(<<10, 11>>, 32), new(<<10, 10>>, 32))
+      iex> contrast("1.2.3.4/30", "1.2.3.0/30")
       :right
 
-      iex> contrast(new(<<10, 10>>, 32), new(<<10, 12>>, 32))
+      iex> contrast("10.10.0.0/16", "9.0.0.0/8")
       :disjoint
 
       iex> contrast("10.10.0.0/16", %Pfx{bits: <<10,12>>, maxlen: 32})
       :disjoint
-
-      iex> contrast(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, {{10, 10, 0, 0}, 16})
-      :more
-
-      iex> contrast("10.10.10.0/24", "10.10.0.0/16")
-      :more
 
   """
   @spec contrast(prefix, prefix) :: :equal | :more | :less | :left | :right | :disjoint
@@ -1888,15 +1882,25 @@ defmodule Pfx do
     do: if(x == truncate(y, bit_size(x)), do: :less, else: :disjoint)
 
   defp contrastp(x, y) do
-    size = bit_size(x) - 1
-    <<n::bitstring-size(size), n1::1>> = x
-    <<m::bitstring-size(size), _::1>> = y
+    size = bit_size(x)
+    <<n::size(size)>> = x
+    <<m::size(size)>> = y
 
-    if n == m do
-      if n1 == 0, do: :left, else: :right
-    else
-      :disjoint
+    case n - m do
+      1 -> :right
+      -1 -> :left
+      _ -> :disjoint
     end
+
+    # size = bit_size(x) - 1
+    # <<n::bitstring-size(size), n1::1>> = x
+    # <<m::bitstring-size(size), _::1>> = y
+
+    # if n == m do
+    #   if n1 == 0, do: :left, else: :right
+    # else
+    #   :disjoint
+    # end
   end
 
   @doc """
