@@ -1024,6 +1024,24 @@ defmodule PfxTest do
     Enum.all?(@ip4_representations, fn x -> assert network(x) end)
     Enum.all?(@ip6_representations, fn x -> assert network(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> network(x) end end)
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 0} == network(%Pfx{bits: <<>>, maxlen: 0})
+
+    # only one bit
+    assert %Pfx{bits: <<0::1>>, maxlen: 1} == network(%Pfx{bits: <<>>, maxlen: 1})
+
+    # more bits
+    assert %Pfx{bits: <<255, 0>>, maxlen: 16} == network(%Pfx{bits: <<255>>, maxlen: 16})
+
+    # full address
+    assert %Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32} ==
+             network(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32})
+
+    # all formats
+    assert "1.1.1.0" == network("1.1.1.255/24")
+    assert "ACDC:1976:0:0:0:0:0:0" == network("acdc:1976::/32")
+    assert {{1, 2, 3, 0}, 32} == network({{1, 2, 3, 4}, 24})
   end
 
   # Broadcast/1
@@ -1032,18 +1050,66 @@ defmodule PfxTest do
     Enum.all?(@ip6_representations, fn x -> assert broadcast(x) end)
 
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> broadcast(x) end end)
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 0} == broadcast(%Pfx{bits: <<>>, maxlen: 0})
+
+    # only one bit
+    assert %Pfx{bits: <<1::1>>, maxlen: 1} == broadcast(%Pfx{bits: <<>>, maxlen: 1})
+
+    # more bits
+    assert %Pfx{bits: <<255, 255>>, maxlen: 16} == broadcast(%Pfx{bits: <<255>>, maxlen: 16})
+
+    # full address
+    assert %Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32} ==
+             broadcast(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32})
+
+    # all formats
+    assert "1.1.1.255" == broadcast("1.1.1.0/24")
+    assert "1.255.255.255" == broadcast("1.0.0.0/8")
+    assert "ACDC:1976:FFFF:FFFF:FFFF:FFFF:FFFF:FFFF" == broadcast("acdc:1976::/32")
+    assert {{1, 2, 3, 255}, 32} == broadcast({{1, 2, 3, 4}, 24})
   end
 
   # Hosts/1
   test "hosts/1" do
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> hosts(x) end end)
+
+    # no bits; even zero bit prefix has itself as a member
+    assert [%Pfx{bits: <<>>, maxlen: 0}] == hosts(%Pfx{bits: <<>>, maxlen: 0})
+
+    # one bit
+    assert [%Pfx{bits: <<0::1>>, maxlen: 1}, %Pfx{bits: <<1::1>>, maxlen: 1}] ==
+             hosts(%Pfx{bits: <<>>, maxlen: 1})
+
+    # more bits
+    assert 16 == hosts("10.10.10.0/28") |> length()
+    assert 256 == hosts("10.10.10.0/24") |> length()
+    assert 65536 == hosts("10.10.0.0/16") |> length()
+
+    # all representations
+    assert 16 == hosts({{10, 10, 10, 0}, 28}) |> length()
+    assert 256 == hosts({{10, 10, 10, 0}, 24}) |> length()
+    assert 65536 == hosts({{10, 10, 10, 10}, 16}) |> length()
+
+    # remember: hosts returns full length prefixes
+    assert [{{1, 1, 1, 0}, 32}, {{1, 1, 1, 1}, 32}] == hosts({{1, 1, 1, 0}, 31})
   end
 
   # Host/2
   test "host/2" do
+    # essentially a wrapper for member/2
     Enum.all?(@ip4_representations, fn x -> assert host(x, 0) end)
     Enum.all?(@ip6_representations, fn x -> assert host(x, 0) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> host(x, 0) end end)
+
+    # all formats
+    assert %Pfx{bits: <<10, 255>>, maxlen: 16} ==
+             host(%Pfx{bits: <<>>, maxlen: 16}, 10 * 256 + 255)
+
+    assert "1.1.1.63" == host("1.1.1.0/25", 63)
+    assert {1, 1, 1, 91} == host({1, 1, 1, 91}, 0)
+    assert {{1, 1, 1, 255}, 32} == host({{1, 1, 1, 0}, 24}, 255)
   end
 
   # Mask/1
@@ -1051,23 +1117,71 @@ defmodule PfxTest do
     Enum.all?(@ip4_representations, fn x -> assert mask(x) end)
     Enum.all?(@ip6_representations, fn x -> assert mask(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> mask(x) end end)
+
+    # mask sets all existing bits to `1` and pads right with `0`-bits
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 0} == mask(%Pfx{bits: <<>>, maxlen: 0})
+
+    # 1 bit
+    assert %Pfx{bits: <<0::1>>, maxlen: 1} == mask(%Pfx{bits: <<>>, maxlen: 1})
+    assert %Pfx{bits: <<1::1>>, maxlen: 1} == mask(%Pfx{bits: <<1::1>>, maxlen: 1})
+
+    # some bits
+    assert %Pfx{bits: <<255, 0::7>>, maxlen: 15} == mask(%Pfx{bits: <<255>>, maxlen: 15})
   end
 
   # Inv_mask/1
+
   test "inv_mask/1" do
     Enum.all?(@ip4_representations, fn x -> assert inv_mask(x) end)
     Enum.all?(@ip6_representations, fn x -> assert inv_mask(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> inv_mask(x) end end)
+
+    # inv_mask sets all existing bits to `0` and pads right with `1`-bits
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 0} == inv_mask(%Pfx{bits: <<>>, maxlen: 0})
+
+    # 1 bit
+    assert %Pfx{bits: <<1::1>>, maxlen: 1} == inv_mask(%Pfx{bits: <<>>, maxlen: 1})
+    assert %Pfx{bits: <<0::1>>, maxlen: 1} == inv_mask(%Pfx{bits: <<1::1>>, maxlen: 1})
+
+    # some bits
+    assert %Pfx{bits: <<0, -1::7>>, maxlen: 15} == inv_mask(%Pfx{bits: <<255>>, maxlen: 15})
+
+    # all formats
+    assert "0.0.0.255" == inv_mask("10.11.12.14/24")
+    assert {{0, 0, 0, 127}, 32} == inv_mask({{1, 2, 3, 4}, 25})
+    assert {0, 0, 0, 0} == inv_mask({1, 2, 3, 4})
   end
 
   # Neighbor/1
+
   test "neighbor/1" do
-    Enum.all?(@ip4_representations, fn x -> assert neighbor(x) end)
-    Enum.all?(@ip6_representations, fn x -> assert neighbor(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> neighbor(x) end end)
+
+    # a real neighbor needs some real bits
+    assert_raise ArgumentError, fn -> neighbor(%Pfx{bits: <<>>, maxlen: 0}) end
+
+    # 1 bit
+    assert %Pfx{bits: <<1::1>>, maxlen: 1} == neighbor(%Pfx{bits: <<0::1>>, maxlen: 1})
+    assert %Pfx{bits: <<0::1>>, maxlen: 1} == neighbor(%Pfx{bits: <<1::1>>, maxlen: 1})
+
+    # more bits
+    assert %Pfx{bits: <<254>>, maxlen: 16} == neighbor(%Pfx{bits: <<255>>, maxlen: 16})
+
+    assert %Pfx{bits: <<255, 1::1>>, maxlen: 16} ==
+             neighbor(%Pfx{bits: <<255, 0::1>>, maxlen: 16})
+
+    # other formats
+    assert "1.1.1.0/31" == neighbor("1.1.1.3/31")
+    assert {{1, 2, 3, 4}, 30} == neighbor({{1, 2, 3, 0}, 30})
+    assert "10.11.12.1" == neighbor("10.11.12.0")
   end
 
   # Teredo/1
+
   test "teredo/1" do
     Enum.all?(@ip4_representations, fn x -> assert nil == teredo(x) end)
     Enum.all?(@ip6_representations, fn x -> assert nil == teredo(x) end)
@@ -1075,16 +1189,48 @@ defmodule PfxTest do
   end
 
   # Teredo?/1
+
   test "teredo?/1" do
     Enum.all?(@bad_representations, fn x -> refute teredo?(x) end)
+
+    # no bits
+    refute teredo?(%Pfx{bits: <<>>, maxlen: 0})
+
+    # IPv4 is never a teredo address
+    refute teredo?(%Pfx{bits: <<0, 0, 0, 0>>, maxlen: 32})
+    refute teredo?(%Pfx{bits: <<255, 255, 255, 255>>, maxlen: 32})
+    refute teredo?(%Pfx{bits: <<>>, maxlen: 32})
+    refute teredo?(%Pfx{bits: <<0x2001::16, 0::16>>, maxlen: 32})
+
+    # IPv6 only 1 segment
+    assert teredo?(%Pfx{bits: <<0x2001::16, 0::16>>, maxlen: 128})
+    assert teredo?(%Pfx{bits: <<0x2001::16, 0::16, 0::96>>, maxlen: 128})
+    assert teredo?(%Pfx{bits: <<0x2001::16, 0::16, 0::48, -1::48>>, maxlen: 128})
+    assert teredo?(%Pfx{bits: <<0x2001::16, 0::16, -1::48, 0::48>>, maxlen: 128})
+    assert teredo?(%Pfx{bits: <<0x2001::16, 0::16, -1::96>>, maxlen: 128})
+
+    # other formats
+    refute teredo?("1.1.1.1")
+    refute teredo?("0.0.0.0/0")
+    refute teredo?("acdc:1976::")
+    assert teredo?("2001:0::")
+    assert teredo?("2001:0:ffff:ffff:ffff:ffff:ffff:ffff")
+    assert teredo?("2001:0:ffff:0:ffff:0:ffff:0")
+    assert teredo?("2001:0:1:2:3:4:5:6")
   end
 
   # Multicast?/1
+
   test "multicast?/1" do
     Enum.all?(@bad_representations, fn x -> refute multicast?(x) end)
+
+    # valid mcast addresses
+    assert multicast?(%Pfx{bits: <<14::4, 0::28>>, maxlen: 32})
+    assert multicast?(%Pfx{bits: <<14::4, -1::28>>, maxlen: 32})
   end
 
   # Multicast/1
+
   test "multicast/1" do
     Enum.all?(@ip4_representations, fn x -> assert nil == multicast(x) end)
     Enum.all?(@ip6_representations, fn x -> assert nil == multicast(x) end)
@@ -1094,9 +1240,37 @@ defmodule PfxTest do
 
   # Link_local?/1
   test "link_local?/1" do
+    # a bad rep will get you false everytime
+    Enum.all?(@bad_representations, fn x -> refute link_local?(x) end)
+
+    # IPv4 (almost all) link_local
+    refute link_local?("169.254.0.0")
+    refute link_local?("169.254.255.0")
+    refute link_local?("169.254.255.255")
+    assert link_local?("169.254.128.128")
+    assert link_local?("0.0.0.0")
+    assert link_local?("0.255.255.255")
+    refute link_local?("1.0.0.0")
+    refute link_local?("1.255.255.255")
+
+    # IPv6 link locals
+    assert link_local?(%Pfx{bits: <<0xFE80::16, 0::48, 0::64>>, maxlen: 128})
+    assert link_local?(%Pfx{bits: <<0xFE80::16, 0::48, -1::64>>, maxlen: 128})
+
+    # other formats
+    assert link_local?("fe80::")
+    assert link_local?("fe80:0:0:0:1:2:3:4")
+    assert link_local?("fe80:0:0:0:ffff:ffff:ffff:ffff")
+    refute link_local?({169, 254, 0, 0})
+    refute link_local?({169, 254, 0, 255})
+    refute link_local?({169, 254, 255, 0})
+    refute link_local?({169, 254, 255, 255})
+    assert link_local?({169, 254, 1, 0})
+    assert link_local?({169, 254, 1, 255})
   end
 
   # Link_local/1
+
   test "link_local/1" do
     Enum.all?(@ip6_representations, fn x -> assert nil == link_local(x) end)
 
@@ -1106,6 +1280,7 @@ defmodule PfxTest do
   end
 
   # Nat64_encode/2
+
   test "nat64_encode/2" do
     Enum.all?(@ip4_representations, fn x ->
       assert_raise ArgumentError, fn -> nat64_encode(x, x) end
@@ -1117,6 +1292,7 @@ defmodule PfxTest do
   end
 
   # Nat64_decode/1
+
   test "nat64_decode/1" do
     Enum.all?(@ip4_representations, fn x ->
       assert_raise ArgumentError, fn -> nat64_decode(x) end
@@ -1128,9 +1304,21 @@ defmodule PfxTest do
   end
 
   # Dns_ptr/1
+
   test "dns_ptr/1" do
-    Enum.all?(@ip4_representations, fn x -> assert dns_ptr(x) end)
-    Enum.all?(@ip6_representations, fn x -> assert dns_ptr(x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> dns_ptr(x) end end)
+
+    # dns_ptr only works for IPv4 or IPv6
+    assert_raise ArgumentError, fn -> dns_ptr(%Pfx{bits: <<>>, maxlen: 0}) end
+    assert_raise ArgumentError, fn -> dns_ptr(%Pfx{bits: <<255>>, maxlen: 16}) end
+    assert_raise ArgumentError, fn -> dns_ptr(%Pfx{bits: <<255, 0>>, maxlen: 24}) end
+    assert_raise ArgumentError, fn -> dns_ptr(%Pfx{bits: <<1, 2, 3, 4, 5, 6>>, maxlen: 48}) end
+
+    # no bits
+    assert_raise ArgumentError, fn -> dns_ptr(%Pfx{bits: <<>>, maxlen: 32}) end
+
+    # 1 bit
+    assert "0.in-addr.arpa" == dns_ptr(%Pfx{bits: <<0::1>>, maxlen: 32})
+    assert "128.in-addr.arpa" == dns_ptr(%Pfx{bits: <<1::1>>, maxlen: 32})
   end
 end

@@ -97,10 +97,12 @@ defmodule Pfx do
         :max -> "expected a non_neg_integer for maxlen, got #{inspect(data)}"
         :nat64 -> "expected a valid IPv6 nat64 address, got #{inspect(data)}"
         :nobit -> "expected a integer (bit) value 0..1, got #{inspect(data)}"
+        :nobits -> "expected a non-empty bitstring, got: #{inspect(data)}"
         :nocompare -> "prefixes have different maxlen's: #{inspect(data)}"
         :noint -> "expected an integer, got #{inspect(data)}"
         :noints -> "expected all integers, got #{inspect(data)}"
         :noneg -> "expected a non_neg_integer, got #{inspect(data)}"
+        :noneighbor -> "empty prefixes have no neighbor: #{inspect(data)}"
         :nopart -> "cannot partition prefixes using #{inspect(data)}"
         :nopos -> "expected a pos_integer, got #{inspect(data)}"
         :nowidth -> "expected valid width, got #{inspect(data)}"
@@ -1891,16 +1893,6 @@ defmodule Pfx do
       -1 -> :left
       _ -> :disjoint
     end
-
-    # size = bit_size(x) - 1
-    # <<n::bitstring-size(size), n1::1>> = x
-    # <<m::bitstring-size(size), _::1>> = y
-
-    # if n == m do
-    #   if n1 == 0, do: :left, else: :right
-    # else
-    #   :disjoint
-    # end
   end
 
   @doc """
@@ -2047,7 +2039,6 @@ defmodule Pfx do
       iex> mask("10.10.10.128/25")
       "255.255.255.128"
 
-
   """
   @spec mask(prefix) :: prefix
   def mask(pfx),
@@ -2103,8 +2094,15 @@ defmodule Pfx do
   @spec neighbor(prefix) :: prefix
   def neighbor(pfx) do
     x = new(pfx)
-    offset = 1 - 2 * bit(x, bit_size(x.bits) - 1)
-    sibling(x, offset) |> marshall(pfx)
+    size = bit_size(x.bits)
+
+    if size == 0 do
+      # empty prefix doesn't have a neigbor, really.
+      raise arg_error(:noneighbor, pfx)
+    else
+      offset = 1 - 2 * bit(x, bit_size(x.bits) - 1)
+      sibling(x, offset) |> marshall(pfx)
+    end
   end
 
   # IP oriented
@@ -2670,6 +2668,7 @@ defmodule Pfx do
   @spec dns_ptr(prefix) :: String.t()
   def dns_ptr(pfx) do
     x = new(pfx)
+    if bit_size(x.bits) == 0, do: raise(arg_error(:nobits, pfx))
 
     {width, base, suffix} =
       case x.maxlen do
