@@ -24,8 +24,9 @@ three yield either an IPv4 or IPv6 prefix.
 
 Several functions, like `Pfx.unique_local?/1` are more IP oriented, and are
 included along with the more generic `Pfx` functions (like `Pfx.cut/3`) in
-order to have one module to rule them all.  Functions generally accept all
-four representations and yield their result in the same fashion, if possible:
+order to have one module to rule them all.
+
+Functions generally accept all representations and, if possible,  yield their result in the same fashion:
 
     iex> hosts("10.10.10.0/30")
     ["10.10.10.0", "10.10.10.1", "10.10.10.2", "10.10.10.3"]
@@ -109,6 +110,61 @@ digits in a CIDR string.
 Bottom line: never go short, you may be unpleasantly surprised.
 
 
+## Enumeration
+
+A `t:Pfx.t/0` implements the `Enumerable` protocol:
+
+    iex> for ip <- %Pfx{bits: <<1, 2, 3, 0::6>>, maxlen: 32}, do: ip
+    [
+      %Pfx{bits: <<1, 2, 3, 0>>, maxlen: 32},
+      %Pfx{bits: <<1, 2, 3, 1>>, maxlen: 32},
+      %Pfx{bits: <<1, 2, 3, 2>>, maxlen: 32},
+      %Pfx{bits: <<1, 2, 3, 3>>, maxlen: 32},
+    ]
+
+
+## String.Chars
+
+`t:Pfx.t/0` implements the `String.Chars` protocol with some defaults for
+prefixes that formats prefixes with:
+- `maxlen: 32` as an IPv4 CIDR string,
+- `maxlen: 48` as a MAC address string and
+- `maxlen: 128` as an IPv6 CIDR string
+
+Other `maxlen`'s will simply come out as a series of 8-bit numbers joined by "."
+followed by `/num_of_bits`. The latter is omitted if equal to `pfx.bits`
+length.
+
+If other formatting is required, use the `Pfx.format/2` function, which takes
+some options that help shape the string representation for a `Pfx` struct.
+
+    iex> "#{%Pfx{bits: <<10, 11, 12>>, maxlen: 32}}"
+    "10.11.12.0/24"
+
+    iex> "#{new(<<44252::16, 6518::16>>, 128)}"
+    "acdc:1976:0:0:0:0:0:0/32"
+
+    iex> "#{%Pfx{bits: <<0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6>>, maxlen: 48}}"
+    "A1:B2:C3:D4:E5:F6"
+
+    # just 8-bit numbers and mask length
+    iex> "#{new(<<1, 2, 3, 4, 5>>, 64)}"
+    "1.2.3.4.5.0.0.0/40"
+
+    # an ip4 address formatted as a string of bits
+    iex> new(<<1, 2, 3, 4>>, 32) |> format(width: 1, unit: 8)
+    "00000001.00000010.00000011.00000100"
+
+    # the enumeration example earlier, could also read:
+    iex> for ip <- new("1.2.3.0/30"), do: "#{ip}"
+    [
+      "1.2.3.0",
+      "1.2.3.1",
+      "1.2.3.2",
+      "1.2.3.3"
+    ]
+
+
 ## Limitations
 
 A lot of `Pfx`-functions convert the `Pfx.bits` bitstring to an integer using
@@ -131,10 +187,12 @@ Anyway, enough downplay, here are some more examples.
 ## Examples
 
     # IANA's OUI range 00-00-5e-xx-xx-xx
+
     iex> new(<<0x00, 0x00, 0x5e>>, 48)
     %Pfx{bits: <<0, 0, 94>>, maxlen: 48}
 
     # IANA's assignment for the VRRP MAC address range 00-00-5e-00-01-{VRID}
+
     iex> vrrp_mac_range = new(<<0x00, 0x00, 0x5e, 0x00, 0x01>>, 48)
     %Pfx{bits: <<0, 0, 94, 0, 1>>, maxlen: 48}
     iex>
@@ -147,8 +205,6 @@ Anyway, enough downplay, here are some more examples.
     15
 
     # IPv4 examples
-    iex> new(<<10, 10, 10>>, 32)
-    %Pfx{bits: <<10, 10, 10>>, maxlen: 32}
 
     iex> new("10.10.10.0/24")
     %Pfx{bits: <<10, 10, 10>>, maxlen: 32}
@@ -159,7 +215,11 @@ Anyway, enough downplay, here are some more examples.
     iex> new({{10, 10, 10, 10}, 24})
     %Pfx{bits: <<10, 10, 10>>, maxlen: 32}
 
+    iex> new(<<10, 10, 10>>, 32)
+    %Pfx{bits: <<10, 10, 10>>, maxlen: 32}
+
     # IPv6 examples
+
     iex> new(<<44252::16, 6518::16>>, 128)
     %Pfx{bits: <<0xACDC::16, 0x1976::16>>, maxlen: 128}
 
@@ -169,54 +229,6 @@ Anyway, enough downplay, here are some more examples.
     iex> new({{44252, 6518, 0, 0, 0, 0, 0, 0}, 32})
     %Pfx{bits: <<0xACDC::16, 0x1976::16>>, maxlen: 128}
 
-`t:Pfx.t/0` implements the `String.Chars` protocol with some defaults for
-prefixes that formats prefixes with:
-- `maxlen: 32` as an IPv4 CIDR string,
-- `maxlen: 48` as a MAC address string and
-- `maxlen: 128` as an IPv6 CIDR string
-
-Other `maxlen`'s will simply come out as a series of 8-bit numbers joined by "."
-followed by `/num_of_bits`. The latter is omitted if equal to `pfx.bits`
-length.
-
-If other formatting is required, use the `Pfx.format/2` function, which takes
-some options that help shape the string representation for a `Pfx` struct.
-
-    # a subnet
-    iex> "#{new(<<10, 11, 12>>, 32)}"
-    "10.11.12.0/24"
-
-    # an address
-    iex> "#{new(<<10, 11, 12, 13>>, 32)}"
-    "10.11.12.13"
-
-    # an ipv6 prefix
-    iex> "#{new(<<0xACDC::16, 0x1976::16>>, 128)}"
-    "acdc:1976:0:0:0:0:0:0/32"
-
-    # a MAC address
-    iex> "#{new(<<0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6>>, 48)}"
-    "A1:B2:C3:D4:E5:F6"
-
-    # just 8-bit numbers and mask length
-    iex> "#{new(<<1, 2, 3, 4, 5>>, 64)}"
-    "1.2.3.4.5.0.0.0/40"
-
-    # an ip4 address formatted as a string of bits
-    iex> new(<<1, 2, 3, 4>>, 32) |> format(width: 1, unit: 8)
-    "00000001.00000010.00000011.00000100"
-
-
-A `t:Pfx.t/0` struct is also enumerable:
-
-    iex> pfx = new("10.10.10.0/30")
-    iex> for ip <- pfx do "#{ip}" end
-    [
-      "10.10.10.0",
-      "10.10.10.1",
-      "10.10.10.2",
-      "10.10.10.3"
-    ]
 
 Functions are sometimes IP specific, like:
 
