@@ -126,7 +126,7 @@ Also, everything is done in Elixir with no extra, external dependencies.
 Usually fast enough, but if you really feel the need for speed, you might want
 to look elsewhere.
 
-Ayway, enough downplay, here are some more examples.
+Anyway, enough downplay, here are some more examples.
 
 ## Examples
 

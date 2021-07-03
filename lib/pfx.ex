@@ -196,14 +196,9 @@ defmodule Pfx do
   @doc """
   Creates a new `t:Pfx.t/0`-prefix.
 
-  A prefix can be created from:
+  Create a new prefix from:
   - from a bitstring and a maximum length, truncating the bits as needed,
   - from a `t:Pfx.t/0` prefix and a new maxlen, again truncating as needed,
-  - from an ipv4 or ipv6 `t:ip_address/0` tuple
-  - from an {`t:ip_address/0`, `length`} tuple
-
-  The last form sets the `maxlen` according to the IP protocol version used,
-  while the `length` parameter is used to truncate the `bits` for the prefix.
 
   ## Examples
 
@@ -213,9 +208,9 @@ defmodule Pfx do
       iex> new(<<10, 10>>, 8)
       %Pfx{bits: <<10>>, maxlen: 8}
 
-      # Create a new `Pfx` from an existing one, note:
-      # this changes the `Pfx`'s meaning
-      iex> new(<<10, 10>>, 32) |> new(128)
+      # note that changing 'maxlen' usually changes the prefix' meaning
+
+      iex> new(%Pfx{bits: <<10, 10>>, maxlen: 32}, 128)
       %Pfx{bits: <<10, 10>>, maxlen: 128}
 
   """
@@ -236,11 +231,11 @@ defmodule Pfx do
   Creates a new prefix from address tuples or binaries.
 
   Use:
-  - an ipv4 or ipv6 `t:ip_address/0` tuple directly for a full address, or
-  - a {`t:ip_address/0`, `length`}-tuple to truncate the bits to `length`.
   - a binary in
     [CIDR](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing)-notation,
-    like `"acdc:1976::/32"`
+  - an {`t:ip_address/0`, `length`}-tuple to truncate the bits to `length`.
+  - an ipv4 or ipv6 `t:ip_address/0` tuple directly for a full address, or
+  - a `t:Pfx.t/0` struct
 
   Binaries are processed by `:inet.parse_address/1`, so be aware of IPv4 shorthand
   notations that may yield surprising results, since digits are taken to be:
@@ -251,25 +246,35 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> new({{0xacdc, 0x1976, 0, 0, 0, 0, 0, 0}, 32})
-      %Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128}
-
-      iex> new({10, 10, 0, 0})
-      %Pfx{bits: <<10, 10, 0, 0>>, maxlen: 32}
-
-      iex> new({{10, 10, 0, 0}, 16})
-      %Pfx{bits: <<10, 10>>, maxlen: 32}
-
+      # from CIDR strings
       iex> new("10.10.0.0")
       %Pfx{bits: <<10, 10, 0, 0>>, maxlen: 32}
 
       iex> new("10.10.10.10/16")
       %Pfx{bits: <<10, 10>>, maxlen: 32}
 
+      iex> new("acdc:1976::/32")
+      %Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128}
+
+      # from an {address-tuple, length}
+      iex> new({{0xacdc, 0x1976, 0, 0, 0, 0, 0, 0}, 32})
+      %Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128}
+
+      iex> new({{10, 10, 0, 0}, 16})
+      %Pfx{bits: <<10, 10>>, maxlen: 32}
+
+      # from an address-tuple
+      iex> new({10, 10, 0, 0})
+      %Pfx{bits: <<10, 10, 0, 0>>, maxlen: 32}
+
+      # from a struct
+      iex> new(%Pfx{bits: <<10, 10>>, maxlen: 32})
+      %Pfx{bits: <<10, 10>>, maxlen: 32}
+
+
       # 10.10/16 is interpreted as 10.0.0.10/16 (!)
       iex> new("10.10/16")
       %Pfx{bits: <<10, 0>>, maxlen: 32}
-
 
   """
   @spec new(ip_address | ip_prefix | String.t()) :: t()
@@ -347,13 +352,9 @@ defmodule Pfx do
 
   ## Examples
 
-  As per example on
-  [wikipedia](https://en.wikipedia.org/wiki/Teredo_tunneling#IPv6_addressing)
-  for an IPv6 address `2001:0000:4136:e378:8000:63bf:3fff:fdd2` that refers to
-  a Teredo client:
+  For [example](https://en.wikipedia.org/wiki/Teredo_tunneling#IPv6_addressing):
 
-      iex> teredo = new(<<0x2001::16, 0::16, 0x4136::16, 0xe378::16,
-      ...>  0x8000::16, 0x63bf::16, 0x3fff::16, 0xfdd2::16>>, 128)
+      iex> teredo = new("2001:0:4136:e378:8000:63bf:3fff:fdd2")
       iex>
       iex> # client
       iex> cut(teredo, 96, 32) |> bnot() |> format()
@@ -377,6 +378,18 @@ defmodule Pfx do
       # extract 2nd and 3rd byte:
       iex> %Pfx{bits: <<255, 255>>, maxlen: 32} |> cut(8, 16)
       %Pfx{bits: <<255, 0>>, maxlen: 16}
+
+  Less useful, but cut will mirror the representation given:
+
+      iex> cut("10.11.12.13", 8, 16)
+      "11.12"
+
+      iex> cut({1, 2, 3, 4}, 16, 16)
+      {3, 4}
+
+      iex> cut({{1, 2, 0, 0}, 16}, 8, 16)
+      {{2, 0}, 16}
+
 
   Extraction must stay within `maxlen` of given `pfx`.
 
@@ -402,14 +415,18 @@ defmodule Pfx do
   @doc """
   Return `pfx` prefix's bit-value at given `position`.
 
-  A bit position is a `0`-based index from the left with range `0..maxlen-1`.
-  A negative bit position is taken relative to `Pfx.maxlen`. A actual bit
-  position in the range of `bit_size(pfx.bits)`..`pfx.maxlen - 1` always yields
-  `0`.
+  A bit position is a `0`-based index from the left with range `0..maxlen-1`.  
+  A negative bit position is taken relative to `Pfx.maxlen`.  
+  A bit position in the range of `bit_size(pfx.bits) .. pfx.maxlen - 1` always
+  yields `0`.
 
   ## Examples
 
-      iex> bit(%Pfx{bits: <<1, 2>>, maxlen: 32}, 14)
+      iex> bit("1.2.0.0", 14)
+      1
+
+      # same bit
+      iex> bit("1.2.0.0", -18)
       1
 
       iex> bit("1.2.0.0/16", 14)
@@ -421,11 +438,11 @@ defmodule Pfx do
       iex> bit({{1, 2, 0, 0}, 16}, 14)
       1
 
-      # 'missing' bits inside the prefix are deemed to be `0`
-      iex> bit("1.2.0.0/16", 24)
-      0
+      iex> bit(%Pfx{bits: <<1, 2>>, maxlen: 32}, 14)
+      1
 
-      iex> bit("1.2.0.0/16", -8) # same bit, 32 - 8 = 24
+      # 'masked' bits are deemed to be `0`
+      iex> bit("1.2.0.0/16", 24)
       0
 
       # errors out on invalid positions
@@ -454,7 +471,7 @@ defmodule Pfx do
   defp bitp(_, _), do: 0
 
   @doc """
-  Return a series of bits for given `pfx`, starting bit `position` & `length`.
+  Return a series of bits for given `pfx`, for starting `position` & `length`.
 
   Negative `position`'s are relative to the end of the `pfx.bits` bitstring,
   while negative `length` will collect bits going left instead of to the
@@ -463,14 +480,6 @@ defmodule Pfx do
   an empty bitstring.
 
   ## Examples
-
-      # first byte
-      iex> bits(%Pfx{bits: <<128, 0, 0, 1>>, maxlen: 32}, 0, 8)
-      <<128>>
-
-      # same as
-      iex> bits(%Pfx{bits: <<128, 0, 0, 1>>, maxlen: 32}, 7, -8)
-      <<128>>
 
       # last two bytes
       iex> bits("128.0.128.1", 16, 16)
@@ -484,6 +493,14 @@ defmodule Pfx do
 
       iex> bits({{128, 0, 128, 1}, 32}, 31, -16) # same
       <<128, 1>>
+
+      # first byte
+      iex> bits(%Pfx{bits: <<128, 0, 0, 1>>, maxlen: 32}, 0, 8)
+      <<128>>
+
+      # same as
+      iex> bits(%Pfx{bits: <<128, 0, 0, 1>>, maxlen: 32}, 7, -8)
+      <<128>>
 
       # missing bits are filled in as `0`
       iex> x = new(<<128>>, 32)
@@ -526,31 +543,32 @@ defmodule Pfx do
 
   @spec bitsp(t, integer, integer) :: bitstring
   defp bitsp(pfx, pos, len) when is_pfx(pfx) do
-    # XXX: new() is required, otherwise dialyzer chokes on padr(pfx) and won't
-    pfx = padr(pfx) |> new()
-    <<_::size(pos), part::bitstring-size(len), _::bitstring>> = pfx.bits
+    # XXX: dispite the is_pfx(pfx), new() is required here, otherwise dialyzer
+    # chokes on the `pfx.bits` below.  Why?
+    x = padr(pfx) |> new()
+    <<_::size(pos), part::bitstring-size(len), _::bitstring>> = x.bits
     part
   end
 
   @doc """
   Return the concatenation of 1 or more series of bits of the given `pfx`.
 
-  ## Example
-
-      iex> bits(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}, [{0,8}, {-1, -8}])
-      <<1, 4>>
-
-      iex> bits({{1, 2, 3, 4}, 32}, [{0,8}, {-1, -8}])
-      <<1, 4>>
-
-      iex> bits({1, 2, 3, 4}, [{0, 8}, {-1, -8}])
-      <<1, 4>>
+  ## Examples
 
       iex> bits("1.2.3.4", [{0, 8}, {-1, -8}])
       <<1, 4>>
 
-      iex> bits("1.2.3.4/24", [{0, 8}, {-1, -8}])
+      iex> bits("1.2.3.0/24", [{0, 8}, {-1, -8}])
       <<1, 0>>
+
+      iex> bits({1, 2, 3, 4}, [{0, 8}, {-1, -8}])
+      <<1, 4>>
+
+      iex> bits({{1, 2, 3, 0}, 24}, [{0,8}, {-1, -8}])
+      <<1, 0>>
+
+      iex> bits(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}, [{0,8}, {-1, -8}])
+      <<1, 4>>
 
   """
   @spec bits(prefix, [{integer, integer}]) :: bitstring
@@ -574,8 +592,23 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> cast(%Pfx{bits: <<255, 255>>, maxlen: 16})
-      65535
+      iex> cast("255.255.0.0")
+      4294901760
+
+      iex> cast("255.255.0.0/16")
+      4294901760
+
+      iex> cast({255, 255, 0, 0})
+      4294901760
+
+      iex> cast({{255, 255, 0, 0}, 32})
+      4294901760
+
+      iex> cast(%Pfx{bits: <<255, 255>>, maxlen: 32})
+      4294901760
+
+      iex> %Pfx{bits: <<4294901760::32>>, maxlen: 32}
+      %Pfx{bits: <<255, 255, 0, 0>>, maxlen: 32}
 
       # missing bits filled in as `0`s
       iex> cast(%Pfx{bits: <<255>>, maxlen: 16})
@@ -590,18 +623,6 @@ defmodule Pfx do
       # a bit weird, but:
       iex> cast(%Pfx{bits: <<>>, maxlen: 0})
       0
-
-      iex> cast(%Pfx{bits: <<255, 255, 0, 0>>, maxlen: 32})
-      4294901760
-
-      iex> cast({255, 255, 0, 0})
-      4294901760
-
-      iex> cast({{255, 255, 0, 0}, 32})
-      4294901760
-
-      iex> cast("255.255.0.0")
-      4294901760
 
   """
   @spec cast(prefix) :: non_neg_integer
@@ -618,12 +639,6 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> new(<<255, 255, 0, 0>>, 32) |> bnot()
-      %Pfx{bits: <<0, 0, 255, 255>>, maxlen: 32}
-
-      iex> new(<<255, 0>>, 32) |> bnot()
-      %Pfx{bits: <<0, 255>>, maxlen: 32}
-
       iex> bnot("255.255.0.0")
       "0.0.255.255"
 
@@ -633,6 +648,11 @@ defmodule Pfx do
       iex> bnot({{255, 255, 0, 0}, 32})
       {{0, 0, 255, 255}, 32}
 
+      iex> new(<<255, 255, 0, 0>>, 32) |> bnot()
+      %Pfx{bits: <<0, 0, 255, 255>>, maxlen: 32}
+
+      iex> bnot("5323:e689::/32")
+      "acdc:1976:0:0:0:0:0:0/32"
 
   """
   @spec bnot(prefix) :: prefix
@@ -708,18 +728,6 @@ defmodule Pfx do
 
   ## Examples
 
-      # same sized `bits`
-      iex> x = new(<<10, 11, 12, 13>>, 32)
-      iex> y = new(<<0, 0, 255, 255>>, 32)
-      iex> bor(x, y)
-      %Pfx{bits: <<10, 11, 255, 255>>, maxlen: 32}
-
-      # same `maxlen` but differently sized `bits`: missing bits are considered to be `0`
-      iex> x = new(<<10, 11, 12, 13>>, 32)
-      iex> y = new(<<255, 255>>, 32)
-      iex> bor(x, y)
-      %Pfx{bits: <<255, 255, 12, 13>>, maxlen: 32}
-
       iex> bor("1.2.3.4", "0.0.255.0")
       "1.2.255.4"
 
@@ -728,6 +736,16 @@ defmodule Pfx do
 
       iex> bor({{1, 2, 3, 4}, 16}, {0, 255, 255, 0})
       {{1, 255, 0, 0}, 16}
+
+      # same sized `bits`
+      iex> x = new(<<10, 11, 12, 13>>, 32)
+      iex> y = new(<<0, 0, 255, 255>>, 32)
+      iex> bor(x, y)
+      %Pfx{bits: <<10, 11, 255, 255>>, maxlen: 32}
+
+      # same `maxlen` but differently sized `bits`: missing bits are considered to be `0`
+      iex> bor("10.11.12.13", new(<<255, 255>>, 32)) # "255.255.0.0/16"
+      "255.255.12.13"
 
   """
   @spec bor(prefix, prefix) :: prefix
@@ -752,22 +770,20 @@ defmodule Pfx do
 
   ## Examples
 
+      iex> bxor("10.11.12.13", "255.255.0.0")
+      "245.244.12.13"
+
+      iex> bxor({10, 11, 12, 13}, {255, 255, 0, 0})
+      {245, 244, 12, 13}
+
+      # mix 'n match
+      iex> bxor({{10, 11, 12, 13}, 32}, "255.255.0.0")
+      {{245, 244, 12, 13}, 32}
+
       iex> x = new(<<10, 11, 12, 13>>, 32)
       iex> y = new(<<255, 255>>, 32)
       iex> bxor(x, y)
       %Pfx{bits: <<245, 244, 12, 13>>, maxlen: 32}
-
-      iex> bxor(%Pfx{bits: <<10, 11, 12, 13>>, maxlen: 32}, "255.255.0.0")
-      %Pfx{bits: <<245, 244, 12, 13>>, maxlen: 32}
-
-      iex> bxor("10.11.12.13", {255, 255, 0, 0})
-      "245.244.12.13"
-
-      iex> bxor({10, 11, 12, 13}, "255.255.0.0")
-      {245, 244, 12, 13}
-
-      iex> bxor({{10, 11, 12, 13}, 32}, "255.255.0.0")
-      {{245, 244, 12, 13}, 32}
 
   """
   @spec bxor(prefix, prefix) :: prefix
@@ -788,20 +804,16 @@ defmodule Pfx do
   @doc """
   Rotate the `pfx.bits` by `n` positions.
 
-  Positive `n` rotates right, negative rotates left.
-
+  Positive `n` rotates right, negative rotates left.  
   Note that the length of the resulting `pfx.bits` stays the same.
 
   ## Examples
 
-      iex> brot(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}, 8)
-      %Pfx{bits: <<4, 1, 2, 3>>, maxlen: 32}
-
-      iex> new(<<1, 2, 3, 4>>, 32) |> brot(-8)
-      %Pfx{bits: <<2, 3, 4, 1>>, maxlen: 32}
-
       iex> brot("1.2.3.4", 8)
       "4.1.2.3"
+
+      iex> brot("1.2.3.4", -8)
+      "2.3.4.1"
 
       iex> brot({1, 2, 3, 4}, 8)
       {4, 1, 2, 3}
@@ -809,10 +821,12 @@ defmodule Pfx do
       iex> brot({{1, 2, 3, 4}, 32}, -8)
       {{2, 3, 4, 1}, 32}
 
-      # remember, its <<1, 2>> that gets rotated (!)
-      iex> brot({{1, 2, 3, 4}, 16}, 8)
-      {{2, 1, 0, 0}, 16}
+      # note: the `bits` <<1, 2>> get rotated (!)
+      iex> brot("1.2.0.0/16", 8)
+      "2.1.0.0/16"
 
+      iex> brot(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}, 8)
+      %Pfx{bits: <<4, 1, 2, 3>>, maxlen: 32}
 
   """
   @spec brot(prefix, integer) :: prefix
@@ -851,22 +865,24 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> bsl(%Pfx{bits: <<1, 2>>, maxlen: 32}, 2)
-      %Pfx{bits: <<4, 8>>, maxlen: 32}
+      iex> bsl("1.2.3.4", 1)
+      "2.4.6.8"
 
-      iex> bsl(%Pfx{bits: <<1, 2>>, maxlen: 32}, -2)
-      %Pfx{bits: <<0, 64>>, maxlen: 32}
-
-      # mask is applied when creating a `Pfx` out of "1.2.3.4/16"
-      iex> bsl("1.2.3.4/16", 2)
+      iex> bsl("1.2.0.0/16", 2)
       "4.8.0.0/16"
 
       iex> bsl({1, 2, 3, 4}, 2)
       {4, 8, 12, 16}
 
-      # remember, its <<1, 2>> that gets shifted left 2 bits
-      iex> bsl({{1, 2, 3, 4}, 16}, 2)
+      # note: the `bits` <<1, 2>> get shifted left 2 bits
+      iex> bsl({{1, 2, 0, 0}, 16}, 2)
       {{4, 8, 0, 0}, 16}
+
+      iex> bsl(%Pfx{bits: <<1, 2>>, maxlen: 32}, 2)
+      %Pfx{bits: <<4, 8>>, maxlen: 32}
+
+      iex> bsl(%Pfx{bits: <<1, 2>>, maxlen: 32}, -2)
+      %Pfx{bits: <<0, 64>>, maxlen: 32}
 
   """
   @spec bsl(prefix, integer) :: prefix
@@ -894,23 +910,22 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> bsr(%Pfx{bits: <<1, 2>>, maxlen: 32}, 2)
-      %Pfx{bits: <<0, 64>>, maxlen: 32}
-
-      # now shift to the left
-      iex> bsr(%Pfx{bits: <<1, 2>>, maxlen: 32}, -2)
-      %Pfx{bits: <<4, 8>>, maxlen: 32}
-
-      # mask get applied when creating a `Pfx`
-      iex> bsr("1.2.3.4/16", 2)
+      iex> bsr("1.2.0.0/16", 2)
       "0.64.0.0/16"
 
       # no mask, so all 32 bits get shifted
       iex> bsr({1, 2, 0, 0}, 2)
       {0, 64, 128, 0}
 
-      iex> bsr({{1, 2, 3, 4}, 16}, 2)
+      iex> bsr({{1, 2, 0, 0}, 16}, 2)
       {{0, 64, 0, 0}, 16}
+
+      iex> bsr(%Pfx{bits: <<1, 2>>, maxlen: 32}, 2)
+      %Pfx{bits: <<0, 64>>, maxlen: 32}
+
+      # now shift to the left
+      iex> bsr(%Pfx{bits: <<1, 2>>, maxlen: 32}, -2)
+      %Pfx{bits: <<4, 8>>, maxlen: 32}
 
   """
   @spec bsr(prefix, integer) :: prefix
@@ -937,20 +952,20 @@ defmodule Pfx do
 
   ## Example
 
-      iex> padr(%Pfx{bits: <<1, 2>>, maxlen: 32})
-      %Pfx{bits: <<1, 2, 0, 0>>, maxlen: 32}
-
       # already a full address
-      iex> padr("1.2.0.0")
-      "1.2.0.0"
+      iex> padr("1.2.3.4")
+      "1.2.3.4"
 
       # mask applied first, then padded with zero's
       iex> padr("1.2.3.4/16")
       "1.2.0.0"
 
       # mask applied first, than padded with zero's
-      iex> padr({{1,2,3,4}, 16})
+      iex> padr({{1, 2, 0, 0}, 16})
       {{1, 2, 0, 0}, 32}
+
+      iex> padr(%Pfx{bits: <<1, 2>>, maxlen: 32})
+      %Pfx{bits: <<1, 2, 0, 0>>, maxlen: 32}
 
   """
   @spec padr(prefix) :: prefix
@@ -965,21 +980,18 @@ defmodule Pfx do
 
   ## Example
 
-      iex> padr(%Pfx{bits: <<1, 2>>, maxlen: 32}, 1)
-      %Pfx{bits: <<1, 2, 255, 255>>, maxlen: 32}
-
       iex> padr("1.2.0.0/16", 1)
       "1.2.255.255"
 
       iex> padr({{1, 2, 0, 0}, 16}, 1)
       {{1, 2, 255, 255}, 32}
 
-      # nothing to padr already a full prefix
+      # nothing to padr, already a full prefix
       iex> padr("1.2.0.0", 1)
       "1.2.0.0"
 
-      iex> padr({1, 2, 0, 0}, 1)
-      {1, 2, 0, 0}
+      iex> padr(%Pfx{bits: <<1, 2>>, maxlen: 32}, 1)
+      %Pfx{bits: <<1, 2, 255, 255>>, maxlen: 32}
 
   """
   @spec padr(prefix, 0 | 1) :: prefix
@@ -999,21 +1011,25 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> padr(%Pfx{bits: <<255, 255>>, maxlen: 32}, 0, 8)
-      %Pfx{bits: <<255, 255, 0>>, maxlen: 32}
-
-      iex> padr(%Pfx{bits: <<255, 255>>, maxlen: 32}, 1, 8)
-      %Pfx{bits: <<255, 255, 255>>, maxlen: 32}
-
-      # results are clipped to maxlen
-      iex> new(<<1, 2>>, 32) |> padr(0, 512)
-      %Pfx{bits: <<1, 2, 0, 0>>, maxlen: 32}
+      # expand a /16 to a /24
+      iex> padr("255.255.0.0/16", 0, 8)
+      "255.255.0.0/24"
 
       iex> padr("255.255.0.0/16", 1, 8)
       "255.255.255.0/24"
 
       iex> padr({{255, 255, 0, 0}, 16}, 1, 8)
       {{255, 255, 255, 0}, 24}
+
+      # results are clipped to maxlen
+      iex> padr("1.2.0.0/16", 1, 512)
+      "1.2.255.255"
+
+      iex> padr(%Pfx{bits: <<255, 255>>, maxlen: 32}, 0, 8)
+      %Pfx{bits: <<255, 255, 0>>, maxlen: 32}
+
+      iex> padr(%Pfx{bits: <<255, 255>>, maxlen: 32}, 1, 8)
+      %Pfx{bits: <<255, 255, 255>>, maxlen: 32}
 
   """
   @spec padr(prefix, 0 | 1, non_neg_integer) :: prefix
@@ -1042,14 +1058,14 @@ defmodule Pfx do
 
   ## Example
 
-      iex> padl(%Pfx{bits: <<1, 2>>, maxlen: 32})
-      %Pfx{bits: <<0, 0, 1, 2>>, maxlen: 32}
-
       iex> padl("1.2.0.0/16")
       "0.0.1.2"
 
       iex> padl({{1, 2, 0, 0}, 16})
       {{0, 0, 1, 2}, 32}
+
+      iex> padl(%Pfx{bits: <<1, 2>>, maxlen: 32})
+      %Pfx{bits: <<0, 0, 1, 2>>, maxlen: 32}
 
   """
   @spec padl(prefix) :: prefix
@@ -1064,14 +1080,14 @@ defmodule Pfx do
 
   ## Example
 
-      iex> padl(%Pfx{bits: <<1, 2>>, maxlen: 32}, 1)
-      %Pfx{bits: <<255, 255, 1, 2>>, maxlen: 32}
-
       iex> padl("1.2.0.0/16", 1)
       "255.255.1.2"
 
       iex> padl({{1, 2, 0, 0}, 16}, 1)
       {{255, 255, 1, 2}, 32}
+
+      iex> padl(%Pfx{bits: <<1, 2>>, maxlen: 32}, 1)
+      %Pfx{bits: <<255, 255, 1, 2>>, maxlen: 32}
 
   """
   @spec padl(prefix, 0 | 1) :: prefix
@@ -1089,14 +1105,17 @@ defmodule Pfx do
 
   ## Example
 
-      iex> padl(%Pfx{bits: <<255, 255>>, maxlen: 32}, 0, 16)
-      %Pfx{bits: <<0, 0, 255, 255>>, maxlen: 32}
-
       iex> padl("255.255.0.0/16", 0, 16)
       "0.0.255.255"
 
+      iex> padl("255.255.0.0/16", 1, 16)
+      "255.255.255.255"
+
       iex> padl({{255, 255, 0, 0}, 16}, 0, 16)
       {{0, 0, 255, 255}, 32}
+
+      iex> padl(%Pfx{bits: <<255, 255>>, maxlen: 32}, 0, 16)
+      %Pfx{bits: <<0, 0, 255, 255>>, maxlen: 32}
 
   """
   @spec padl(prefix, 0 | 1, non_neg_integer) :: prefix
@@ -1124,12 +1143,6 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> bset(%Pfx{bits: <<1, 1, 1>>, maxlen: 32})
-      %Pfx{bits: <<0, 0, 0>>, maxlen: 32}
-
-      iex> bset(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, 1)
-      %Pfx{bits: <<255, 255, 255>>, maxlen: 32}
-
       # defaults to `0`-bit
       iex> bset("1.1.1.0/24")
       "0.0.0.0/24"
@@ -1140,6 +1153,11 @@ defmodule Pfx do
       iex> bset({{1, 1, 1, 0}, 24}, 1)
       {{255, 255, 255, 0}, 24}
 
+      iex> bset(%Pfx{bits: <<1, 1, 1>>, maxlen: 32})
+      %Pfx{bits: <<0, 0, 0>>, maxlen: 32}
+
+      iex> bset(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, 1)
+      %Pfx{bits: <<255, 255, 255>>, maxlen: 32}
 
   """
   @spec bset(prefix, 0 | 1) :: prefix
@@ -1167,14 +1185,6 @@ defmodule Pfx do
   ## Examples
 
       # break out the /26's in a /24
-      iex> partition(%Pfx{bits: <<10, 11, 12>>, maxlen: 32}, 26)
-      [
-        %Pfx{bits: <<10, 11, 12, 0::size(2)>>, maxlen: 32},
-        %Pfx{bits: <<10, 11, 12, 1::size(2)>>, maxlen: 32},
-        %Pfx{bits: <<10, 11, 12, 2::size(2)>>, maxlen: 32},
-        %Pfx{bits: <<10, 11, 12, 3::size(2)>>, maxlen: 32}
-      ]
-
       iex> partition("10.11.12.0/24", 26)
       [
         "10.11.12.0/26",
@@ -1189,6 +1199,14 @@ defmodule Pfx do
         {{10, 11, 12, 64}, 26},
         {{10, 11, 12, 128}, 26},
         {{10, 11, 12, 192}, 26},
+      ]
+
+      iex> partition(%Pfx{bits: <<10, 11, 12>>, maxlen: 32}, 26)
+      [
+        %Pfx{bits: <<10, 11, 12, 0::size(2)>>, maxlen: 32},
+        %Pfx{bits: <<10, 11, 12, 1::size(2)>>, maxlen: 32},
+        %Pfx{bits: <<10, 11, 12, 2::size(2)>>, maxlen: 32},
+        %Pfx{bits: <<10, 11, 12, 3::size(2)>>, maxlen: 32}
       ]
 
   """
@@ -1210,22 +1228,12 @@ defmodule Pfx do
     do: partition(new(pfx), bitlen) |> Enum.map(fn x -> marshall(x, pfx) end)
 
   @doc """
-  Turn a `pfx.bits` string into a list of `{number, width}`-fields.
+  Turn a `prefix` into a list of `{number, width}`-fields.
 
   If `bit_size(pfx.bits)` is not a multiple of `width`, the last
   `{number, width}`-tuple, will have a smaller width.
 
   ## Examples
-
-      iex> fields(%Pfx{bits: <<10, 11, 12, 13>>, maxlen: 32}, 8)
-      [{10, 8}, {11, 8}, {12, 8}, {13, 8}]
-
-      # not a multiple of 8
-      iex> fields(%Pfx{bits: <<10, 11, 12, 0::1>>, maxlen: 32}, 8)
-      [{10, 8}, {11, 8}, {12, 8}, {0, 1}]
-
-      iex> new(<<0xacdc::16>>, 128) |> fields(4)
-      [{10, 4}, {12, 4}, {13, 4}, {12, 4}]
 
       iex> fields("10.11.12.13", 8)
       [{10, 8}, {11, 8}, {12, 8}, {13, 8}]
@@ -1235,6 +1243,16 @@ defmodule Pfx do
 
       iex> fields({{10, 11, 12, 0}, 24}, 8)
       [{10, 8}, {11, 8}, {12, 8}]
+
+      iex> fields(%Pfx{bits: <<10, 11, 12, 13>>, maxlen: 32}, 8)
+      [{10, 8}, {11, 8}, {12, 8}, {13, 8}]
+
+      # pfx.bits is not a multiple of 8, hence the {0, 1} at the end
+      iex> fields("10.11.12.0/25", 8)
+      [{10, 8}, {11, 8}, {12, 8}, {0, 1}]
+
+      iex> new(<<0xacdc::16>>, 128) |> fields(4)
+      [{10, 4}, {12, 4}, {13, 4}, {12, 4}]
 
       # only 1 field with less bits than given width of 64
       iex> new(<<255, 255>>, 32) |> fields(64)
@@ -1265,36 +1283,39 @@ defmodule Pfx do
   end
 
   @doc """
-  Transform a `Pfx` prefix into `{digits, len}` format.
+  Transform a `Pfx` prefix into `{{digit, ..}, length}` format.
 
   The `pfx` is padded to its maximum length using `0`'s and the resulting
-  bits are grouped into *digits*, each `width`-bits wide.  The resulting `len`
-  denotes the original `pfx.bits` bit_size.
+  bits are grouped into *digits*, each `width`-bits wide.  The resulting `length`
+  denotes the prefix' original bit_size.
 
-  Note: works best if `pfx.maxlen` is a multiple of the `width` used, otherwise
-  `maxlen` cannot be inferred from this format by `tuple_size(digits) * width`
-  (e.g. by `Pfx.undigits`)
+  Note: works best if the prefix' `maxlen` is a multiple of the `width` used,
+  otherwise `maxlen` cannot be inferred from this format by `tuple_size(digits)
+  * width` (e.g. by `Pfx.undigits`)
 
   ## Examples
 
-      iex> digits(%Pfx{bits: <<10, 11, 12>>, maxlen: 32}, 8)
+      iex> digits("10.11.12.0/24", 8)
       {{10, 11, 12, 0}, 24}
 
-      # not obvious that each number is 4 bits wide
-      iex> digits(%Pfx{bits: <<0x12, 0x34, 0x56, 0x78>>, maxlen: 128}, 4)
-      {{1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 32}
-
-      iex> digits(%Pfx{bits: <<10, 11, 12, 1::1>>, maxlen: 32}, 8)
-      {{10, 11, 12, 128}, 25}
-
-      iex> digits(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128}, 16)
-      {{44252, 6518, 0, 0, 0, 0, 0, 0}, 32}
+      # mask is applied first
+      iex> digits("10.11.12.13/24", 8)
+      {{10, 11, 12, 0}, 24}
 
       iex> digits("acdc:1976::/32", 16)
       {{44252, 6518, 0, 0, 0, 0, 0, 0}, 32}
 
       iex> digits({{0xacdc, 0x1976, 0, 0, 0, 0, 0, 0}, 32}, 16)
       {{44252, 6518, 0, 0, 0, 0, 0, 0}, 32}
+
+      iex> digits(%Pfx{bits: <<10, 11, 12>>, maxlen: 32}, 8)
+      {{10, 11, 12, 0}, 24}
+
+      iex> digits(%Pfx{bits: <<10, 11, 12, 1::1>>, maxlen: 32}, 8)
+      {{10, 11, 12, 128}, 25}
+
+      iex> digits(%Pfx{bits: <<0x12, 0x34, 0x56, 0x78>>, maxlen: 128}, 4)
+      {{1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 32}
 
   """
   @spec digits(prefix, pos_integer) :: {tuple(), pos_integer}
@@ -1383,18 +1404,25 @@ defmodule Pfx do
 
   ## Examples
 
-      # next in line
+      iex> sibling("1.2.3.0/24", -1)
+      "1.2.2.0/24"
+
+      iex> sibling("0.0.0.0", -1)
+      "255.255.255.255"
+
+      iex> sibling({{1, 2, 3, 0}, 24}, 256)
+      {{1, 3, 3, 0}, 24}
+
       iex> sibling(%Pfx{bits: <<10, 11>>, maxlen: 32}, 1)
       %Pfx{bits: <<10, 12>>, maxlen: 32}
 
-      # the last shall be the first
       iex> sibling(%Pfx{bits: <<10, 11, 0>>, maxlen: 32}, 255)
       %Pfx{bits: <<10, 11, 255>>, maxlen: 32}
 
+      # wraps around
       iex> sibling(%Pfx{bits: <<10, 11, 0>>, maxlen: 32}, 256)
       %Pfx{bits: <<10, 12, 0>>, maxlen: 32}
 
-      # from one end to another
       iex> new(<<0, 0, 0, 0>>, 32) |> sibling(-1)
       %Pfx{bits: <<255, 255, 255, 255>>, maxlen: 32}
 
@@ -1402,14 +1430,6 @@ defmodule Pfx do
       iex> sibling(%Pfx{bits: <<>>, maxlen: 0}, 1)
       %Pfx{bits: <<>>, maxlen: 0}
 
-      iex> sibling("0.0.0.0", -1)
-      "255.255.255.255"
-
-      iex> sibling("1.2.3.0/24", -1)
-      "1.2.2.0/24"
-
-      iex> sibling({{1, 2, 3, 0}, 24}, 256)
-      {{1, 3, 3, 0}, 24}
 
   """
   @spec sibling(prefix, integer) :: prefix
@@ -1434,17 +1454,17 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> size(%Pfx{bits: <<1, 1, 1>>, maxlen: 32})
-      256
-
-      iex> size({{1, 1, 1, 0}, 16})
-      65536
+      iex> size("1.1.1.0/23")
+      512
 
       iex> size({1,1,1,1})
       1
 
-      iex> size("1.1.1.0/23")
-      512
+      iex> size({{1, 1, 1, 0}, 16})
+      65536
+
+      iex> size(%Pfx{bits: <<1, 1, 1>>, maxlen: 32})
+      256
 
   """
   @spec size(prefix) :: pos_integer
@@ -1475,6 +1495,16 @@ defmodule Pfx do
 
   ## Examples
 
+      iex> member("10.10.10.0/24", 255)
+      "10.10.10.255"
+
+      # wraps around
+      iex> member("10.10.10.0/24", 256)
+      "10.10.10.0"
+
+      iex> member({{10, 10, 10, 0}, 24}, 255)
+      {{10, 10, 10, 255}, 32}
+
       iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 0)
       %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
 
@@ -1495,16 +1525,6 @@ defmodule Pfx do
       iex> member(%Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}, 3)
       %Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}
 
-      # other representations work too
-      iex> member("10.10.10.0/24", 255)
-      "10.10.10.255"
-
-      iex> member("10.10.10.0/24", 256)
-      "10.10.10.0"
-
-      iex> member({{10, 10, 10, 0}, 24}, 255)
-      {{10, 10, 10, 255}, 32}
-
   """
   @spec member(prefix, integer) :: prefix
   def member(pfx, nth) when is_pfx(pfx) and is_integer(nth),
@@ -1521,14 +1541,6 @@ defmodule Pfx do
 
   ## Examples
 
-      # the first sub-prefix that is 2 bits longer
-      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 0, 2)
-      %Pfx{bits: <<10, 10, 10, 0::2>>, maxlen: 32}
-
-      # the second sub-prefix that is 2 bits longer
-      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 1, 2)
-      %Pfx{bits: <<10, 10, 10, 1::2>>, maxlen: 32}
-
       iex> member("10.10.10.0/24", 1, 2)
       "10.10.10.64/26"
 
@@ -1537,6 +1549,14 @@ defmodule Pfx do
 
       iex> member({{10, 10, 10, 0}, 24}, 2, 2)
       {{10, 10, 10, 128}, 26}
+
+      # the first sub-prefix that is 2 bits longer
+      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 0, 2)
+      %Pfx{bits: <<10, 10, 10, 0::2>>, maxlen: 32}
+
+      # the second sub-prefix that is 2 bits longer
+      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 1, 2)
+      %Pfx{bits: <<10, 10, 10, 1::2>>, maxlen: 32}
 
   """
   @spec member(prefix, integer, pos_integer) :: t
@@ -1562,9 +1582,6 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> member?(%Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}, %Pfx{bits: <<10>>, maxlen: 32})
-      true
-
       iex> member?("10.10.10.10", "10.0.0.0/8")
       true
 
@@ -1576,6 +1593,9 @@ defmodule Pfx do
 
       iex> member?({{11, 0, 0, 0}, 8}, {{10, 0, 0, 0}, 8})
       false
+
+      iex> member?(%Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}, %Pfx{bits: <<10>>, maxlen: 32})
+      true
 
       # bad prefix
       iex> member?("10.10.10.10", "10.10.10.256/24")
@@ -1710,24 +1730,24 @@ defmodule Pfx do
 
   ## Examples
 
+      iex> valid?("1.2.3.4")
+      true
+
+      iex> valid?("1.2.3.4/8")
+      true
+
+      iex> valid?({1, 2, 3, 4})
+      true
+
+      iex> valid?({{1, 2, 3, 4}, 24})
+      true
+
       iex> valid?(%Pfx{bits: <<1,2,3,4>>, maxlen: 32})
       true
 
       # bits exceed maxlen
       iex> valid?(%Pfx{bits: <<1,2,3,4>>, maxlen: 16})
       false
-
-      iex> valid?({{1, 2, 3, 4}, 24})
-      true
-
-      iex> valid?({1, 2, 3, 4})
-      true
-
-      iex> valid?("1.2.3.4")
-      true
-
-      iex> valid?("1.2.3.4/8")
-      true
 
   """
   @spec valid?(prefix) :: boolean
@@ -1755,9 +1775,6 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> compare(new(<<10>>, 32), new(<<11>>, 32))
-      :lt
-
       iex> compare("10.0.0.0/8", "11.0.0.0/8")
       :lt
 
@@ -1767,33 +1784,37 @@ defmodule Pfx do
       iex> compare({10, 0, 0, 0}, {{11, 0, 0, 0}, 16})
       :lt
 
-      # sort on `pfx.bits` size first, than on `pfx.bits` values
-      iex> l = [new(<<10, 11>>, 32), new(<<10,10,10>>, 32), new(<<10,10>>, 32)]
-      iex> Enum.sort(l, Pfx)
-      [
-        %Pfx{bits: <<10, 10, 10>>, maxlen: 32},
-        %Pfx{bits: <<10, 10>>, maxlen: 32},
-        %Pfx{bits: <<10, 11>>, maxlen: 32}
-      ]
-      #
-      # whereas regular sort does:
-      #
-      iex> Enum.sort(l)
-      [
-        %Pfx{bits: <<10, 10>>, maxlen: 32},
-        %Pfx{bits: <<10, 10, 10>>, maxlen: 32},
-        %Pfx{bits: <<10, 11>>, maxlen: 32}
-      ]
+      iex> compare(new(<<10>>, 32), new(<<11>>, 32))
+      :lt
 
-      iex> l = ["10.11.0.0/16", "10.10.10.0/24", "10.10.0.0/16"]
-      iex> Enum.sort(l, Pfx)
+      # sort on prefixes, first on bit_size than bits-values
+
+      iex> list = ["10.11.0.0/16", "10.10.10.0/24", "10.10.0.0/16"]
+      iex> Enum.sort(list, Pfx)
       [
         "10.10.10.0/24",
         "10.10.0.0/16",
         "10.11.0.0/16"
       ]
+      #
+      # whereas regular sort does:
+      #
+      iex> Enum.sort(list)
+      [
+        "10.10.0.0/16",
+        "10.10.10.0/24",
+        "10.11.0.0/16"
+      ]
 
-      # not advisable, you mixed representations are possible as well
+      iex> list = [new(<<10, 11>>, 32), new(<<10,10,10>>, 32), new(<<10,10>>, 32)]
+      iex> Enum.sort(list, Pfx)
+      [
+        %Pfx{bits: <<10, 10, 10>>, maxlen: 32},
+        %Pfx{bits: <<10, 10>>, maxlen: 32},
+        %Pfx{bits: <<10, 11>>, maxlen: 32}
+      ]
+
+      # not advisable, but mixed representations are possible as well
       iex> l = ["10.11.0.0/16", {{10, 10, 10, 0}, 24}, %Pfx{bits: <<10, 10>>, maxlen: 32}]
       iex> Enum.sort(l, Pfx)
       [
@@ -1900,25 +1921,24 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> network(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
-      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
+      iex> network("10.10.10.1/24")
+      "10.10.10.0"
 
-      # mask is applied to address
-      iex> network({{10, 10, 10, 1}, 24})
-      {{10, 10, 10, 0}, 32}
+      iex> network("acdc:1976::/32")
+      "acdc:1976:0:0:0:0:0:0"
 
       # a full address is its own this-network
       iex> network({10, 10, 10, 1})
       {10, 10, 10, 1}
 
-      iex> network("10.10.10.1/24")
-      "10.10.10.0"
+      iex> network({{10, 10, 10, 1}, 24})
+      {{10, 10, 10, 0}, 32}
+
+      iex> network(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
+      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
 
       iex> network(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128})
       %Pfx{bits: <<0xACDC::16, 0x1976::16, 0::96>>, maxlen: 128}
-
-      iex> network("acdc:1976::/32")
-      "acdc:1976:0:0:0:0:0:0"
 
   """
   @spec network(prefix) :: prefix
@@ -1932,21 +1952,24 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> broadcast(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
-      %Pfx{bits: <<10, 10, 10, 255>>, maxlen: 32}
-
-      iex> broadcast({{10, 10, 10, 1}, 30})
-      {{10, 10, 10, 3}, 32}
+      iex> broadcast("10.10.0.0/16")
+      "10.10.255.255"
 
       # a full address is its own broadcast address
       iex> broadcast({10, 10, 10, 1})
       {10, 10, 10, 1}
 
-      iex> broadcast("10.10.0.0/16")
-      "10.10.255.255"
+      iex> broadcast({{10, 10, 10, 1}, 30})
+      {{10, 10, 10, 3}, 32}
+
+      iex> broadcast(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
+      %Pfx{bits: <<10, 10, 10, 255>>, maxlen: 32}
 
       iex> broadcast(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128})
       %Pfx{bits: <<0xACDC::16, 0x1976::16, -1::96>>, maxlen: 128}
+
+      iex> broadcast("acdc:1976::/112")
+      "acdc:1976:0:0:0:0:0:ffff"
 
   """
   @spec broadcast(prefix) :: prefix
@@ -1959,14 +1982,6 @@ defmodule Pfx do
   The result is in the same format as `pfx`.
 
   ## Examples
-
-      iex> hosts(%Pfx{bits: <<10, 10, 10, 0::6>>, maxlen: 32})
-      [
-        %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32},
-        %Pfx{bits: <<10, 10, 10, 1>>, maxlen: 32},
-        %Pfx{bits: <<10, 10, 10, 2>>, maxlen: 32},
-        %Pfx{bits: <<10, 10, 10, 3>>, maxlen: 32}
-      ]
 
       iex> hosts("10.10.10.0/30")
       [
@@ -1984,6 +1999,14 @@ defmodule Pfx do
         {{10, 10, 10, 3}, 32}
       ]
 
+      iex> hosts(%Pfx{bits: <<10, 10, 10, 0::6>>, maxlen: 32})
+      [
+        %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32},
+        %Pfx{bits: <<10, 10, 10, 1>>, maxlen: 32},
+        %Pfx{bits: <<10, 10, 10, 2>>, maxlen: 32},
+        %Pfx{bits: <<10, 10, 10, 3>>, maxlen: 32}
+      ]
+
   """
   @spec hosts(prefix) :: list(prefix)
   def hosts(pfx),
@@ -1992,23 +2015,22 @@ defmodule Pfx do
   @doc """
   Return the `nth` host in given `pfx`.
 
-  The result is in the same format as `pfx`.
-
+  The result is in the same format as `pfx`.  
   Note that offset `nth` wraps around. See `Pfx.member/2`.
 
   ## Example
 
-      iex> host(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 128)
-      %Pfx{bits: <<10, 10, 10, 128>>, maxlen: 32}
-
-      iex> host({{10, 10, 10, 0}, 24}, 128)
-      {{10, 10, 10, 128}, 32}
+      iex> host("10.10.10.0/24", 128)
+      "10.10.10.128"
 
       iex> host({10, 10, 10, 10}, 13)
       {10, 10, 10, 10}
 
-      iex> host("10.10.10.0/24", 128)
-      "10.10.10.128"
+      iex> host({{10, 10, 10, 0}, 24}, 128)
+      {{10, 10, 10, 128}, 32}
+
+      iex> host(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 128)
+      %Pfx{bits: <<10, 10, 10, 128>>, maxlen: 32}
 
   """
   @spec host(prefix, integer) :: prefix
@@ -2025,17 +2047,17 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> mask(%Pfx{bits: <<10, 10, 10, 1::1>>, maxlen: 32})
-      %Pfx{bits: <<255, 255, 255, 128>>, maxlen: 32}
+      iex> mask("10.10.10.0/25")
+      "255.255.255.128"
 
-      iex> mask({{10, 10, 10, 1}, 25})
-      {{255, 255, 255, 128}, 32}
-
-      iex> mask({10, 10, 10, 1})
+      iex> mask({10, 10, 10, 0})
       {255, 255, 255, 255}
 
-      iex> mask("10.10.10.128/25")
-      "255.255.255.128"
+      iex> mask({{10, 10, 10, 0}, 25})
+      {{255, 255, 255, 128}, 32}
+
+      iex> mask(%Pfx{bits: <<10, 10, 10, 0::1>>, maxlen: 32})
+      %Pfx{bits: <<255, 255, 255, 128>>, maxlen: 32}
 
   """
   @spec mask(prefix) :: prefix
@@ -2049,17 +2071,17 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> inv_mask(%Pfx{bits: <<10, 10, 10, 0::1>>, maxlen: 32})
-      %Pfx{bits: <<0, 0, 0, 127>>, maxlen: 32}
-
-      iex> inv_mask({{10, 10, 10, 0}, 25})
-      {{0, 0, 0, 127}, 32}
+      iex> inv_mask("10.10.10.0/25")
+      "0.0.0.127"
 
       iex> inv_mask({10, 10, 10, 0})
       {0, 0, 0, 0}
 
-      iex> inv_mask("10.10.10.0/25")
-      "0.0.0.127"
+      iex> inv_mask({{10, 10, 10, 0}, 25})
+      {{0, 0, 0, 127}, 32}
+
+      iex> inv_mask(%Pfx{bits: <<10, 10, 10, 0::1>>, maxlen: 32})
+      %Pfx{bits: <<0, 0, 0, 127>>, maxlen: 32}
 
   """
   @spec inv_mask(prefix) :: prefix
@@ -2073,20 +2095,20 @@ defmodule Pfx do
 
   ## Example
 
-      iex> neighbor(%Pfx{bits: <<1, 1, 1, 1::1>>, maxlen: 32})
-      %Pfx{bits: <<1, 1, 1, 0::1>>, maxlen: 32}
-
-      iex> neighbor({{1, 1, 1, 128}, 25})
-      {{1, 1, 1, 0}, 25}
-
-      iex> neighbor({1, 1, 1, 1})
-      {1, 1, 1, 0}
+      iex> neighbor("1.1.1.128/25")
+      "1.1.1.0/25"
 
       iex> neighbor("1.1.1.0/25")
       "1.1.1.128/25"
 
-      iex> neighbor("1.1.1.128/25")
-      "1.1.1.0/25"
+      iex> neighbor({1, 1, 1, 1})
+      {1, 1, 1, 0}
+
+      iex> neighbor({{1, 1, 1, 128}, 25})
+      {{1, 1, 1, 0}, 25}
+
+      iex> neighbor(%Pfx{bits: <<1, 1, 1, 1::1>>, maxlen: 32})
+      %Pfx{bits: <<1, 1, 1, 0::1>>, maxlen: 32}
 
   """
   @spec neighbor(prefix) :: prefix
@@ -2187,7 +2209,10 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> multicast?(%Pfx{bits: <<224, 0, 0, 1>>, maxlen: 32})
+      iex> multicast?("224.0.0.1")
+      true
+
+      iex> multicast?("ff02::1")
       true
 
       iex> multicast?({{224, 0, 0, 1}, 32})
@@ -2196,10 +2221,7 @@ defmodule Pfx do
       iex> multicast?({224, 0, 0, 1})
       true
 
-      iex> multicast?("224.0.0.1")
-      true
-
-      iex> multicast?("ff02::1")
+      iex> multicast?(%Pfx{bits: <<224, 0, 0, 1>>, maxlen: 32})
       true
 
       iex> multicast?("1.1.1.1")
@@ -2408,19 +2430,15 @@ defmodule Pfx do
   Returns true if `pfx` is designated as "private-use".
 
   For IPv4 this includes the [rfc1918](https://www.iana.org/go/rfc1918)
-  prefixes 10.0.0.0/8, 172.16.0.0/12 and 192.168.0.0/16.  For IPv6 this
-  includes the [rfc4193](https://www.iana.org/go/rfc4193) prefix fc00::/7.
+  prefixes:
+  - `10.0.0.0/8`,
+  - `172.16.0.0/12`, and
+  - `192.168.0.0/16`.
+
+  For IPv6 this includes the [rfc4193](https://www.iana.org/go/rfc4193) prefix
+  - `fc00::/7`.
 
   ## Examples
-
-      iex> unique_local?(%Pfx{bits: <<172, 31, 255, 255>>, maxlen: 32})
-      true
-
-      iex> unique_local?({{172, 31, 255, 255}, 32})
-      true
-
-      iex> unique_local?({172, 31, 255, 255})
-      true
 
       iex> unique_local?("172.31.255.255")
       true
@@ -2435,6 +2453,15 @@ defmodule Pfx do
       false
 
       iex> unique_local?("10.255.255.255")
+      true
+
+      iex> unique_local?({{172, 31, 255, 255}, 32})
+      true
+
+      iex> unique_local?({172, 31, 255, 255})
+      true
+
+      iex> unique_local?(%Pfx{bits: <<172, 31, 255, 255>>, maxlen: 32})
       true
 
       # bad prefix
@@ -2471,7 +2498,10 @@ defmodule Pfx do
 
   ## Example
 
-      iex> nat64?(%Pfx{bits: <<0x64::16, 0xff9b::16, 0::64, 0x1010::16, 0x1010::16>>, maxlen: 128})
+      iex> nat64?("64:ff9b::10.10.10.10")
+      true
+
+      iex> nat64?("64:ff9b:1::10.10.10.10")
       true
 
       iex> nat64?({{0x64, 0xff9b, 0, 0, 0, 0, 0x1010, 0x1010}, 128})
@@ -2480,10 +2510,7 @@ defmodule Pfx do
       iex> nat64?({0x64, 0xff9b, 0, 0, 0, 0, 0x1010, 0x1010})
       true
 
-      iex> nat64?("64:ff9b::10.10.10.10")
-      true
-
-      iex> nat64?("64:ff9b:1::10.10.10.10")
+      iex> nat64?(%Pfx{bits: <<0x64::16, 0xff9b::16, 0::64, 0x1010::16, 0x1010::16>>, maxlen: 128})
       true
 
       # bad prefix
@@ -2568,18 +2595,6 @@ defmodule Pfx do
 
   ## Examples
 
-      # from rfc6052, section 2.2
-
-      iex> nat64_encode(%Pfx{bits: <<0x2001::16, 0xdb8::16>>, maxlen: 128}, "192.0.2.33")
-      %Pfx{bits: <<0x2001::16, 0xdb8::16, 0xc000::16, 0x221::16, 0::64>>, maxlen: 128}
-
-      iex> nat64_encode("2001:db8::/32", "192.0.2.33")
-      "2001:db8:c000:221:0:0:0:0"
-
-      iex> nat64_encode({{0x2001, 0xdb8, 0, 0, 0, 0, 0, 0}, 32}, "192.0.2.33")
-      {{0x2001, 0xdb8, 0xc000, 0x221, 0, 0, 0, 0}, 128}
-
-      # other examples
       iex> nat64_encode("2001:db8:100::/40", "192.0.2.33")
       "2001:db8:1c0:2:21:0:0:0"
 
@@ -2594,6 +2609,15 @@ defmodule Pfx do
 
       iex> nat64_encode("2001:db8:122:344::/96", "192.0.2.33")
       "2001:db8:122:344:0:0:c000:221"
+
+      iex> nat64_encode({{0x2001, 0xdb8, 0, 0, 0, 0, 0, 0}, 32}, "192.0.2.33")
+      {{0x2001, 0xdb8, 0xc000, 0x221, 0, 0, 0, 0}, 128}
+
+      iex> nat64_encode(%Pfx{bits: <<0x2001::16, 0xdb8::16>>, maxlen: 128}, "192.0.2.33")
+      %Pfx{bits: <<0x2001::16, 0xdb8::16, 0xc000::16, 0x221::16, 0::64>>, maxlen: 128}
+
+      iex> nat64_encode("2001:db8::/32", "192.0.2.33")
+      "2001:db8:c000:221:0:0:0:0"
 
   """
   @doc section: :ip
