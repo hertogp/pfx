@@ -935,20 +935,20 @@ defmodule PfxTest do
     # IPv6 nibbles, width & base
     opts = [width: 4, base: 16]
 
-    assert "A.C.D.C.1.9.7.6.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0" ==
+    assert "a.c.d.c.1.9.7.6.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0" ==
              format("acdc:1976::", opts)
 
     # reverse
     opts = Keyword.put(opts, :reverse, true)
 
-    assert "0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.6.7.9.1.C.D.C.A" ==
+    assert "0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.6.7.9.1.c.d.c.a" ==
              format("acdc:1976::", opts)
 
     # unit
     assert "1111.1111" == format(%Pfx{bits: <<255>>, maxlen: 8}, width: 1, unit: 4)
     assert "11111111.00000000" == format(%Pfx{bits: <<255, 0>>, maxlen: 16}, width: 1, unit: 8)
 
-    # ssep
+    # ssep, note: MAC addresses are not lowercase
     assert "AA-BB-CC-DD-EE-FF" ==
              format(%Pfx{bits: <<0xAABBCCDDEEFF::48>>, maxlen: 48}, base: 16, ssep: "-")
 
@@ -1040,7 +1040,7 @@ defmodule PfxTest do
 
     # all formats
     assert "1.1.1.0" == network("1.1.1.255/24")
-    assert "ACDC:1976:0:0:0:0:0:0" == network("acdc:1976::/32")
+    assert "acdc:1976:0:0:0:0:0:0" == network("acdc:1976::/32")
     assert {{1, 2, 3, 0}, 32} == network({{1, 2, 3, 4}, 24})
   end
 
@@ -1067,7 +1067,7 @@ defmodule PfxTest do
     # all formats
     assert "1.1.1.255" == broadcast("1.1.1.0/24")
     assert "1.255.255.255" == broadcast("1.0.0.0/8")
-    assert "ACDC:1976:FFFF:FFFF:FFFF:FFFF:FFFF:FFFF" == broadcast("acdc:1976::/32")
+    assert "acdc:1976:ffff:ffff:ffff:ffff:ffff:ffff" == broadcast("acdc:1976::/32")
     assert {{1, 2, 3, 255}, 32} == broadcast({{1, 2, 3, 4}, 24})
   end
 
@@ -1317,8 +1317,37 @@ defmodule PfxTest do
     # no bits
     assert_raise ArgumentError, fn -> dns_ptr(%Pfx{bits: <<>>, maxlen: 32}) end
 
-    # 1 bit
+    # bits are expanded to N*8 for IPv4 and N*4 for IPv6
     assert "0.in-addr.arpa" == dns_ptr(%Pfx{bits: <<0::1>>, maxlen: 32})
     assert "128.in-addr.arpa" == dns_ptr(%Pfx{bits: <<1::1>>, maxlen: 32})
+    assert "0.ip6.arpa" == dns_ptr(%Pfx{bits: <<0::1>>, maxlen: 128})
+    assert "8.ip6.arpa" == dns_ptr(%Pfx{bits: <<1::1>>, maxlen: 128})
+    assert "16.1.in-addr.arpa" == dns_ptr(%Pfx{bits: <<1, 2::5>>, maxlen: 32})
+
+    # digits are in reverse order
+    assert "4.3.2.1.in-addr.arpa" = dns_ptr(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32})
+
+    assert "6.7.9.1.c.d.c.a.ip6.arpa" =
+             dns_ptr(%Pfx{bits: <<0xACDC::16, 0x1976::16>>, maxlen: 128})
+
+    # accepts all formats
+    assert "4.3.2.1.in-addr.arpa" == dns_ptr("1.2.3.4")
+    assert "4.3.2.1.in-addr.arpa" == dns_ptr({1, 2, 3, 4})
+    assert "4.3.2.1.in-addr.arpa" == dns_ptr({{1, 2, 3, 4}, 32})
+
+    assert "3.2.1.in-addr.arpa" == dns_ptr("1.2.3.4/24")
+    assert "3.2.1.in-addr.arpa" == dns_ptr({{1, 2, 3, 4}, 24})
+  end
+
+  # String.Chars protocol
+  test "String.Chars" do
+    # no mask for full addresses
+    assert "1.2.3.4" == "#{%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}}"
+
+    assert "acdc:1976:0:0:0:0:0:0" ==
+             "#{%Pfx{bits: <<0xACDC::16, 0x1976::16, 0::96>>, maxlen: 128}}"
+
+    assert "acdc:1976:ffff:ffff:ffff:ffff:ffff:ffff" ==
+             "#{%Pfx{bits: <<0xACDC::16, 0x1976::16, -1::96>>, maxlen: 128}}"
   end
 end

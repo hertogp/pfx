@@ -652,9 +652,16 @@ defmodule Pfx do
   @doc """
   A bitwise AND of two `t:prefix/0`'s.
 
-  Both prefixes must have the same `maxlen`.
+  Both prefixes must have the same `maxlen`.  The resulting prefix
+  will have the same number of bits as the first argument.
 
   ## Examples
+
+      iex> band("10.10.10.10", "255.255.0.0")
+      "10.10.0.0"
+
+      iex> band("10.10.10.0/24", "255.255.0.0")
+      "10.10.0.0/24"
 
       iex> x = new(<<128, 129, 130, 131>>, 32)
       iex> y = new(<<255, 255>>, 32)
@@ -665,20 +672,17 @@ defmodule Pfx do
       iex> band(y,x)
       %Pfx{bits: <<128, 129>>, maxlen: 32}
 
-      iex> band("1.2.3.4", "255.255.0.0")
-      "1.2.0.0"
-
+      # results adopt the format of the first argument
       iex> band("1.2.3.4", {255, 255, 0, 0})
       "1.2.0.0"
 
       iex> band({1, 2, 3, 4}, "255.255.0.0")
       {1, 2, 0, 0}
 
-      # both will still have maxlen `32`
       iex> band({{1, 2, 3, 4}, 24}, {255, 255, 0, 0})
       {{1, 2, 0, 0}, 24}
 
-      # the work of ancient astrounauts ..
+      # honoring the ancient tradition
       iex> band("1.2.3.4", "255.255")
       "1.0.0.4"
   """
@@ -700,11 +704,7 @@ defmodule Pfx do
   @doc """
   A bitwise OR of two prefixes.
 
-  Both prefixes should, ultimately, have the same `maxlen`.
-  If one or more arguments are nog a `Pfx`-struct they are
-  are converted using `Pfx.new/1`.
-
-  Note that the result is always a full length address whithin given prefix.
+  Both prefixes must have the same `maxlen`.
 
   ## Examples
 
@@ -748,11 +748,7 @@ defmodule Pfx do
   @doc """
   A bitwise XOR of two `t:prefix`'s.
 
-  Both prefixes should, ultimately, have the same `maxlen`.
-  If one or more arguments are nog a `Pfx`-struct they are
-  are converted using `Pfx.new/1`.
-
-  Note that the result is always a full length address whithin given prefix.
+  Both prefixes must have the same `maxlen`.
 
   ## Examples
 
@@ -1647,17 +1643,17 @@ defmodule Pfx do
 
       iex> pfx = new(<<0xacdc::16, 0x1976::16>>, 128)
       iex> format(pfx, width: 16, base: 16, ssep: ":")
-      "ACDC:1976:0:0:0:0:0:0/32"
+      "acdc:1976:0:0:0:0:0:0/32"
       #
       # similar, but grouping 4 fields, each 4 bits wide, into a single section
       #
       iex> format(pfx, width: 4, base: 16, unit: 4, ssep: ":")
-      "ACDC:1976:0000:0000:0000:0000:0000:0000/32"
+      "acdc:1976:0000:0000:0000:0000:0000:0000/32"
       #
       # this time, omit the acutal pfx length
       #
       iex> format(pfx, width: 16, base: 16, ssep: ":", mask: false)
-      "ACDC:1976:0:0:0:0:0:0"
+      "acdc:1976:0:0:0:0:0:0"
       #
       # ptr for IPv6 using the nibble format:
       # - dot-separated reversal of all hex digits in the expanded address
@@ -1696,6 +1692,8 @@ defmodule Pfx do
       |> (fn x -> if reverse, do: Enum.reverse(x), else: x end).()
       |> Enum.chunk_every(unit)
       |> Enum.join(ssep)
+
+    string = if pfx.maxlen == 128, do: String.downcase(string), else: string
 
     if mask and bit_size(pfx.bits) < pfx.maxlen do
       "#{string}#{lsep}#{bit_size(pfx.bits)}"
@@ -1920,7 +1918,7 @@ defmodule Pfx do
       %Pfx{bits: <<0xACDC::16, 0x1976::16, 0::96>>, maxlen: 128}
 
       iex> network("acdc:1976::/32")
-      "ACDC:1976:0:0:0:0:0:0"
+      "acdc:1976:0:0:0:0:0:0"
 
   """
   @spec network(prefix) :: prefix
@@ -2235,24 +2233,6 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> multicast(%Pfx{bits: <<0xff02::16, 0::104, 1::8>>, maxlen: 128})
-      %{
-        preamble: 255,
-        flags: {0, 0, 0, 0},
-        scope: 2,
-        groupID: <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1>>,
-        address: %Pfx{bits: <<0xff02::16, 0::104, 1::8>>, maxlen: 128}
-      }
-
-      iex> multicast({0xff02, 0, 0, 0, 0, 0, 0, 1})
-      %{
-        preamble: 255,
-        flags: {0, 0, 0, 0},
-        scope: 2,
-        groupID: <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1>>,
-        address: {0xff02, 0, 0, 0, 0, 0, 0, 1}
-      }
-
       iex> multicast("ff02::1")
       %{
         preamble: 255,
@@ -2260,6 +2240,13 @@ defmodule Pfx do
         scope: 2,
         groupID: <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1>>,
         address: "ff02::1"
+      }
+
+      iex> multicast("224.0.0.1")
+      %{
+        address: "224.0.0.1",
+        digits: {224, 0, 0, 1},
+        groupID: <<0, 0, 0, 1::size(4)>>
       }
 
   """
@@ -2296,9 +2283,9 @@ defmodule Pfx do
 
   Link local prefixes include:
 
-  - `0.0.0.0/8`,          [rfc1122](https://tools.ietf.org/html/rfc1122), this-network (link)
+  - `0.0.0.0/8`,          [rfc1122](https://tools.ietf.org/html/rfc1122), 'this-network'
   - `255.255.255.255/32`, [rfc1f22](https://www.iana.org/go/rfc1122), limited broadcast
-  - `169.254.0.0/16`,     [rfc3927](https://www.iana.org/go/rfc3927), link-local
+  - `169.254.0.0/16`,     [rfc3927](https://www.iana.org/go/rfc3927), link-local (see examples)
   - `fe80::/64`,          [rfc4291](https://tools.ietf.org/html/rfc4291), link-local
 
   ## Examples
@@ -2325,9 +2312,6 @@ defmodule Pfx do
       true
 
       iex> link_local?({0, 255, 255, 255})
-      true
-
-      iex> link_local?({{0, 255, 255, 255}, 32})
       true
 
       iex> link_local?("fe80::acdc:1975")
@@ -2378,18 +2362,20 @@ defmodule Pfx do
          ifaceID: 33001,
          address: "169.254.128.233"
       }
+      #
       iex> host(x.prefix, x.ifaceID)
       "169.254.128.233"
 
       iex> y = link_local("fe80::acdc:1976")
       iex> y
       %{ preamble: 1018,
-         prefix: "FE80:0:0:0:0:0:0:0/64",
+         prefix: "fe80:0:0:0:0:0:0:0/64",
          ifaceID: 2900105590,
-         address: "FE80:0:0:0:0:0:ACDC:1976"
+         address: "fe80:0:0:0:0:0:acdc:1976"
       }
+      #
       iex> host(y.prefix, y.ifaceID)
-      "FE80:0:0:0:0:0:ACDC:1976"
+      "fe80:0:0:0:0:0:acdc:1976"
 
   """
   @doc section: :ip
@@ -2588,26 +2574,26 @@ defmodule Pfx do
       %Pfx{bits: <<0x2001::16, 0xdb8::16, 0xc000::16, 0x221::16, 0::64>>, maxlen: 128}
 
       iex> nat64_encode("2001:db8::/32", "192.0.2.33")
-      "2001:DB8:C000:221:0:0:0:0"
+      "2001:db8:c000:221:0:0:0:0"
 
       iex> nat64_encode({{0x2001, 0xdb8, 0, 0, 0, 0, 0, 0}, 32}, "192.0.2.33")
       {{0x2001, 0xdb8, 0xc000, 0x221, 0, 0, 0, 0}, 128}
 
       # other examples
       iex> nat64_encode("2001:db8:100::/40", "192.0.2.33")
-      "2001:DB8:1C0:2:21:0:0:0"
+      "2001:db8:1c0:2:21:0:0:0"
 
       iex> nat64_encode("2001:db8:122::/48", "192.0.2.33")
-      "2001:DB8:122:C000:2:2100:0:0"
+      "2001:db8:122:c000:2:2100:0:0"
 
       iex> nat64_encode("2001:db8:122:300::/56", "192.0.2.33")
-      "2001:DB8:122:3C0:0:221:0:0"
+      "2001:db8:122:3c0:0:221:0:0"
 
       iex> nat64_encode("2001:db8:122:344::/64", "192.0.2.33")
-      "2001:DB8:122:344:C0:2:2100:0"
+      "2001:db8:122:344:c0:2:2100:0"
 
       iex> nat64_encode("2001:db8:122:344::/96", "192.0.2.33")
-      "2001:DB8:122:344:0:0:C000:221"
+      "2001:db8:122:344:0:0:c000:221"
 
   """
   @doc section: :ip
@@ -2692,7 +2678,7 @@ defimpl String.Chars, for: Pfx do
     case pfx.maxlen do
       32 -> Pfx.format(pfx)
       48 -> Pfx.format(pfx, base: 16, ssep: ":")
-      128 -> Pfx.format(pfx, base: 16, width: 16, ssep: ":")
+      128 -> Pfx.format(pfx, base: 16, width: 16, ssep: ":") |> String.downcase()
       _ -> Pfx.format(pfx)
     end
   end

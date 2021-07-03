@@ -6,7 +6,7 @@
 
 <!-- @MODULEDOC -->
 
-Functions to make working with prefixes easier.
+Functions to make working with prefixes easier, especially IPv4 and IPv6 prefixes.
 
 `Pfx` defines a prefix as a struct with a number of `bits` and a maximum
 `maxlen` length.  Hence a `Pfx` struct represents some domain-specific value,
@@ -24,7 +24,34 @@ three yield either an IPv4 or IPv6 prefix.
 
 Several functions, like `Pfx.unique_local?/1` are more IP oriented, and are
 included along with the more generic `Pfx` functions (like `Pfx.cut/3`) in
-order to have one module to rule them all.
+order to have one module to rule them all.  Functions generally accept all
+four representations and yield their result in the same fashion, if possible:
+
+    iex> hosts("10.10.10.0/30")
+    ["10.10.10.0", "10.10.10.1", "10.10.10.2", "10.10.10.3"]
+
+    iex> hosts({{10, 10, 10, 0}, 30})
+    [
+      {{10, 10, 10, 0}, 32},
+      {{10, 10, 10, 1}, 32},
+      {{10, 10, 10, 2}, 32},
+      {{10, 10, 10, 3}, 32}
+    ]
+
+    iex> hosts(%Pfx{bits: <<10, 10, 10, 0::6>>, maxlen: 32})
+    [
+      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32},
+      %Pfx{bits: <<10, 10, 10, 1>>, maxlen: 32},
+      %Pfx{bits: <<10, 10, 10, 2>>, maxlen: 32},
+      %Pfx{bits: <<10, 10, 10, 3>>, maxlen: 32},
+    ]
+
+    # adopt representation of first argument
+    iex> band({10, 10, 10, 1}, "255.255.255.0")
+    {10, 10, 10, 0}
+
+    iex> multicast?("ff00::1")
+    true
 
 
 ## Validity
@@ -99,7 +126,7 @@ Also, everything is done in Elixir with no extra, external dependencies.
 Usually fast enough, but if you really feel the need for speed, you might want
 to look elsewhere.
 
-Ayway, enough downplay, here are some examples.
+Ayway, enough downplay, here are some more examples.
 
 ## Examples
 
@@ -165,7 +192,7 @@ some options that help shape the string representation for a `Pfx` struct.
 
     # an ipv6 prefix
     iex> "#{new(<<0xACDC::16, 0x1976::16>>, 128)}"
-    "ACDC:1976:0:0:0:0:0:0/32"
+    "acdc:1976:0:0:0:0:0:0/32"
 
     # a MAC address
     iex> "#{new(<<0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6>>, 48)}"
@@ -246,7 +273,7 @@ list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:pfx, "~> 0.1.0"}
+    {:pfx, "~> 0.1.1"}
   ]
 end
 ```
