@@ -138,8 +138,7 @@ defmodule Pfx do
   # split a charlist with length into tuple w/ {'address', length}
   # notes:
   # - ugly code, but a tad faster than multiple func's w/ signatures
-  # - crude length "parser":
-  #   '1.1.1.1/024' -> {'1.1.1.1', 24}
+  # - crude length "parser" -> '1.1.1.1/024' => {'1.1.1.1', 24}
   defp splitp(charlist, acc) do
     case charlist do
       [?/ | tail] ->
@@ -373,7 +372,7 @@ defmodule Pfx do
       iex> cut(teredo, 64, 16) |> digits(1) |> elem(0)
       {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 
-  "Missing" bits are considered to be zero.
+  'Masked' bits are considered to be zero.
 
       # extract 2nd and 3rd byte:
       iex> %Pfx{bits: <<255, 255>>, maxlen: 32} |> cut(8, 16)
@@ -543,7 +542,7 @@ defmodule Pfx do
 
   @spec bitsp(t, integer, integer) :: bitstring
   defp bitsp(pfx, pos, len) when is_pfx(pfx) do
-    # XXX: dispite the is_pfx(pfx), new() is required here, otherwise dialyzer
+    # XXX: despite the is_pfx(pfx), new() is required here, otherwise dialyzer
     # chokes on the `pfx.bits` below.  Why?
     x = padr(pfx) |> new()
     <<_::size(pos), part::bitstring-size(len), _::bitstring>> = x.bits
@@ -1137,6 +1136,50 @@ defmodule Pfx do
 
   def padl(_, bit, _),
     do: raise(arg_error(:nobit, bit))
+
+  @doc """
+  Drop `count` lsb bits from given `pfx`.
+
+  If `count` exceeds the actual number of bits in `pfx.bits`, simply drops all
+  bits.
+
+  ## Examples
+
+      iex> drop("1.2.3.0/31", 1)
+      "1.2.3.0/30"
+
+      iex> drop("1.2.3.2/31", 1)
+      "1.2.3.0/30"
+
+      iex> drop("1.2.3.128/25", 1)
+      "1.2.3.0/24"
+
+      iex> drop("1.2.3.0/24", 512)
+      "0.0.0.0/0"
+
+      iex> drop({1, 2, 3, 4}, 8)
+      {1, 2, 3, 0}
+
+      iex> drop({{1, 2, 3, 4}, 32}, 16)
+      {{1, 2, 0, 0}, 16}
+
+      iex> drop(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}, 16)
+      %Pfx{bits: <<1, 2>>, maxlen: 32}
+
+  """
+  @spec drop(prefix, non_neg_integer) :: prefix
+  def drop(pfx, count) when is_pfx(pfx) and is_non_neg_integer(count) do
+    cond do
+      count < bit_size(pfx.bits) -> %{pfx | bits: truncate(pfx.bits, bit_size(pfx.bits) - count)}
+      true -> %{pfx | bits: <<>>}
+    end
+  end
+
+  def drop(pfx, count) when is_non_neg_integer(count),
+    do: new(pfx) |> drop(count) |> marshall(pfx)
+
+  def drop(_, count),
+    do: raise(arg_error(:nodrop, "expected a non_neg_integer for count, got: #{inspect(count)}"))
 
   @doc """
   Set all `pfx.bits` to either `0` or `1`.

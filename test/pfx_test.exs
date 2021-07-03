@@ -698,6 +698,36 @@ defmodule PfxTest do
     assert {{255, 255, 255, 1}, 32} == padl({{1, 0, 0, 0}, 8}, 1, 24)
   end
 
+  # Drop/2
+  test "drop/2" do
+    Enum.all?(@ip4_representations, fn x -> assert drop(x, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert drop(x, 0) end)
+    Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> drop(x, 0) end end)
+
+    # more bad input
+    assert_raise ArgumentError, fn -> drop("1.1.1.1", -1) end
+    assert_raise ArgumentError, fn -> drop("1.1.1.1", 1.0) end
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 0} == drop(%Pfx{bits: <<>>, maxlen: 0}, 1)
+
+    # one bit
+    assert %Pfx{bits: <<>>, maxlen: 8} == drop(%Pfx{bits: <<1::1>>, maxlen: 8}, 1)
+
+    # some bits
+    assert %Pfx{bits: <<>>, maxlen: 8} == drop(%Pfx{bits: <<1>>, maxlen: 8}, 8)
+    assert %Pfx{bits: <<1>>, maxlen: 16} == drop(%Pfx{bits: <<1, 2>>, maxlen: 16}, 8)
+
+    # count > pfx.bits => just drops all bits
+    assert %Pfx{bits: <<>>, maxlen: 128} == drop(%Pfx{bits: <<-1::128>>, maxlen: 128}, 512)
+
+    # all representations
+    assert "0.0.0.0/0" == drop("1.1.1.1", 32)
+    assert "1.2.0.0/16" == drop("1.2.3.4", 16)
+    assert {1, 2, 0, 0} == drop({1, 2, 3, 4}, 16)
+    assert {{1, 2, 0, 0}, 16} == drop({{1, 2, 3, 4}, 32}, 16)
+  end
+
   # Bset/2
   test "bset/2" do
     Enum.all?(@ip4_representations, fn x -> assert bset(x, 0) end)

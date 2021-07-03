@@ -1,5 +1,8 @@
 # CHANGELOG
 
+# 0.1.2
+- added drop, which drops some lsb bits
+- improved documentation
 
 # 0.1.1
 - fixed brot, rotating empty pfx.bits

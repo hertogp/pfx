@@ -6,7 +6,8 @@
 
 <!-- @MODULEDOC -->
 
-Functions to make working with prefixes easier, especially IPv4 and IPv6 prefixes.
+Functions to make working with prefixes easier, especially IP prefixes (v4 and
+v6).
 
 `Pfx` defines a prefix as a struct with a number of `bits` and a maximum
 `maxlen` length.  Hence a `Pfx` struct represents some domain-specific value,
@@ -285,7 +286,7 @@ list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:pfx, "~> 0.1.1"}
+    {:pfx, "~> 0.2.0"}
   ]
 end
 ```
