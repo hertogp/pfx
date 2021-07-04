@@ -1210,12 +1210,37 @@ defmodule PfxTest do
     assert "10.11.12.1" == neighbor("10.11.12.0")
   end
 
-  # Teredo/1
+  # Teredo_decode/1
 
-  test "teredo/1" do
-    Enum.all?(@ip4_representations, fn x -> assert nil == teredo(x) end)
-    Enum.all?(@ip6_representations, fn x -> assert nil == teredo(x) end)
-    Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> teredo(x) end end)
+  test "teredo_decode/1" do
+    Enum.all?(@ip4_representations, fn x -> assert nil == teredo_decode(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert nil == teredo_decode(x) end)
+
+    Enum.all?(@bad_representations, fn x ->
+      assert_raise ArgumentError, fn -> teredo_decode(x) end
+    end)
+
+    server = new("1.2.3.4")
+    client = new("10.10.10.10") |> bnot()
+    port = Bitwise.bnot(33000)
+    flags = <<1::1, 0::15>>
+
+    addr = %Pfx{
+      bits: <<0x2001::16, 0x0::16, server.bits::bits, flags::bits, port::16, client.bits::bits>>,
+      maxlen: 128
+    }
+
+    map = teredo_decode(addr)
+    assert map.server == "1.2.3.4"
+    assert map.client == "10.10.10.10"
+    assert map.port == 33000
+    assert map.flags == {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+    assert map.prefix == addr
+  end
+
+  # Teredo_encode/4
+
+  test "teredo_encode/4" do
   end
 
   # Teredo?/1

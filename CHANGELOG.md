@@ -1,5 +1,9 @@
 # CHANGELOG
 
+# 0.2.0
+- added teredo_encode
+- renamed teredo to teredo_decode
+
 # 0.1.2
 - added drop, which drops some lsb bits
 - improved documentation

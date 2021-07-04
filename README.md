@@ -6,8 +6,8 @@
 
 <!-- @MODULEDOC -->
 
-Functions to make working with prefixes easier, especially IP prefixes (v4 and
-v6).
+Functions to make working with prefixes easier, especially IP prefixes (IPv4 and
+IPv6).
 
 `Pfx` defines a prefix as a struct with a number of `bits` and a maximum
 `maxlen` length.  Hence a `Pfx` struct represents some domain-specific value,
@@ -236,7 +236,7 @@ Functions are sometimes IP specific, like:
     iex> dns_ptr("acdc:1975::b1ba:2021")
     "1.2.0.2.a.b.1.b.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.5.7.9.1.c.d.c.a.ip6.arpa"
 
-    iex> teredo("2001:0000:4136:e378:8000:63bf:3fff:fdd2")
+    iex> teredo_decode("2001:0000:4136:e378:8000:63bf:3fff:fdd2")
     %{
       server: "65.54.227.120",
       client: "192.0.2.45",

@@ -19,7 +19,7 @@ defmodule Pfx.MixProject do
       version: @version,
       elixir: "~> 1.11",
       name: "Pfx",
-      description: "Functions to work with (IPv4/IPv6/Other) prefixes.",
+      description: "Functions to work with prefixes, especially IP (both IPv4 and IPv6).",
       deps: deps(),
       docs: docs(),
       package: package(),

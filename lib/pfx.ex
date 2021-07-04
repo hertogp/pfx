@@ -99,6 +99,7 @@ defmodule Pfx do
         :nobit -> "expected a integer (bit) value 0..1, got #{inspect(data)}"
         :nobits -> "expected a non-empty bitstring, got: #{inspect(data)}"
         :nocompare -> "prefixes have different maxlen's: #{inspect(data)}"
+        :noflags -> "expected a 16-element tuple of bits, got #{inspect(data)}"
         :noint -> "expected an integer, got #{inspect(data)}"
         :noints -> "expected all integers, got #{inspect(data)}"
         :noneg -> "expected a non_neg_integer, got #{inspect(data)}"
@@ -109,7 +110,9 @@ defmodule Pfx do
         :noundig -> "expected {{n1, n2, ..}, length}, got #{inspect(data)}"
         :pfx -> "expected a valid Pfx struct, got #{inspect(data)}"
         :pfx4 -> "expected a valid IPv4 Pfx, got #{inspect(data)}"
+        :pfx4full -> "expected a full IPv4 address, got #{inspect(data)}"
         :pfx6 -> "expected a valid IPv6 Pfx, got #{inspect(data)}"
+        :pfx6full -> "expected a full IPv6 address, got #{inspect(data)}"
         :range -> "invalid index range: #{inspect(data)}"
         reason -> "error #{reason}, #{inspect(data)}"
       end
@@ -160,37 +163,25 @@ defmodule Pfx do
     end
   end
 
-  # given a valid %Pfx{}=x, turn it into same format as y
+  # format pfx same as x
+  # - pfx must be a %Pfx{}-struct, x can be 1 of 4 representations
+  # - protocol version only matters for width when using digits or {digits, length}
   @spec marshall(t, prefix) :: prefix
-  defp marshall(x, {_, _, _, _}) when is_pfx(x),
-    do: digits(x, 8) |> elem(0)
+  defp marshall(pfx, x) when is_pfx(pfx) do
+    width = if pfx.maxlen == 128, do: 16, else: 8
 
-  defp marshall(x, {_, _, _, _, _, _, _, _}) when is_pfx(x),
-    do: digits(x, 16) |> elem(0)
-
-  defp marshall(x, {{_, _, _, _}, _}) when is_pfx(x),
-    do: digits(x, 8)
-
-  defp marshall(x, {{_, _, _, _, _, _, _, _}, _}) when is_pfx(x),
-    do: digits(x, 16)
-
-  defp marshall(x, y) when is_pfx(x) and is_binary(y),
-    do: "#{x}"
-
-  # TODO: adding is_pfx(y) here (=wanted) makes dialyzer unhappy, why?
-  # - dialyzer seems to NOT recognize y as possible a Pfx.t, and
-  # - there are actually calls that marshall a Pfx.t to a Pfx.t
-  defp marshall(x, _) when is_pfx(x),
-    do: x
-
-  # x is not a Pfx.t, if this happens it's an internal error!
-  defp marshall(x, y),
-    do: raise(arg_error(:marshall, {x, y}))
+    cond do
+      is_binary(x) -> "#{pfx}"
+      is_tuple(x) and tuple_size(x) == 2 -> digits(pfx, width)
+      is_tuple(x) -> digits(pfx, width) |> elem(0)
+      true -> pfx
+    end
+  end
 
   # API
-  # - new/1 and new/2 *MUST* return a `Pfx` struct or raise an ArgumentError
-  #   since many functions use `new` to translate other representations into
-  #   a `Pfx` struct and call themselves again.
+  # - new/1 and new/2 *MUST* raise an ArgumentError if it fails
+  # - many functions use `new` to translate other representations into a 
+  #   `Pfx` struct and call themselves again with that struct
 
   @doc """
   Creates a new `t:Pfx.t/0`-prefix.
@@ -2206,7 +2197,7 @@ defmodule Pfx do
   ## Examples
 
       # example from https://en.wikipedia.org/wiki/Teredo_tunneling#IPv6_addressing
-      iex> teredo("2001:0000:4136:e378:8000:63bf:3fff:fdd2")
+      iex> teredo_decode("2001:0000:4136:e378:8000:63bf:3fff:fdd2")
       %{
         server: "65.54.227.120",
         client: "192.0.2.45",
@@ -2215,7 +2206,7 @@ defmodule Pfx do
         prefix: "2001:0000:4136:e378:8000:63bf:3fff:fdd2"
       }
 
-      iex> teredo({0x2001, 0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2})
+      iex> teredo_decode({0x2001, 0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2})
       %{
         server: "65.54.227.120",
         client: "192.0.2.45",
@@ -2224,13 +2215,13 @@ defmodule Pfx do
         prefix: {0x2001, 0x0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2}
       }
 
-      iex> teredo("1.1.1.1")
+      iex> teredo_decode("1.1.1.1")
       nil
 
   """
   @doc section: :ip
-  @spec teredo(prefix) :: map | nil
-  def teredo(pfx) do
+  @spec teredo_decode(prefix) :: map | nil
+  def teredo_decode(pfx) do
     # https://www.rfc-editor.org/rfc/rfc4380.html#section-4
     x = new(pfx)
 
@@ -2246,6 +2237,66 @@ defmodule Pfx do
       nil
     end
   end
+
+  @doc """
+  Encode given `server`, `client`, `port` and `flags` as an IPv6 teredo address.
+
+  The `client` and `server` must be full IPv4 adresses, while both `port` and `flags`
+  are interpreted as 16-bit unsigned integers.
+
+  The result mirrors the representation format of `client`.
+
+  ## Example
+
+      iex> flags = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+      iex> teredo_encode("192.0.2.45", "65.54.227.120", 40000, flags)
+      "2001:0:4136:e378:8000:63bf:3fff:fdd2"
+      iex>
+      iex> teredo_encode({192, 0, 2, 45}, "65.54.227.120", 40000, flags)
+      {0x2001, 0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2}
+      iex>
+      iex> teredo_encode({{192, 0, 2, 45}, 32}, "65.54.227.120", 40000, flags)
+      {{0x2001, 0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2}, 128}
+      iex>
+      iex> teredo_encode(%Pfx{bits: <<192, 0, 2, 45>>, maxlen: 32}, "65.54.227.120", 40000, flags)
+      %Pfx{bits: <<0x2001::16, 0::16, 0x4136::16, 0xe378::16, 0x8000::16, 0x63bf::16, 0x3fff::16, 0xfdd2::16>>, maxlen: 128}
+
+  """
+  @doc section: :ip
+  @spec teredo_encode(prefix, prefix, integer, tuple) :: prefix
+  def teredo_encode(client, server, port, flags)
+      when is_integer(port) and tuple_size(flags) == 16 do
+    c = bnot(client) |> new()
+    s = new(server)
+
+    if bit_size(c.bits) != 32 or c.maxlen != 32,
+      do: raise(arg_error(:pfx4full, client))
+
+    if bit_size(s.bits) != 32 or s.maxlen != 32,
+      do: raise(arg_error(:pfx4full, server))
+
+    p = <<Bitwise.bnot(port)::16>>
+    f = undigits({flags, 16}, 1)
+
+    x = %Pfx{
+      bits: <<0x20010000::32, s.bits::bits, f.bits::bits, p::bits, c.bits::bits>>,
+      maxlen: 128
+    }
+
+    marshall(x, client)
+    # cond do
+    #   is_binary(client) -> "#{x}"
+    #   is_tuple(client) and tuple_size(client) == 2 -> digits(x, 16)
+    #   is_tuple(client) -> digits(x, 16) |> elem(0)
+    #   true -> x
+    # end
+  end
+
+  def teredo_encode(_client, _server, port, flags) when tuple_size(flags) == 16,
+    do: raise(arg_error(:noint, port))
+
+  def teredo_encode(_client, _server, port, flags) when is_integer(port),
+    do: raise(arg_error(:noflags, flags))
 
   @doc """
   Returns true is `pfx` is a multicast prefix, false otherwise
