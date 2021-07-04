@@ -166,14 +166,44 @@ defmodule Pfx do
   # format pfx same as x
   # - pfx must be a %Pfx{}-struct, x can be 1 of 4 representations
   # - protocol version only matters for width when using digits or {digits, length}
+
+  @doc """
+  Given a `t.Pfx.t/0` prefix, try to represent it in its original form.
+
+  The exact original is not required, the `pfx` is transformed by the shape of
+  the `original` argument: string vs two-element tuple vs tuple.  If none of
+  the three shapes match, the `pfx` is returned unchanged.
+
+  This is used to allow results to be the same shape as their (first) argument
+  that needed to turn into a `t:Pfx.t/0` for some calculation.
+
+  ## Examples
+
+      # original is a string
+      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, "any string really")
+      "1.1.1.0/24"
+
+      # original is any two-element tuple
+      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, {0,0})
+      {{1, 1, 1, 0}, 24}
+
+      # original is any other tuple
+      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, {})
+      {1, 1, 1, 0}
+
+      # original is a Pfx struct
+      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, %Pfx{bits: <<>>, maxlen: 0})
+      %Pfx{bits: <<1, 1, 1>>, maxlen: 32}
+
+  """
   @spec marshall(t, prefix) :: prefix
-  defp marshall(pfx, x) when is_pfx(pfx) do
+  def marshall(pfx, original) when is_pfx(pfx) do
     width = if pfx.maxlen == 128, do: 16, else: 8
 
     cond do
-      is_binary(x) -> "#{pfx}"
-      is_tuple(x) and tuple_size(x) == 2 -> digits(pfx, width)
-      is_tuple(x) -> digits(pfx, width) |> elem(0)
+      is_binary(original) -> "#{pfx}"
+      is_tuple(original) and tuple_size(original) == 2 -> digits(pfx, width)
+      is_tuple(original) -> digits(pfx, width) |> elem(0)
       true -> pfx
     end
   end
