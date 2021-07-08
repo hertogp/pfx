@@ -1,5 +1,10 @@
 # CHANGELOG
 
+# new
+- add `Pfx.eui64_encode/1` to create a modified EUI-64 from a EUI-48 address
+- add `Pfx.eui64_decode/1` to create a EUI-48 from a modified EUI-64 address
+- fix so that `Pfx.new/1` and `Pfx.from_mac/1` parse EUI-64 in Cisco's dot format
+
 # 0.3.0
 - added `Pfx.keep/2` to keep some msb bits
 - fixed `String.Chars` for MAC addresses with maxlen 48 (w/ hyphens)

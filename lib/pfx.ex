@@ -109,6 +109,8 @@ defmodule Pfx do
         :nobits -> "expected a non-empty bitstring, got: #{inspect(data)}"
         :nocompare -> "prefixes have different maxlen's: #{inspect(data)}"
         :noeui -> "expected an EUI48/64 string or tuple, got #{inspect(data)}"
+        :noeui48 -> "expected an EUI-48 prefix, string or tuple(s), got #{inspect(data)}"
+        :noeui64 -> "expected an EUI-64 prefix, string or tuple(s), got #{inspect(data)}"
         :noflags -> "expected a 16-element tuple of bits, got #{inspect(data)}"
         :noint -> "expected an integer, got #{inspect(data)}"
         :noints -> "expected all integers, got #{inspect(data)}"
@@ -521,6 +523,7 @@ defmodule Pfx do
     case {bsize, hyphens} do
       {48, 2} -> new(bits, bsize)
       {48, 5} -> new(bits, bsize)
+      {64, 3} -> new(bits, bsize)
       {64, 7} -> new(bits, bsize)
       _ -> raise ArgumentError
     end
@@ -545,7 +548,7 @@ defmodule Pfx do
   defp hex([?: | tail], acc, n) when bit_size(acc) in [8, 16, 24, 32, 40, 48, 56],
     do: hex(tail, acc, n + 1)
 
-  defp hex([?. | tail], acc, n) when bit_size(acc) in [16, 32],
+  defp hex([?. | tail], acc, n) when bit_size(acc) in [16, 32, 48],
     do: hex(tail, acc, n + 1)
 
   # Bit ops
@@ -2438,6 +2441,83 @@ defmodule Pfx do
   end
 
   # IP oriented
+
+  @doc """
+  Create a modified EUI-64 out of `eui48` (an EUI-48 address).
+
+  Despite [rfc7217](https://www.rfc-editor.org/rfc/rfc7217.html), modified
+  EUI-64's are still used in the wild.  This flips the 7-th bit and inserts
+  `0xFFFE` in the middle. EUI's in tuple form, should be encoded by
+  `Pfx.from_mac/1` first.  That always yields, pending any encoding errors, a
+  `Pfx`-struct, so to get the result in tuple-form, reroute it through
+  `Pfx.digits/2`.
+
+  ## Example
+
+      iex> eui64_encode("0088.8888.8888")
+      "02-88-88-FF-FE-88-88-88"
+
+      iex> eui64_encode("0288.8888.8888")
+      "00-88-88-FF-FE-88-88-88"
+
+      iex> from_mac({0x00, 0x88, 0x88, 0x88, 0x88, 0x88}) |> eui64_encode() |> digits(8)
+      {{0x02, 0x88, 0x88, 0xFF, 0xFE, 0x88, 0x88, 0x88}, 64}
+
+  """
+  @doc section: :ip
+  @spec eui64_encode(prefix) :: prefix
+  def eui64_encode(eui48) when is_pfx(eui48) and eui48.maxlen == 48 do
+    {{a, b, c, d, e, f}, _} = digits(eui48, 8)
+    a = Bitwise.bxor(a, 2)
+    new(<<a, b, c, 0xFF, 0xFE, d, e, f>>, 64)
+  end
+
+  # if eui48 was a prefix, error out before we try new/1 (!)
+  def eui64_encode(pfx) when is_pfx(pfx),
+    do: raise(arg_error(:noeui48, pfx))
+
+  def eui64_encode(pfx),
+    do: new(pfx) |> eui64_encode() |> marshall(pfx)
+
+  @doc """
+  Decode a modified EUI-64 back into the original EUI-48 address.
+
+  Despite [rfc7217](https://www.rfc-editor.org/rfc/rfc7217.html), modified
+  EUI-64's are still used in the wild.  This flips the 7-th bit and removes
+  `0xFFFE` from the middle. EUI-64's in tuple form, should be encoded by
+  `Pfx.from_mac/1` first.
+
+  ## Example
+
+      iex> eui64_decode("0088.88FE.FF88.8888")
+      "02-88-88-88-88-88"
+
+      iex> eui64_decode("0288.88FF.FE88.8888")
+      "00-88-88-88-88-88"
+
+      # same
+      iex> eui64_decode("02-88-88-FF-FE-88-88-88")
+      "00-88-88-88-88-88"
+
+      iex> from_mac({0x02, 0x88, 0x88, 0xFF, 0xFE, 0x88, 0x88, 0x88}) |> eui64_decode() |> digits(8)
+      {{0x00, 0x88, 0x88, 0x88, 0x88, 0x88}, 48}
+
+  """
+  @doc section: :ip
+  @spec eui64_decode(prefix) :: prefix
+  def eui64_decode(eui64) when is_pfx(eui64) and eui64.maxlen == 64 do
+    {{a, b, c, _, _, d, e, f}, _} = digits(eui64, 8)
+    a = Bitwise.bxor(a, 2)
+    new(<<a, b, c, d, e, f>>, 48)
+  end
+
+  # if eui48 was a prefix, error out before we try new/1 (!)
+  def eui64_decode(pfx) when is_pfx(pfx),
+    do: raise(arg_error(:noeui64, pfx))
+
+  def eui64_decode(pfx),
+    do: new(pfx) |> eui64_decode() |> marshall(pfx)
+
   @doc """
   Returns true if *prefix* is a teredo address, false otherwise
 
@@ -2607,17 +2687,15 @@ defmodule Pfx do
   @doc section: :ip
   @spec multicast?(prefix) :: boolean
   def multicast?(pfx) do
-    try do
-      x = new(pfx)
+    x = new(pfx)
 
-      cond do
-        member?(x, %Pfx{bits: <<14::4>>, maxlen: 32}) -> true
-        member?(x, %Pfx{bits: <<0xFF>>, maxlen: 128}) -> true
-        true -> false
-      end
-    rescue
-      ArgumentError -> false
+    cond do
+      member?(x, %Pfx{bits: <<14::4>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<0xFF>>, maxlen: 128}) -> true
+      true -> false
     end
+  rescue
+    _ -> false
   end
 
   @doc """
