@@ -44,18 +44,27 @@ defmodule Pfx do
   defguardp is_pos_integer(n) when is_integer(n) and n > 0
   defguardp is_inrange(x, y, z) when is_integer(x) and y <= x and x <= z
 
-  defguardp is_ip4dig(n) when is_integer(n) and -1 < n and n < 256
+  defguardp is_8bit(n) when is_integer(n) and -1 < n and n < 256
   defguardp is_ip4len(l) when is_integer(l) and -1 < l and l < 33
-  defguardp is_ip6dig(n) when is_integer(n) and -1 < n and n < 65536
+  defguardp is_16bit(n) when is_integer(n) and -1 < n and n < 65536
   defguardp is_ip6len(l) when is_integer(l) and -1 < l and l < 129
 
   defguardp is_ip4(a, b, c, d, l)
-            when is_ip4dig(a) and is_ip4dig(b) and is_ip4dig(c) and is_ip4dig(d) and is_ip4len(l)
+            when is_8bit(a) and is_8bit(b) and is_8bit(c) and is_8bit(d) and is_ip4len(l)
 
   defguardp is_ip6(a, b, c, d, e, f, g, h, l)
-            when is_ip6dig(a) and is_ip6dig(b) and is_ip6dig(c) and is_ip6dig(d) and is_ip6dig(e) and
-                   is_ip6dig(f) and is_ip6dig(g) and is_ip6dig(h) and
+            when is_16bit(a) and is_16bit(b) and is_16bit(c) and is_16bit(d) and is_16bit(e) and
+                   is_16bit(f) and is_16bit(g) and is_16bit(h) and
                    is_ip6len(l)
+
+  defguardp is_eui48(a, b, c, d, e, f, l)
+            when is_8bit(a) and is_8bit(b) and is_8bit(c) and is_8bit(d) and
+                   is_8bit(e) and is_8bit(f) and is_inrange(l, 0, 48)
+
+  defguardp is_eui64(a, b, c, d, e, f, g, h, l)
+            when is_8bit(a) and is_8bit(b) and is_8bit(c) and is_8bit(d) and
+                   is_8bit(e) and is_8bit(f) and is_8bit(g) and is_8bit(h) and
+                   is_inrange(l, 0, 64)
 
   # Guards
 
@@ -88,7 +97,7 @@ defmodule Pfx do
     msg =
       case reason do
         :bitpos -> "invalid bit position: #{inspect(data)}"
-        :cidr -> "expected a valid ipv4/ipv6 CIDR string, got #{inspect(data)}"
+        :einval -> "expected a ipv4/ipv6 CIDR or EUI-48/64 string, got #{inspect(data)}"
         :create -> "cannot create a Pfx from: #{inspect(data)}"
         :ip4dig -> "expected valid IPv4 digits, got #{inspect(data)}"
         :ip4len -> "expected a valid IPv4 prefix length, got #{inspect(data)}"
@@ -99,15 +108,17 @@ defmodule Pfx do
         :nobit -> "expected a integer (bit) value 0..1, got #{inspect(data)}"
         :nobits -> "expected a non-empty bitstring, got: #{inspect(data)}"
         :nocompare -> "prefixes have different maxlen's: #{inspect(data)}"
+        :noeui -> "expected an EUI48/64 string or tuple, got #{inspect(data)}"
         :noflags -> "expected a 16-element tuple of bits, got #{inspect(data)}"
         :noint -> "expected an integer, got #{inspect(data)}"
         :noints -> "expected all integers, got #{inspect(data)}"
         :noneg -> "expected a non_neg_integer, got #{inspect(data)}"
         :noneighbor -> "empty prefixes have no neighbor: #{inspect(data)}"
         :nopart -> "cannot partition prefixes using #{inspect(data)}"
+        :nopfx -> "expected a valid %Pfx{}-struct, got #{inspect(data)}"
         :nopos -> "expected a pos_integer, got #{inspect(data)}"
-        :nowidth -> "expected valid width, got #{inspect(data)}"
         :noundig -> "expected {{n1, n2, ..}, length}, got #{inspect(data)}"
+        :nowidth -> "expected valid width, got #{inspect(data)}"
         :pfx -> "expected a valid Pfx struct, got #{inspect(data)}"
         :pfx4 -> "expected a valid IPv4 Pfx, got #{inspect(data)}"
         :pfx4full -> "expected a full IPv4 address, got #{inspect(data)}"
@@ -253,6 +264,7 @@ defmodule Pfx do
   Use:
   - a binary in
     [CIDR](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing)-notation,
+  - a binary in EUI-48 or EUI-64 format (EUI-64 must be using hyphens !)
   - an {`t:ip_address/0`, `length`}-tuple to truncate the bits to `length`.
   - an ipv4 or ipv6 `t:ip_address/0` tuple directly for a full address, or
   - a `t:Pfx.t/0` struct
@@ -263,6 +275,15 @@ defmodule Pfx do
   - `d1.d2.d3` -> `d1.d2.0.d3`
   - `d1.d2` -> `d1.0.0.d2`
   - `d1` -> `0.0.0.d1`
+
+  If `:inet.parse_address/1` fails to create an IPv4 or IPv6 address, an
+  attempt is made to parse the binary as an EUI-48 or EUI-64 MAC address.
+  Parsing EUI's is somewhat relaxed, punctuation chars "-", ":", "." are
+  interchangeable, but their positions should be correct.
+
+  Note that EUI-64's that use ":"-punctuation are indistinguishable from IPv6,
+  e.g.  "11:22:33:44:55:66:77:88".  Use `from_mac/1` when in doubt about
+  punctuations used while parsing MAC addresses.
 
   ## Examples
 
@@ -291,10 +312,31 @@ defmodule Pfx do
       iex> new(%Pfx{bits: <<10, 10>>, maxlen: 32})
       %Pfx{bits: <<10, 10>>, maxlen: 32}
 
-
       # 10.10/16 is interpreted as 10.0.0.10/16 (!)
       iex> new("10.10/16")
       %Pfx{bits: <<10, 0>>, maxlen: 32}
+
+      # some EUI-48's
+      iex> new("aa:bb:cc:dd:ee:ff")
+      %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
+
+      iex> new("aa-bb-cc-dd-ee-ff")
+      %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
+
+      iex> new("aabb.ccdd.eeff")
+      %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
+
+      # keep only OUI
+      iex> new("aa-bb-cc-dd-ee-ff/24")
+      %Pfx{bits: <<0xaa, 0xbb, 0xcc>>, maxlen: 48}
+
+      # some EUI-64's
+      iex> new("11-22-33-44-55-66-77-88")
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
+
+      # but note the maxlen here ...
+      iex> new("11:22:33:44:55:66:77:88")
+      %Pfx{bits: <<0x11::16, 0x22::16, 0x33::16, 0x44::16, 0x55::16, 0x66::16, 0x77::16, 0x88::16>>, maxlen: 128}
 
   """
   @spec new(ip_address | ip_prefix | String.t()) :: t()
@@ -346,21 +388,165 @@ defmodule Pfx do
   def new({{_, _, _, _, _, _, _, _} = digits, len}),
     do: raise(arg_error(:ip6dig, {digits, len}))
 
-  # from ipv4/ipv6 CIDR binary
+  # from ipv4/ipv6 CIDR binary or EUI-48/64 (w/ hyphens only)
   def new(string) when is_binary(string) do
     charlist = String.to_charlist(string)
     {address, mask} = splitp(charlist, [])
 
-    try do
-      {:ok, digits} = :inet.parse_address(address)
-      new({digits, mask})
-    rescue
-      [MatchError, ArgumentError] -> raise arg_error(:cidr, string)
+    case :inet.parse_address(address) do
+      {:ok, digits} -> new({digits, mask})
+      {:error, _} -> hexify(address) |> keep(mask)
     end
+  rescue
+    _ -> raise arg_error(:einval, string)
   end
 
   def new(prefix),
     do: raise(arg_error(:create, prefix))
+
+  @doc """
+  Create a `Pfx` struct from a EUI48/64 strings or tuples.
+
+  Parsing strings is somewhat relaxed since punctuation characters are
+  interchangeable as long as their positions are correct.
+
+  Note that `new/1` tries to parse IP prefixes first and would turn an EUI-64
+  using ":" for punctuation into an IPv6 address.  Similarly, a 8-element tuple
+  is seen as IPv6 address.  Hence, if you really need to parse EUI-64 with ":",
+  or have 8-digit EUI-64 tuples, use this function.
+
+  `from_mac/1` also accepts a `Pfx` struct, but only if its maxlen is either `48`
+  or `64`.  If not, an `ArgumentError` is raised.
+
+  ## Examples
+
+      iex> from_mac("11:22:33:44:55:66")
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66>>, maxlen: 48}
+
+      iex> from_mac("11-22-33-44-55-66")
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66>>, maxlen: 48}
+
+      iex> from_mac("1122.3344.5566")
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66>>, maxlen: 48}
+
+      iex> from_mac({0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff})
+      %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
+
+      # keep the OUI
+      iex> from_mac({{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}, 24})
+      %Pfx{bits: <<0xaa, 0xbb, 0xcc>>, maxlen: 48}
+
+      iex> from_mac("11:22:33:44:55:66/24")
+      %Pfx{bits: <<0x11, 0x22, 0x33>>, maxlen: 48}
+
+      # a EUI-64
+      iex> from_mac("11-22-33-44-55-66-77-88")
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
+
+      iex> from_mac("11:22:33:44:55:66:77:88")
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
+
+      iex> from_mac("11:22:33:44:55:66:77:88/24")
+      %Pfx{bits: <<0x11, 0x22, 0x33>>, maxlen: 64}
+
+      iex> from_mac({0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88})
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
+
+      iex> from_mac({{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}, 24})
+      %Pfx{bits: <<0x11, 0x22, 0x33>>, maxlen: 64}
+
+      # mix and match
+      # ":" and "-" are interchangeable
+      iex> from_mac("11:22-33:44-55:66")
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66>>, maxlen: 48}
+
+  """
+  @spec from_mac(t | binary | tuple) :: t
+  def from_mac(string) when is_binary(string) do
+    charlist = String.to_charlist(string)
+    {address, mask} = splitp(charlist, [])
+
+    hexify(address)
+    |> keep(mask)
+  rescue
+    _ -> raise arg_error(:noeui, string)
+  end
+
+  # from EUI-48 tuples
+  def from_mac({a, b, c, d, e, f}),
+    do: from_mac({{a, b, c, d, e, f}, 48})
+
+  # splitp may produce nil to signal absence of /len in binary
+  def from_mac({{a, b, c, d, e, f}, nil}),
+    do: from_mac({{a, b, c, d, e, f}, 48})
+
+  def from_mac({{a, b, c, d, e, f}, len}) when is_eui48(a, b, c, d, e, f, len) do
+    <<bits::bitstring-size(len), _::bitstring>> = <<a::8, b::8, c::8, d::8, e::8, f::8>>
+    %Pfx{bits: bits, maxlen: 48}
+  end
+
+  # from EUI-64 tuples
+  def from_mac({a, b, c, d, e, f, g, h}),
+    do: from_mac({{a, b, c, d, e, f, g, h}, 64})
+
+  # splitp may produce nil to signal absence of /len in binary
+  def from_mac({{a, b, c, d, e, f, g, h}, nil}),
+    do: from_mac({{a, b, c, d, e, f, g, h}, 64})
+
+  def from_mac({{a, b, c, d, e, f, g, h}, len}) when is_eui64(a, b, c, d, e, f, g, h, len) do
+    <<bits::bitstring-size(len), _::bitstring>> =
+      <<a::8, b::8, c::8, d::8, e::8, f::8, g::8, h::8>>
+
+    %Pfx{bits: bits, maxlen: 64}
+  end
+
+  # from Pfx
+  def from_mac(pfx) when is_pfx(pfx) do
+    case pfx.maxlen do
+      48 -> pfx
+      64 -> pfx
+      _ -> raise arg_error(:noeui, pfx)
+    end
+  end
+
+  def from_mac(arg),
+    do: raise(arg_error(:noeui, arg))
+
+  # turn a EUI-48/64 like string into bits
+  @spec hexify(charlist) :: t
+  defp hexify(clist) do
+    {bits, hyphens} = hex(clist, <<>>, 0)
+    bsize = bit_size(bits)
+
+    case {bsize, hyphens} do
+      {48, 2} -> new(bits, bsize)
+      {48, 5} -> new(bits, bsize)
+      {64, 7} -> new(bits, bsize)
+      _ -> raise ArgumentError
+    end
+  end
+
+  # 11:22:33:44:55:66 or 1122.3344.5566 or some weird mix thereof 11-22.33:44.5566
+  defp hex([], acc, n),
+    do: {acc, n}
+
+  defp hex([x | tail], acc, n) when ?0 <= x and x <= ?9,
+    do: hex(tail, <<acc::bits, x - ?0::4>>, n)
+
+  defp hex([x | tail], acc, n) when ?a <= x and x <= ?f,
+    do: hex(tail, <<acc::bits, x - ?a + 10::4>>, n)
+
+  defp hex([x | tail], acc, n) when ?A <= x and x <= ?F,
+    do: hex(tail, <<acc::bits, x - ?A + 10::4>>, n)
+
+  defp hex([?- | tail], acc, n) when bit_size(acc) in [8, 16, 24, 32, 40, 48, 56],
+    do: hex(tail, acc, n + 1)
+
+  defp hex([?: | tail], acc, n) when bit_size(acc) in [8, 16, 24, 32, 40, 48, 56],
+    do: hex(tail, acc, n + 1)
+
+  defp hex([?. | tail], acc, n) when bit_size(acc) in [16, 32],
+    do: hex(tail, acc, n + 1)
 
   # Bit ops
 
@@ -563,7 +749,7 @@ defmodule Pfx do
 
   @spec bitsp(t, integer, integer) :: bitstring
   defp bitsp(pfx, pos, len) when is_pfx(pfx) do
-    # XXX: despite the is_pfx(pfx), new() is required here, otherwise dialyzer
+    # despite is_pfx(pfx), new() is required here, otherwise dialyzer
     # chokes on the `pfx.bits` below.  Why?
     x = padr(pfx) |> new()
     <<_::size(pos), part::bitstring-size(len), _::bitstring>> = x.bits
@@ -1203,6 +1389,54 @@ defmodule Pfx do
     do: raise(arg_error(:nodrop, "expected a non_neg_integer for count, got: #{inspect(count)}"))
 
   @doc """
+  Keep `count` msb bits of given `pfx`.
+
+  If `count` exceeds the actual number of bits in `pfx.bits`, simply keeps all
+  bits.
+
+  ## Examples
+
+      iex> keep("1.2.3.0/31", 30)
+      "1.2.3.0/30"
+
+      iex> keep("1.2.3.2/31", 30)
+      "1.2.3.0/30"
+
+      iex> keep("1.2.3.128/25", 24)
+      "1.2.3.0/24"
+
+      iex> keep("1.2.3.0/24", 512)
+      "1.2.3.0/24"
+
+      iex> keep({1, 2, 3, 4}, 24)
+      {1, 2, 3, 0}
+
+      iex> keep({{1, 2, 3, 4}, 32}, 16)
+      {{1, 2, 0, 0}, 16}
+
+      iex> keep(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}, 16)
+      %Pfx{bits: <<1, 2>>, maxlen: 32}
+
+  """
+  @spec keep(prefix, non_neg_integer) :: prefix
+  def keep(pfx, count) when is_pfx(pfx) and is_non_neg_integer(count) do
+    cond do
+      count < bit_size(pfx.bits) -> %{pfx | bits: truncate(pfx.bits, count)}
+      true -> pfx
+    end
+  end
+
+  def keep(pfx, count) when is_non_neg_integer(count),
+    do: new(pfx) |> keep(count) |> marshall(pfx)
+
+  # take nil to mean keep all, used possibly by new(binary)
+  def keep(pfx, nil),
+    do: pfx
+
+  def keep(_, count),
+    do: raise(arg_error(:noneg, "expected a non_neg_integer for count, got: #{inspect(count)}"))
+
+  @doc """
   Set all `pfx.bits` to either `0` or `1`.
 
   ## Examples
@@ -1429,6 +1663,11 @@ defmodule Pfx do
       iex> undigits({{1,2,3,4}, 0}, 8)
       %Pfx{bits: <<>>, maxlen: 32}
 
+      # 32 4-bit wide numbers turn into an IPv6 prefix, truncated to 32 bits
+      # and maxlen is set to 32 * 4 = 128
+      iex> undigits({{1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 32},4)
+      %Pfx{bits: <<0x12, 0x34, 0x56, 0x78>>, maxlen: 128}
+
   """
   @spec undigits({tuple(), pos_integer}, pos_integer) :: t
   def undigits({digits, length}, width)
@@ -1554,8 +1793,7 @@ defmodule Pfx do
 
   Not specifying a `width` assumes the maximum width available.  If a `width`
   is specified, the `nth`-offset is added to the prefix as a number
-  `width`-bits wide.  This wraps around since `<<16::4>>` comes out as
-  `<<0::4>>`.
+  `width`-bits wide.  This wraps around the available address space.
 
   ## Examples
 
@@ -1758,6 +1996,10 @@ defmodule Pfx do
   @spec format(prefix, Keyword.t()) :: String.t()
   def format(pfx, opts \\ [])
 
+  def format(pfx, []) when is_pfx(pfx) and pfx.maxlen in [32, 48, 64, 128] do
+    "#{pfx}"
+  end
+
   def format(pfx, opts) when is_pfx(pfx) do
     width = Keyword.get(opts, :width, 8)
     base = Keyword.get(opts, :base, 10)
@@ -1788,6 +2030,8 @@ defmodule Pfx do
 
   def format(pfx, opts),
     do: new(pfx) |> format(opts)
+
+  # do: raise(arg_error(:nopfx, "#{inspect(pfx)}"))
 
   @doc """
   Returns boolean indicating whether `pfx` is a valid `t:prefix/0` or not.
@@ -1981,7 +2225,8 @@ defmodule Pfx do
   @doc """
   Returns the this-network prefix (full address) for given `pfx`.
 
-  The result is in the same format as `pfx`.
+  The result is in the same format as `pfx`.  Probably less usefull for IPv6,
+  but this is basically the first full length address in the prefix.
 
   ## Examples
 
@@ -2012,7 +2257,9 @@ defmodule Pfx do
   @doc """
   Returns the broadcast prefix (full address) for given `pfx`.
 
-  The result is in the same format as `pfx`.
+  The result is in the same format as `pfx`. Again less useful for IPv6 since
+  that has no concept of broadcast.  Basically returns the last address in
+  given `pfx`.
 
   ## Examples
 
@@ -2087,14 +2334,15 @@ defmodule Pfx do
       iex> host("10.10.10.0/24", 128)
       "10.10.10.128"
 
-      iex> host({10, 10, 10, 10}, 13)
-      {10, 10, 10, 10}
-
       iex> host({{10, 10, 10, 0}, 24}, 128)
       {{10, 10, 10, 128}, 32}
 
       iex> host(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 128)
       %Pfx{bits: <<10, 10, 10, 128>>, maxlen: 32}
+
+      # wraps around
+      iex> host("10.10.10.0/24", 256)
+      "10.10.10.0"
 
   """
   @spec host(prefix, integer) :: prefix
@@ -2105,7 +2353,7 @@ defmodule Pfx do
     do: raise(arg_error(:noint, nth))
 
   @doc """
-  Return the mask as a `Pfx` for given `pfx`.
+  Return the mask for given `pfx`.
 
   The result is in the same format as `pfx`.
 
@@ -2823,11 +3071,14 @@ end
 
 defimpl String.Chars, for: Pfx do
   def to_string(pfx) do
+    # delegates to Pfx.format with maxlen specific options, but should *NEVER*
+    # delegate to Pfx.format without at least 1 option!
     case pfx.maxlen do
-      32 -> Pfx.format(pfx)
-      48 -> Pfx.format(pfx, base: 16, ssep: ":")
-      128 -> Pfx.format(pfx, base: 16, width: 16, ssep: ":") |> String.downcase()
-      _ -> Pfx.format(pfx)
+      32 -> Pfx.format(pfx, base: 10, width: 8, unit: 1, ssep: ".")
+      48 -> Pfx.format(pfx, base: 16, width: 4, unit: 2, ssep: "-")
+      64 -> Pfx.format(pfx, base: 16, width: 4, unit: 2, ssep: "-")
+      128 -> Pfx.format(pfx, base: 16, width: 16, unit: 1, ssep: ":") |> String.downcase()
+      _ -> Pfx.format(pfx, ssep: ".")
     end
   end
 end

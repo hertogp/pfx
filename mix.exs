@@ -2,7 +2,7 @@ defmodule Pfx.MixProject do
   use Mix.Project
 
   # Before publishing to Hex:
-  # - set version tag in mix.exs, README.md
+  # - set version tag in mix.exs, README.md & CHANGELOG.md
   # - mix test
   # - mix docz
   # - mix dialyzer
@@ -10,7 +10,7 @@ defmodule Pfx.MixProject do
   # - git push --tags
   # mix hex.publish
 
-  @version "0.2.1"
+  @version "0.3.0"
   @url "https://github.com/hertogp/pfx"
 
   def project do

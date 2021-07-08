@@ -50,6 +50,42 @@ defmodule PfxTest do
     {{1, 2, 3, 4, 0, 0, 0, 0}, 65}
   ]
 
+  @eui_representations [
+    %Pfx{bits: <<>>, maxlen: 48},
+    {0, 0, 0, 0, 0, 0},
+    {{0, 0, 0, 0, 0, 0}, 0},
+    "aa:bb:cc:dd:ee:ff",
+    "aa-bb-cc-dd-ee-ff",
+    "aabb.ccdd.eeff",
+    "aa:bb:cc:dd:ee:ff/48",
+    "aa-bb-cc-dd-ee-ff/48",
+    "aabb.ccdd.eeff/48",
+    "aa:bb:cc:dd:ee:ff/8",
+    "aa-bb-cc-dd-ee-ff/8",
+    "aabb.ccdd.eeff/8",
+    %Pfx{bits: <<>>, maxlen: 64},
+    {0, 0, 0, 0, 0, 0, 0, 0},
+    {{0, 0, 0, 0, 0, 0, 0, 0}, 0},
+    "aa:bb:cc:dd:ee:ff:11:22",
+    "aa-bb-cc-dd-ee-ff-11-22",
+    "aa:bb:cc:dd:ee:ff:11:22/48",
+    "aa-bb-cc-dd-ee-ff-11-22/48",
+    "aa:bb:cc:dd:ee:ff:11:22/8",
+    "aa-bb-cc-dd-ee-ff-11-22/8"
+  ]
+  @bad_euis [
+    %Pfx{bits: <<>>, maxlen: 40},
+    {0, 0, 0, 0},
+    {{0, 0, 0, 0}, 0},
+    {0, 0, 0, 0, 0, 0, 0},
+    {{0, 0, 0, 0, 0, 0, 0}, 0},
+    {0, 0, 0, 0, 0, 0, 0, 0, 0},
+    {{0, 0, 0, 0, 0, 0, 0, 0, 0}, 0},
+    "aa+bb:cc:dd:ee:ff",
+    "aa.bb:cc:dd:ee:ff",
+    "aabbccddeeff"
+  ]
+
   # Is_pfx/1
   test "is_pfx/1" do
     # handle zero bits
@@ -116,6 +152,9 @@ defmodule PfxTest do
     f = fn x -> assert_raise ArgumentError, fn -> new(x) end end
     Enum.all?(@bad_representations, f)
     assert_raise ArgumentError, fn -> new(<<>>, -1) end
+    # bad eui-48's
+    assert_raise ArgumentError, fn -> new("aa.bbcc-ddee.ff") end
+    assert_raise ArgumentError, fn -> new("aa.bb:cc:dd:ee:ff") end
 
     # identity
     null = %Pfx{bits: <<>>, maxlen: 0}
@@ -156,6 +195,65 @@ defmodule PfxTest do
     assert netw == new(<<0xACDC::16, 0x1976::16>>, 128)
     assert netw == new("acdc:1976::/32")
     assert netw == new({{0xACDC, 0x1976, 0, 0, 0, 0, 0, 0}, 32})
+
+    # eui-48
+    addr = %Pfx{bits: <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>, maxlen: 48}
+    assert addr == new(addr)
+    assert addr == new(<<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>, 48)
+    assert addr == new("aa:bb:cc:dd:ee:ff")
+    assert addr == new("aa-bb-cc-dd-ee-ff")
+    assert addr == new("aabb.ccdd.eeff")
+    assert addr == new("aa:bb.cc-dd.ee:ff")
+
+    oui = %Pfx{bits: <<0xAA, 0xBB, 0xCC>>, maxlen: 48}
+    assert oui == new(oui)
+    assert oui == new("aa:bb:cc:dd:ee:ff/24")
+    assert oui == new("aa-bb-cc-dd-ee-ff/24")
+    assert oui == new("aabb.ccdd.eeff/24")
+  end
+
+  # From_mac/1
+  test "from_mac/1" do
+    f = fn x -> assert from_mac(x) end
+    Enum.all?(@eui_representations, f)
+
+    # bad args
+    f = fn x -> assert_raise ArgumentError, fn -> from_mac(x) end end
+    Enum.all?(@bad_euis, f)
+
+    # EUI-48
+    addr = %Pfx{bits: <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>, maxlen: 48}
+    assert addr == from_mac(addr)
+    assert addr == from_mac("aa:bb:cc:dd:ee:ff")
+    assert addr == from_mac("aa-bb-cc-dd-ee-ff")
+    assert addr == from_mac("aabb.ccdd.eeff")
+    assert addr == from_mac("aa:bb.cc-dd.ee:ff")
+    assert addr == from_mac({0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF})
+    assert addr == from_mac({{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF}, 48})
+    # nil means no mask supplied, default to full mask
+    assert addr == from_mac({{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF}, nil})
+
+    oui = %Pfx{bits: <<0xAA, 0xBB, 0xCC>>, maxlen: 48}
+    assert oui == from_mac(oui)
+    assert oui == from_mac("aa:bb:cc:dd:ee:ff/24")
+    assert oui == from_mac("aa-bb-cc-dd-ee-ff/24")
+    assert oui == from_mac("aabb.ccdd.eeff/24")
+
+    # EUI-64
+    addr = %Pfx{bits: <<0x11, 0x22, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>, maxlen: 64}
+    assert addr == from_mac(addr)
+    assert addr == from_mac("11:22:aa:bb:cc:dd:ee:ff")
+    assert addr == from_mac("11-22-aa-bb-cc-dd-ee-ff")
+    assert addr == from_mac({0x11, 0x22, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF})
+    assert addr == from_mac({{0x11, 0x22, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF}, 64})
+    # nil means no mask supplied, default to full mask
+    assert addr == from_mac({{0x11, 0x22, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF}, nil})
+
+    oui = %Pfx{bits: <<0x11, 0x22, 0xAA>>, maxlen: 64}
+    assert oui == from_mac(oui)
+    assert oui == from_mac("11:22:aa:bb:cc:dd:ee:ff/24")
+    assert oui == from_mac("11-22-aa-bb-cc-dd-ee-ff/24")
+    assert oui == from_mac({{0x11, 0x22, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF}, 24})
   end
 
   # Cut/3
@@ -726,6 +824,36 @@ defmodule PfxTest do
     assert "1.2.0.0/16" == drop("1.2.3.4", 16)
     assert {1, 2, 0, 0} == drop({1, 2, 3, 4}, 16)
     assert {{1, 2, 0, 0}, 16} == drop({{1, 2, 3, 4}, 32}, 16)
+  end
+
+  # keep/2
+  test "keep/2" do
+    Enum.all?(@ip4_representations, fn x -> assert keep(x, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert keep(x, 0) end)
+    Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> keep(x, 0) end end)
+
+    # more bad input
+    assert_raise ArgumentError, fn -> keep("1.1.1.1", -1) end
+    assert_raise ArgumentError, fn -> keep("1.1.1.1", 1.0) end
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 0} == keep(%Pfx{bits: <<>>, maxlen: 0}, 1)
+
+    # one bit
+    assert %Pfx{bits: <<1::1>>, maxlen: 8} == keep(%Pfx{bits: <<1::1>>, maxlen: 8}, 1)
+
+    # some bits
+    assert %Pfx{bits: <<1::4>>, maxlen: 8} == keep(%Pfx{bits: <<16>>, maxlen: 8}, 4)
+    assert %Pfx{bits: <<1>>, maxlen: 16} == keep(%Pfx{bits: <<1, 2>>, maxlen: 16}, 8)
+
+    # count > pfx.bits => just keeps all bits
+    assert %Pfx{bits: <<-1::128>>, maxlen: 128} == keep(%Pfx{bits: <<-1::128>>, maxlen: 128}, 512)
+
+    # all representations
+    assert "1.1.1.1" == keep("1.1.1.1", 32)
+    assert "1.2.0.0/16" == keep("1.2.3.4", 16)
+    assert {1, 2, 0, 0} == keep({1, 2, 3, 4}, 16)
+    assert {{1, 2, 0, 0}, 16} == keep({{1, 2, 3, 4}, 32}, 16)
   end
 
   # Bset/2

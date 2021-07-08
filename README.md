@@ -18,10 +18,12 @@ A `Pfx` struct can be created from:
 1. a `t:bitstring/0` and a `t:non_neg_integer/0` for the maximum length,
 2. a `t:Pfx.ip_address/0`,
 3. a `t:Pfx.ip_prefix/0`, or
-4. a `t:binary/0` denoting an IP prefix in CIDR-notation.
+4. a `t:binary/0` denoting an IP prefix in CIDR-notation or an EUI-48/64
+   address
 
-The first option allows for the creation of any sort of prefix, the latter
-three yield either an IPv4 or IPv6 prefix.
+The first option allows for the creation of any sort of prefix, the second and
+third option yield either an IPv4 or IPv6 prefix.  Lastly, strings can be used
+to create either IPv4, IPv6, EUI-48 or EUI-64 prefixes.
 
 Several functions, like `Pfx.unique_local?/1` are more IP oriented, and are
 included along with the more generic `Pfx` functions (like `Pfx.cut/3`) in
@@ -55,6 +57,9 @@ Functions generally accept all representations and, if possible,  yield their re
     iex> multicast?("ff00::1")
     true
 
+    # MAC OUI
+    iex> keep("aa:bb:cc:dd:ee:ff", 24)
+    "AA-BB-CC-00-00-00/24"
 
 ## Validity
 
@@ -76,8 +81,9 @@ struct.  IPv4 masks must be in range `0..32` and IPv6 masks in range `0..128`.
 The resulting `Pfx` will have its `maxlen` set to `32` for IPv4 tuples and
 `128` for IPv6 tuples.
 
-Last but not least, a binary is interpreted as a string in CIDR-notation for
-some IPv4/IPv6 address or prefix.
+Last but not least, a binary is interpreted as a string either in CIDR-notation
+for some IPv4/IPv6 address or prefix or a representation of an EUI-48 or EUI-64
+address or prefix.
 
 
 ## Ancient tradition
@@ -110,6 +116,29 @@ digits in a CIDR string.
 
 Bottom line: never go short, you may be unpleasantly surprised.
 
+## EUI-64's
+
+Since a string is first parsed as an IP prefix, EUI-64's like
+"11:22:33:44:55:66:77:88" will come out as an IPv6 prefix with their `maxlen`
+property set to `128`.  So, when in doubt, parse EUI's with `Pfx.from_mac/1`.
+That also supports the tuple formats.
+
+    # turns it into IPv6
+    iex> new("11:22:33:44:55:66:77:88")
+    %Pfx{bits: <<0x11::16, 0x22::16, 0x33::16, 0x44::16, 0x55::16, 0x66::16, 0x77::16, 0x88::16>>, maxlen: 128}
+
+    # from_mac has 'context'
+    iex> from_mac("11:22:33:44:55:66:77:88")
+    %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
+
+    # from {digits}
+    iex> from_mac({0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88})
+    %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
+
+    # from {{digits}, len}, keeping first 3 bytes
+    iex> from_mac({{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}, 24})
+    %Pfx{bits: <<0x11, 0x22, 0x33>>, maxlen: 64}
+
 
 ## Enumeration
 
@@ -129,7 +158,8 @@ A `t:Pfx.t/0` implements the `Enumerable` protocol:
 `t:Pfx.t/0` implements the `String.Chars` protocol with some defaults for
 prefixes that formats prefixes with:
 - `maxlen: 32` as an IPv4 CIDR string,
-- `maxlen: 48` as a MAC address string and
+- `maxlen: 48` as a EUI-48 address string and
+- `maxlen: 64` as a EUI-64 address string
 - `maxlen: 128` as an IPv6 CIDR string
 
 Other `maxlen`'s will simply come out as a series of 8-bit numbers joined by "."
@@ -146,11 +176,10 @@ some options that help shape the string representation for a `Pfx` struct.
     "acdc:1976:0:0:0:0:0:0/32"
 
     iex> "#{%Pfx{bits: <<0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6>>, maxlen: 48}}"
-    "A1:B2:C3:D4:E5:F6"
+    "A1-B2-C3-D4-E5-F6"
 
-    # just 8-bit numbers and mask length
     iex> "#{new(<<1, 2, 3, 4, 5>>, 64)}"
-    "1.2.3.4.5.0.0.0/40"
+    "01-02-03-04-05-00-00-00/40"
 
     # an ip4 address formatted as a string of bits
     iex> new(<<1, 2, 3, 4>>, 32) |> format(width: 1, unit: 8)
@@ -177,7 +206,7 @@ Other functions, like `Pfx.digits/2` return a tuple with numbers and are so
 limited by the maximum number of elements in a tuple (~16M+).
 
 So if you're taking this somewhere far, far away, heed these limitations before
-leaving.
+take off.
 
 Also, everything is done in Elixir with no extra, external dependencies.
 Usually fast enough, but if you really feel the need for speed, you might want
@@ -188,16 +217,14 @@ Anyway, enough downplay, here are some more examples.
 ## Examples
 
     # IANA's OUI range 00-00-5e-xx-xx-xx
-
-    iex> new(<<0x00, 0x00, 0x5e>>, 48)
+    iex> new("00-00-5e-00-00-00/24")
     %Pfx{bits: <<0, 0, 94>>, maxlen: 48}
 
     # IANA's assignment for the VRRP MAC address range 00-00-5e-00-01-{VRID}
-
-    iex> vrrp_mac_range = new(<<0x00, 0x00, 0x5e, 0x00, 0x01>>, 48)
+    iex> vrrp_mac_range = new("00-00-5e-00-01-00/40")
     %Pfx{bits: <<0, 0, 94, 0, 1>>, maxlen: 48}
     iex>
-    iex> vrrp_mac = new(<<0x00, 0x00, 0x5e, 0x00, 0x01, 0x0f>>, 48)
+    iex> vrrp_mac = new("00-00-5e-00-01-0f")
     %Pfx{bits: <<0, 0, 94, 0, 1, 15>>, maxlen: 48}
     iex>
     iex> member?(vrrp_mac, vrrp_mac_range)
@@ -206,7 +233,6 @@ Anyway, enough downplay, here are some more examples.
     15
 
     # IPv4 examples
-
     iex> new("10.10.10.0/24")
     %Pfx{bits: <<10, 10, 10>>, maxlen: 32}
 
@@ -220,7 +246,6 @@ Anyway, enough downplay, here are some more examples.
     %Pfx{bits: <<10, 10, 10>>, maxlen: 32}
 
     # IPv6 examples
-
     iex> new(<<44252::16, 6518::16>>, 128)
     %Pfx{bits: <<0xACDC::16, 0x1976::16>>, maxlen: 128}
 
@@ -229,6 +254,24 @@ Anyway, enough downplay, here are some more examples.
 
     iex> new({{44252, 6518, 0, 0, 0, 0, 0, 0}, 32})
     %Pfx{bits: <<0xACDC::16, 0x1976::16>>, maxlen: 128}
+
+    # EUI-48 examples
+    iex> new("aa:bb:cc:dd:ee:ff")
+    %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
+
+    iex> new("aa-bb-cc-dd-ee-ff")
+    %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
+
+    iex> new("aabb.ccdd.eeff")
+    %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
+
+    # EUI-64 examples
+    iex> new("11-22-aa-bb-cc-dd-ee-ff")
+    %Pfx{bits: <<0x11, 0x22, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 64}
+
+    # for EUI-64's with ':' punctuation, use:
+    iex> from_mac("11:22:aa:bb:cc:dd:ee:ff")
+    %Pfx{bits: <<0x11, 0x22, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 64}
 
 
 Functions are sometimes IP specific, like:
@@ -286,7 +329,7 @@ list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:pfx, "~> 0.2.1"}
+    {:pfx, "~> 0.3.0"}
   ]
 end
 ```
