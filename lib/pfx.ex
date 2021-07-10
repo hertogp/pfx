@@ -107,6 +107,7 @@ defmodule Pfx do
         :nat64 -> "expected a valid IPv6 nat64 address, got #{inspect(data)}"
         :nobit -> "expected a integer (bit) value 0..1, got #{inspect(data)}"
         :nobits -> "expected a non-empty bitstring, got: #{inspect(data)}"
+        :nobitstr -> "expected a bitstring, got: #{inspect(data)}"
         :nocompare -> "prefixes have different maxlen's: #{inspect(data)}"
         :noeui -> "expected an EUI48/64 string or tuple, got #{inspect(data)}"
         :noeui48 -> "expected an EUI-48 prefix, string or tuple(s), got #{inspect(data)}"
@@ -336,6 +337,9 @@ defmodule Pfx do
       iex> new("11-22-33-44-55-66-77-88")
       %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
 
+      iex> new("1122.3344.5566.7788")
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
+
       # but note the maxlen here ...
       iex> new("11:22:33:44:55:66:77:88")
       %Pfx{bits: <<0x11::16, 0x22::16, 0x33::16, 0x44::16, 0x55::16, 0x66::16, 0x77::16, 0x88::16>>, maxlen: 128}
@@ -412,10 +416,10 @@ defmodule Pfx do
   Parsing strings is somewhat relaxed since punctuation characters are
   interchangeable as long as their positions are correct.
 
-  Note that `new/1` tries to parse IP prefixes first and would turn an EUI-64
-  using ":" for punctuation into an IPv6 address.  Similarly, a 8-element tuple
-  is seen as IPv6 address.  Hence, if you really need to parse EUI-64 with ":",
-  or have 8-digit EUI-64 tuples, use this function.
+  Note that `new/1` tries to parse binaries as IP prefixes first and would turn
+  an EUI-64 using ":" for punctuation into an IPv6 address.  Similarly, a
+  8-element tuple is seen as IPv6 address.  Hence, if you really need to parse
+  EUI-64 binaries with ":", or have EUI-48/64 tuples, use this function.
 
   `from_mac/1` also accepts a `Pfx` struct, but only if its maxlen is either `48`
   or `64`.  If not, an `ArgumentError` is raised.
@@ -552,74 +556,6 @@ defmodule Pfx do
     do: hex(tail, acc, n + 1)
 
   # Bit ops
-
-  @doc """
-  Cut out a series of bits and turn it into its own `Pfx`.
-
-  This basically uses `&bits/3` to extract the bits and wraps it in a
-  `t:Pfx.t/0` with its `maxlen` set to the length of the bits extracted.
-
-  ## Examples
-
-  For [example](https://en.wikipedia.org/wiki/Teredo_tunneling#IPv6_addressing):
-
-      iex> teredo = new("2001:0:4136:e378:8000:63bf:3fff:fdd2")
-      iex>
-      iex> # client
-      iex> cut(teredo, 96, 32) |> bnot() |> format()
-      "192.0.2.45"
-      iex>
-      iex>
-      iex> # udp port
-      iex> cut(teredo, 80, 16) |> bnot() |> cast()
-      40000
-      iex>
-      iex> # teredo server
-      iex> cut(teredo, 32, 32) |> format()
-      "65.54.227.120"
-      iex>
-      iex> # flags
-      iex> cut(teredo, 64, 16) |> digits(1) |> elem(0)
-      {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-
-  'Masked' bits are considered to be zero.
-
-      # extract 2nd and 3rd byte:
-      iex> %Pfx{bits: <<255, 255>>, maxlen: 32} |> cut(8, 16)
-      %Pfx{bits: <<255, 0>>, maxlen: 16}
-
-  Less useful, but cut will mirror the representation given:
-
-      iex> cut("10.11.12.13", 8, 16)
-      "11.12"
-
-      iex> cut({1, 2, 3, 4}, 16, 16)
-      {3, 4}
-
-      iex> cut({{1, 2, 0, 0}, 16}, 8, 16)
-      {{2, 0}, 16}
-
-
-  Extraction must stay within `maxlen` of given `pfx`.
-
-      # cannot exceed boundaries though:
-      iex> %Pfx{bits: <<255, 255>>, maxlen: 32} |> cut(8, 32)
-      ** (ArgumentError) invalid index range: {8, 32}
-
-  """
-  @spec cut(prefix, integer, integer) :: prefix
-  def cut(pfx, start, length) when is_pfx(pfx) do
-    try do
-      bits = bits(pfx, start, length)
-      new(bits, bit_size(bits))
-    rescue
-      ArgumentError -> raise arg_error(:range, {start, length})
-    end
-  end
-
-  def cut(pfx, start, length) do
-    new(pfx) |> cut(start, length) |> marshall(pfx)
-  end
 
   @doc """
   Return `pfx` prefix's bit-value at given `position`.
@@ -1310,6 +1246,43 @@ defmodule Pfx do
     do: raise(arg_error(:nobit, bit))
 
   @doc """
+  Set all `pfx.bits` to either `0` or `1`.
+
+  ## Examples
+
+      # defaults to `0`-bit
+      iex> bset("1.1.1.0/24")
+      "0.0.0.0/24"
+
+      iex> bset("1.1.1.0/24", 1)
+      "255.255.255.0/24"
+
+      iex> bset({{1, 1, 1, 0}, 24}, 1)
+      {{255, 255, 255, 0}, 24}
+
+      iex> bset(%Pfx{bits: <<1, 1, 1>>, maxlen: 32})
+      %Pfx{bits: <<0, 0, 0>>, maxlen: 32}
+
+      iex> bset(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, 1)
+      %Pfx{bits: <<255, 255, 255>>, maxlen: 32}
+
+  """
+  @spec bset(prefix, 0 | 1) :: prefix
+  def bset(pfx, bit \\ 0)
+
+  def bset(pfx, bit) when is_pfx(pfx) and (bit === 0 or bit === 1) do
+    bit = -1 * bit
+    len = bit_size(pfx.bits)
+    %{pfx | bits: <<bit::size(len)>>}
+  end
+
+  def bset(pfx, bit) when bit === 0 or bit === 1,
+    do: bset(new(pfx), bit) |> marshall(pfx)
+
+  def bset(_, bit),
+    do: raise(arg_error(:nobit, bit))
+
+  @doc """
   Left pad the `pfx.bits` with `n` bits of either `0` or `1`'s.
 
   ## Example
@@ -1346,6 +1319,72 @@ defmodule Pfx do
 
   def padl(_, bit, _),
     do: raise(arg_error(:nobit, bit))
+
+  @doc """
+  Cut out a series of bits and turn it into its own `Pfx`.
+
+  This basically uses `&bits/3` to extract the bits and wraps it in a
+  `t:Pfx.t/0` with its `maxlen` set to the length of the bits extracted.
+
+  ## Examples
+
+  For [example](https://en.wikipedia.org/wiki/Teredo_tunneling#IPv6_addressing):
+
+      iex> teredo = new("2001:0:4136:e378:8000:63bf:3fff:fdd2")
+      iex>
+      iex> # client
+      iex> cut(teredo, 96, 32) |> bnot() |> format()
+      "192.0.2.45"
+      iex>
+      iex>
+      iex> # udp port
+      iex> cut(teredo, 80, 16) |> bnot() |> cast()
+      40000
+      iex>
+      iex> # teredo server
+      iex> cut(teredo, 32, 32) |> format()
+      "65.54.227.120"
+      iex>
+      iex> # flags
+      iex> cut(teredo, 64, 16) |> digits(1) |> elem(0)
+      {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+
+  'Masked' bits are considered to be zero.
+
+      # extract 2nd and 3rd byte:
+      iex> %Pfx{bits: <<255, 255>>, maxlen: 32} |> cut(8, 16)
+      %Pfx{bits: <<255, 0>>, maxlen: 16}
+
+  Less useful, but cut will mirror the representation given:
+
+      iex> cut("10.11.12.13", 8, 16)
+      "11.12"
+
+      iex> cut({1, 2, 3, 4}, 16, 16)
+      {3, 4}
+
+      iex> cut({{1, 2, 0, 0}, 16}, 8, 16)
+      {{2, 0}, 16}
+
+
+  Extraction must stay within `maxlen` of given `pfx`.
+
+      # cannot exceed boundaries though:
+      iex> %Pfx{bits: <<255, 255>>, maxlen: 32} |> cut(8, 32)
+      ** (ArgumentError) invalid index range: {8, 32}
+
+  """
+  @spec cut(prefix, integer, integer) :: prefix
+  def cut(pfx, start, length) when is_pfx(pfx) do
+    bits = bits(pfx, start, length)
+    new(bits, bit_size(bits))
+  rescue
+    _ -> raise arg_error(:range, {start, length})
+  end
+
+  def cut(pfx, start, length) do
+    new(pfx) |> cut(start, length) |> marshall(pfx)
+  end
 
   @doc """
   Drop `count` lsb bits from given `pfx`.
@@ -1440,41 +1479,166 @@ defmodule Pfx do
     do: raise(arg_error(:noneg, "expected a non_neg_integer for count, got: #{inspect(count)}"))
 
   @doc """
-  Set all `pfx.bits` to either `0` or `1`.
+  Flip a single bit at `position` in given `pfx.bits`
+
+  A negative `position` is relative to the end of the `pfx.bits` bitstring.  
+  It is an error to point to a bit outside the range of available bits.  
+  Bit positions are zero-based, with position `0` being the left-most bit.
+
+  """
+  @spec flip(t, non_neg_integer) :: t
+  def flip(pfx, position) when is_pfx(pfx) and is_integer(position) do
+    pos = if position < 0, do: position + pfx.maxlen, else: position
+
+    if pos < 0 or pos >= pfx.maxlen,
+      do: raise(arg_error(:bitpos, position))
+
+    if pos >= bit_size(pfx.bits),
+      do: raise(arg_error(:bitpos, position))
+
+    <<left::size(pos), bit::1, right::bitstring>> = pfx.bits
+    bit = bit - 1
+    %{pfx | bits: <<left::size(pos), bit::1, right::bitstring>>}
+  end
+
+  def flip(pfx, position) when is_integer(position),
+    do: new(pfx) |> flip(position) |> marshall(pfx)
+
+  def flip(_pfx, pos),
+    do: raise(arg_error(:bitpos, pos))
+
+  @doc """
+  Insert some `bits` into `pfx`-s bitstring.
+
+  The resulting bitstring is silently clipped to the `pfx.maxlen`.
+  Valid bit positions are `0..min(pfx.maxlen-1, bit_size(pfx.bits))`.  A
+  position of `0` will prepend the `bits`, while a position of
+  `bit_size(pfx.bits)` will append the `bits` as long as the prefix is not a
+  full length prefix already.
+
+  A negative position is taken relative to the end.  Note that this cannot
+  be used for appending bits, since `-1` refers to the last actual bit and
+  there is no such thing as `-0` ..
 
   ## Examples
 
-      # defaults to `0`-bit
-      iex> bset("1.1.1.0/24")
-      "0.0.0.0/24"
+      # prepend bits
+      iex> insert("0.0.0.0/0", <<255>>, 0)
+      "255.0.0.0/8"
 
-      iex> bset("1.1.1.0/24", 1)
+      # append bits
+      iex> insert("255.255.0.0/16", <<255>>, 16)
       "255.255.255.0/24"
 
-      iex> bset({{1, 1, 1, 0}, 24}, 1)
-      {{255, 255, 255, 0}, 24}
+      # cannot append to a full prefix, positions go from 0..31
+      iex> insert("1.2.3.4", <<255>>, 32)
+      ** (ArgumentError) invalid bit position: 32
 
-      iex> bset(%Pfx{bits: <<1, 1, 1>>, maxlen: 32})
-      %Pfx{bits: <<0, 0, 0>>, maxlen: 32}
+      # but inserting inside the bitstring, is ok
+      iex> insert("1.2.3.4", <<255>>, 16)
+      "1.2.255.3"
 
-      iex> bset(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, 1)
-      %Pfx{bits: <<255, 255, 255>>, maxlen: 32}
+      # turn EUI48 into a modified EUI64
+      iex> new("0088.8888.8888")
+      ...> |> new(64)
+      ...> |> flip(6)
+      ...> |> insert(<<0xFF, 0xFE>>, 24)
+      %Pfx{bits: <<0x02, 0x88, 0x88, 0xFF, 0xFE, 0x88, 0x88, 0x88>>, maxlen: 64}
+
+      # sliently clips to pfx's maxlen
+      iex> insert("1.2.3.0/24", <<255, 255, 255, 255>>, 0)
+      "255.255.255.255"
+
+      iex> insert("1.2.3.0/24", <<255, 255, 255, 255>>, 24)
+      "1.2.3.255"
 
   """
-  @spec bset(prefix, 0 | 1) :: prefix
-  def bset(pfx, bit \\ 0)
+  @spec insert(t, bitstring, integer) :: t
+  def insert(pfx, bits, position)
+      when is_pfx(pfx) and is_bitstring(bits) and is_integer(position) do
+    pos = if position < 0, do: position + pfx.maxlen, else: position
 
-  def bset(pfx, bit) when is_pfx(pfx) and (bit === 0 or bit === 1) do
-    bit = if bit == 0, do: 0, else: -1
-    len = bit_size(pfx.bits)
-    %{pfx | bits: <<bit::size(len)>>}
+    if pos < 0 or pos > bit_size(pfx.bits) or pos >= pfx.maxlen,
+      do: raise(arg_error(:bitpos, position))
+
+    <<left::bitstring-size(pos), right::bitstring>> = pfx.bits
+    %{pfx | bits: truncate(<<left::bitstring, bits::bitstring, right::bitstring>>, pfx.maxlen)}
   end
 
-  def bset(pfx, bit) when bit === 0 or bit === 1,
-    do: bset(new(pfx), bit) |> marshall(pfx)
+  def insert(pfx, bits, position) when is_bitstring(bits) and is_integer(position),
+    do: new(pfx) |> insert(bits, position) |> marshall(pfx)
 
-  def bset(_, bit),
-    do: raise(arg_error(:nobit, bit))
+  def insert(_pfx, bits, pos) when is_integer(pos),
+    do: raise(arg_error(:nobitstr, bits))
+
+  def insert(_pfx, _bit, pos),
+    do: raise(arg_error(:bitpos, pos))
+
+  @doc """
+  Remove `length` bits from given `pfx`-s bitstring, starting at `position`.
+
+  A negative `position` is relative to the end of the `pfx.bits`-string.
+  Valid range for `position` is `-bit_size(pfx.bits) .. bit_size(pfx.bits)-1`.
+
+  If `length` is positive, bits are removed to the right.  If it is negative
+  bits are removed going to the left. 
+
+  Note:  
+  - `length` is silently clipped to the maximum number of bits available to remove
+  - removing bits from `pfx.bits` does not change its `pfx.maxlen`
+
+  ## Example
+
+      iex> remove("1.2.3.4", 8, 8)
+      "1.3.4.0/24"
+
+      iex> remove("1.2.3.128/25", -1, 1)
+      "1.2.3.0/24"
+
+      iex> remove("0288.88FF.FE88.8888", 24, 16)
+      "02-88-88-88-88-88-00-00/48"
+
+  """
+  @spec remove(t, non_neg_integer, non_neg_integer) :: t
+  def remove(pfx, position, length)
+
+  def remove(pfx, 0, 0) when is_pfx(pfx),
+    do: pfx
+
+  def remove(pfx, position, 0) when is_pfx(pfx) do
+    bsize = bit_size(pfx.bits)
+    pos = if position < 0, do: bsize + position, else: position
+    if pos < 0 or pos >= bsize, do: raise(arg_error(:bitpos, position))
+    pfx
+  end
+
+  def remove(pfx, position, length) when is_pfx(pfx) and is_integer(position * length) do
+    bsize = bit_size(pfx.bits)
+    # normalize position
+    pos = if position < 0, do: bsize + position, else: position
+    if pos < 0 or pos >= bsize, do: raise(ArgumentError)
+    {pos, len} = if length < 0, do: {pos + 1 + length, -length}, else: {pos, length}
+    # clip length to max bits available to remove
+    {pos, len} = if pos < 0, do: {0, len + pos}, else: {pos, len}
+    {pos, len} = if pos + len > bsize, do: {pos, bsize - pos}, else: {pos, len}
+
+    <<left::bitstring-size(pos), _::bitstring-size(len), right::bitstring>> = pfx.bits
+
+    %{pfx | bits: <<left::bitstring, right::bitstring>>}
+  rescue
+    _ -> raise arg_error(:range, {pfx, position, length})
+  end
+
+  def remove(pfx, start, length) when is_integer(start * length) do
+    new(pfx)
+    |> remove(start, length)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  def remove(_, start, length),
+    do: raise(arg_error(:range, {start, length}))
 
   # Numbers
 
@@ -1636,7 +1800,7 @@ defmodule Pfx do
   end
 
   def digits(pfx, width) when is_pos_integer(width),
-    do: digits(new(pfx), width)
+    do: new(pfx) |> digits(width)
 
   def digits(_, width),
     do: raise(arg_error(:nowidth, width))
@@ -2063,12 +2227,10 @@ defmodule Pfx do
   """
   @spec valid?(prefix) :: boolean
   def valid?(prefix) do
-    try do
-      new(prefix)
-      true
-    rescue
-      ArgumentError -> false
-    end
+    new(prefix)
+    true
+  rescue
+    _ -> false
   end
 
   # Sorting
@@ -2229,7 +2391,7 @@ defmodule Pfx do
   Returns the this-network prefix (full address) for given `pfx`.
 
   The result is in the same format as `pfx`.  Probably less usefull for IPv6,
-  but this is basically the first full length address in the prefix.
+  but this is basically the first full length address in given `pfx`.
 
   ## Examples
 
@@ -2466,10 +2628,12 @@ defmodule Pfx do
   """
   @doc section: :ip
   @spec eui64_encode(prefix) :: prefix
-  def eui64_encode(eui48) when is_pfx(eui48) and eui48.maxlen == 48 do
-    {{a, b, c, d, e, f}, _} = digits(eui48, 8)
-    a = Bitwise.bxor(a, 2)
-    new(<<a, b, c, 0xFF, 0xFE, d, e, f>>, 64)
+  def eui64_encode(eui48)
+      when is_pfx(eui48) and eui48.maxlen == 48 and bit_size(eui48.bits) == 48 do
+    eui48
+    |> new(64)
+    |> insert(<<0xFF, 0xFE>>, 24)
+    |> flip(6)
   end
 
   # if eui48 was a prefix, error out before we try new/1 (!)
@@ -2505,10 +2669,14 @@ defmodule Pfx do
   """
   @doc section: :ip
   @spec eui64_decode(prefix) :: prefix
-  def eui64_decode(eui64) when is_pfx(eui64) and eui64.maxlen == 64 do
+  def eui64_decode(eui64)
+      when is_pfx(eui64) and eui64.maxlen == 64 and bit_size(eui64.bits) == 64 do
     {{a, b, c, _, _, d, e, f}, _} = digits(eui64, 8)
     a = Bitwise.bxor(a, 2)
     new(<<a, b, c, d, e, f>>, 48)
+    # eui64
+    # |> flip(6)
+    # |> remove(24, 16)
   end
 
   # if eui48 was a prefix, error out before we try new/1 (!)
@@ -2519,7 +2687,7 @@ defmodule Pfx do
     do: new(pfx) |> eui64_decode() |> marshall(pfx)
 
   @doc """
-  Returns true if *prefix* is a teredo address, false otherwise
+  Returns true if `prefix` is a teredo address, false otherwise
 
   See [rfc4380](https://www.iana.org/go/rfc4380).
 
@@ -2538,13 +2706,11 @@ defmodule Pfx do
   @doc section: :ip
   @spec teredo?(prefix) :: boolean
   def teredo?(pfx) do
-    try do
-      pfx
-      |> new()
-      |> member?(%Pfx{bits: <<0x2001::16, 0::16>>, maxlen: 128})
-    rescue
-      ArgumentError -> false
-    end
+    pfx
+    |> new()
+    |> member?(%Pfx{bits: <<0x2001::16, 0::16>>, maxlen: 128})
+  rescue
+    _ -> false
   end
 
   @doc """
@@ -2566,8 +2732,8 @@ defmodule Pfx do
 
       iex> teredo_decode({0x2001, 0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2})
       %{
-        server: "65.54.227.120",
-        client: "192.0.2.45",
+        server: {65, 54, 227, 120},
+        client: {192, 0, 2, 45},
         port: 40000,
         flags: {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
         prefix: {0x2001, 0x0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2}
@@ -2585,8 +2751,8 @@ defmodule Pfx do
 
     if teredo?(x) do
       %{
-        server: "#{cut(x, 32, 32)}",
-        client: "#{cut(x, 96, 32) |> bnot()}",
+        server: cut(x, 32, 32) |> marshall(pfx),
+        client: cut(x, 96, 32) |> bnot() |> marshall(pfx),
         port: cut(x, 80, 16) |> bnot() |> cast(),
         flags: cut(x, 64, 16) |> digits(1) |> elem(0),
         prefix: pfx
@@ -2642,12 +2808,6 @@ defmodule Pfx do
     }
 
     marshall(x, client)
-    # cond do
-    #   is_binary(client) -> "#{x}"
-    #   is_tuple(client) and tuple_size(client) == 2 -> digits(x, 16)
-    #   is_tuple(client) -> digits(x, 16) |> elem(0)
-    #   true -> x
-    # end
   end
 
   def teredo_encode(_client, _server, port, flags) when tuple_size(flags) == 16,
@@ -2802,21 +2962,19 @@ defmodule Pfx do
   def link_local?(pfx) do
     # rfc3927 and rfc4271 & friends
     # and https://en.wikipedia.org/wiki/IPv6_address#Default_address_selection
-    try do
-      x = new(pfx)
+    x = new(pfx)
 
-      cond do
-        member?(x, %Pfx{bits: <<169, 254, 0>>, maxlen: 32}) -> false
-        member?(x, %Pfx{bits: <<169, 254, 255>>, maxlen: 32}) -> false
-        member?(x, %Pfx{bits: <<169, 254>>, maxlen: 32}) -> true
-        member?(x, %Pfx{bits: <<0>>, maxlen: 32}) -> true
-        member?(x, %Pfx{bits: <<255, 255, 255, 255>>, maxlen: 32}) -> true
-        member?(x, %Pfx{bits: <<0xFE80::16, 0::48>>, maxlen: 128}) -> true
-        true -> false
-      end
-    rescue
-      ArgumentError -> false
+    cond do
+      member?(x, %Pfx{bits: <<169, 254, 0>>, maxlen: 32}) -> false
+      member?(x, %Pfx{bits: <<169, 254, 255>>, maxlen: 32}) -> false
+      member?(x, %Pfx{bits: <<169, 254>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<0>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<255, 255, 255, 255>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<0xFE80::16, 0::48>>, maxlen: 128}) -> true
+      true -> false
     end
+  rescue
+    ArgumentError -> false
   end
 
   @doc """

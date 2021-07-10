@@ -796,66 +796,6 @@ defmodule PfxTest do
     assert {{255, 255, 255, 1}, 32} == padl({{1, 0, 0, 0}, 8}, 1, 24)
   end
 
-  # Drop/2
-  test "drop/2" do
-    Enum.all?(@ip4_representations, fn x -> assert drop(x, 0) end)
-    Enum.all?(@ip6_representations, fn x -> assert drop(x, 0) end)
-    Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> drop(x, 0) end end)
-
-    # more bad input
-    assert_raise ArgumentError, fn -> drop("1.1.1.1", -1) end
-    assert_raise ArgumentError, fn -> drop("1.1.1.1", 1.0) end
-
-    # no bits
-    assert %Pfx{bits: <<>>, maxlen: 0} == drop(%Pfx{bits: <<>>, maxlen: 0}, 1)
-
-    # one bit
-    assert %Pfx{bits: <<>>, maxlen: 8} == drop(%Pfx{bits: <<1::1>>, maxlen: 8}, 1)
-
-    # some bits
-    assert %Pfx{bits: <<>>, maxlen: 8} == drop(%Pfx{bits: <<1>>, maxlen: 8}, 8)
-    assert %Pfx{bits: <<1>>, maxlen: 16} == drop(%Pfx{bits: <<1, 2>>, maxlen: 16}, 8)
-
-    # count > pfx.bits => just drops all bits
-    assert %Pfx{bits: <<>>, maxlen: 128} == drop(%Pfx{bits: <<-1::128>>, maxlen: 128}, 512)
-
-    # all representations
-    assert "0.0.0.0/0" == drop("1.1.1.1", 32)
-    assert "1.2.0.0/16" == drop("1.2.3.4", 16)
-    assert {1, 2, 0, 0} == drop({1, 2, 3, 4}, 16)
-    assert {{1, 2, 0, 0}, 16} == drop({{1, 2, 3, 4}, 32}, 16)
-  end
-
-  # keep/2
-  test "keep/2" do
-    Enum.all?(@ip4_representations, fn x -> assert keep(x, 0) end)
-    Enum.all?(@ip6_representations, fn x -> assert keep(x, 0) end)
-    Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> keep(x, 0) end end)
-
-    # more bad input
-    assert_raise ArgumentError, fn -> keep("1.1.1.1", -1) end
-    assert_raise ArgumentError, fn -> keep("1.1.1.1", 1.0) end
-
-    # no bits
-    assert %Pfx{bits: <<>>, maxlen: 0} == keep(%Pfx{bits: <<>>, maxlen: 0}, 1)
-
-    # one bit
-    assert %Pfx{bits: <<1::1>>, maxlen: 8} == keep(%Pfx{bits: <<1::1>>, maxlen: 8}, 1)
-
-    # some bits
-    assert %Pfx{bits: <<1::4>>, maxlen: 8} == keep(%Pfx{bits: <<16>>, maxlen: 8}, 4)
-    assert %Pfx{bits: <<1>>, maxlen: 16} == keep(%Pfx{bits: <<1, 2>>, maxlen: 16}, 8)
-
-    # count > pfx.bits => just keeps all bits
-    assert %Pfx{bits: <<-1::128>>, maxlen: 128} == keep(%Pfx{bits: <<-1::128>>, maxlen: 128}, 512)
-
-    # all representations
-    assert "1.1.1.1" == keep("1.1.1.1", 32)
-    assert "1.2.0.0/16" == keep("1.2.3.4", 16)
-    assert {1, 2, 0, 0} == keep({1, 2, 3, 4}, 16)
-    assert {{1, 2, 0, 0}, 16} == keep({{1, 2, 3, 4}, 32}, 16)
-  end
-
   # Bset/2
   test "bset/2" do
     Enum.all?(@ip4_representations, fn x -> assert bset(x, 0) end)
@@ -887,7 +827,191 @@ defmodule PfxTest do
     assert {{255, 255, 255, 0}, 24} == bset({{0, 0, 0, 255}, 24}, 1)
   end
 
+  # Drop/2
+  test "drop/2" do
+    Enum.all?(@ip4_representations, fn x -> assert drop(x, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert drop(x, 0) end)
+    Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> drop(x, 0) end end)
+
+    # more bad input
+    assert_raise ArgumentError, fn -> drop("1.1.1.1", -1) end
+    assert_raise ArgumentError, fn -> drop("1.1.1.1", 1.0) end
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 0} == drop(%Pfx{bits: <<>>, maxlen: 0}, 1)
+
+    # one bit
+    assert %Pfx{bits: <<>>, maxlen: 8} == drop(%Pfx{bits: <<1::1>>, maxlen: 8}, 1)
+
+    # some bits
+    assert %Pfx{bits: <<>>, maxlen: 8} == drop(%Pfx{bits: <<1>>, maxlen: 8}, 8)
+    assert %Pfx{bits: <<1>>, maxlen: 16} == drop(%Pfx{bits: <<1, 2>>, maxlen: 16}, 8)
+
+    # count > pfx.bits => just drops all bits
+    assert %Pfx{bits: <<>>, maxlen: 128} == drop(%Pfx{bits: <<-1::128>>, maxlen: 128}, 512)
+
+    # all representations
+    assert "0.0.0.0/0" == drop("1.1.1.1", 32)
+    assert "1.2.0.0/16" == drop("1.2.3.4", 16)
+    assert {1, 2, 0, 0} == drop({1, 2, 3, 4}, 16)
+    assert {{1, 2, 0, 0}, 16} == drop({{1, 2, 3, 4}, 32}, 16)
+  end
+
+  # Keep/2
+  test "keep/2" do
+    Enum.all?(@ip4_representations, fn x -> assert keep(x, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert keep(x, 0) end)
+    Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> keep(x, 0) end end)
+
+    # more bad input
+    assert_raise ArgumentError, fn -> keep("1.1.1.1", -1) end
+    assert_raise ArgumentError, fn -> keep("1.1.1.1", 1.0) end
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 0} == keep(%Pfx{bits: <<>>, maxlen: 0}, 1)
+
+    # one bit
+    assert %Pfx{bits: <<1::1>>, maxlen: 8} == keep(%Pfx{bits: <<1::1>>, maxlen: 8}, 1)
+
+    # some bits
+    assert %Pfx{bits: <<1::4>>, maxlen: 8} == keep(%Pfx{bits: <<16>>, maxlen: 8}, 4)
+    assert %Pfx{bits: <<1>>, maxlen: 16} == keep(%Pfx{bits: <<1, 2>>, maxlen: 16}, 8)
+
+    # count > pfx.bits => just keeps all bits
+    assert %Pfx{bits: <<-1::128>>, maxlen: 128} == keep(%Pfx{bits: <<-1::128>>, maxlen: 128}, 512)
+
+    # all representations
+    assert "1.1.1.1" == keep("1.1.1.1", 32)
+    assert "1.2.0.0/16" == keep("1.2.3.4", 16)
+    assert {1, 2, 0, 0} == keep({1, 2, 3, 4}, 16)
+    assert {{1, 2, 0, 0}, 16} == keep({{1, 2, 3, 4}, 32}, 16)
+  end
+
+  # Flip/2
+  test "flip/2" do
+    # flip errors out on invalid bit positions
+    Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> flip(x, 0) end end)
+
+    # out of range
+    assert_raise ArgumentError, fn -> flip("0.0.0.0/0", 0) end
+    assert_raise ArgumentError, fn -> flip(%Pfx{bits: <<255>>, maxlen: 16}, 16) end
+    assert_raise ArgumentError, fn -> flip(%Pfx{bits: <<255>>, maxlen: 16}, -17) end
+
+    # first bit
+    assert "127.0.0.0" == flip("255.0.0.0", 0)
+    assert "127.0.0.0" == flip("255.0.0.0", -32)
+    assert "128.0.0.0" == flip("0.0.0.0", 0)
+    assert "128.0.0.0" == flip("0.0.0.0", -32)
+
+    # last bit, 0->1 and 1->0
+    assert "255.0.0.255" == flip("255.0.0.254", 31)
+    assert "255.0.0.255" == flip("255.0.0.254", -1)
+    assert "255.0.0.254" == flip("255.0.0.255", 31)
+    assert "255.0.0.254" == flip("255.0.0.255", -1)
+
+    # inbetween bits
+    assert %Pfx{bits: <<255, 255, 128, 0>>, maxlen: 32} ==
+             flip(%Pfx{bits: <<255, 255, 0, 0>>, maxlen: 32}, 16)
+
+    assert "255.255.128.0" == flip("255.255.0.0", 16)
+    assert {255, 255, 128, 0} == flip({255, 255, 0, 0}, 16)
+    assert "255.255.0.0" == flip("255.255.128.0", 16)
+    assert {255, 255, 0, 0} == flip({255, 255, 128, 0}, 16)
+
+    assert "255.255.0.128" == flip("255.255.0.0/32", 24)
+    assert {{255, 255, 0, 128}, 32} == flip({{255, 255, 0, 0}, 32}, 24)
+  end
+
+  # Insert/3
+  test "insert/3" do
+    Enum.all?(@ip4_representations, fn x -> assert insert(x, <<>>, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert insert(x, <<>>, 0) end)
+
+    Enum.all?(@bad_representations, fn x ->
+      assert_raise ArgumentError, fn -> insert(x, <<>>, 0) end
+    end)
+
+    # bad positions
+    assert_raise ArgumentError, fn -> insert("1.1.1.1", <<>>, 32) end
+    assert_raise ArgumentError, fn -> insert("1.1.1.1", <<>>, -33) end
+
+    # bad bitstrings
+    assert_raise ArgumentError, fn -> insert("1.1.1.1", 42, 0) end
+    assert_raise ArgumentError, fn -> insert("1.1.1.1", [42], 0) end
+
+    # prepend
+    assert "255.1.2.3" == insert("1.2.3.0/24", <<255>>, 0)
+    assert "0.0.1.2" == insert("1.2.3.0/24", <<0, 0>>, 0)
+
+    # append
+    assert "255.255.0.0/16" == insert("255.0.0.0/8", <<255>>, 8)
+    assert "255.255.255.0/24" == insert("255.255.0.0/16", <<255>>, 16)
+    assert "255.255.255.255" == insert("255.255.0.0/16", <<255, 255>>, 16)
+
+    # silently clip to pfx.maxlen
+    assert "1.2.3.4" == insert("0.0.0.0", <<1, 2, 3, 4, 5, 6, 7, 8, 9>>, 0)
+    assert "1.2.3.4" == insert("1.2.0.0/16", <<3, 4, 5, 6, 7, 8, 9>>, 16)
+
+    # representations
+    assert {1, 2, 3, 4} == insert({1, 2, 3, 0}, <<4>>, 24)
+    assert {{1, 2, 3, 0}, 24} == insert({{1, 2, 0, 0}, 16}, <<3>>, 16)
+    assert "1.2.3.0/25" == insert("1.2.3.0/24", <<0::1>>, 24)
+    assert "1.2.3.128/25" == insert("1.2.3.0/24", <<1::1>>, 24)
+
+    assert %Pfx{bits: <<1, 2, 3, 1::1>>, maxlen: 32} ==
+             insert(%Pfx{bits: <<1, 2, 3>>, maxlen: 32}, <<1::1>>, 24)
+  end
+
+  # Remove/3
+  test "remove/3" do
+    Enum.all?(@ip4_representations, fn x -> assert remove(x, 0, 0) end)
+    Enum.all?(@ip6_representations, fn x -> assert remove(x, 0, 0) end)
+
+    Enum.all?(@bad_representations, fn x ->
+      assert_raise ArgumentError, fn -> remove(x, 0, 0) end
+    end)
+
+    # position must be in range -bsize .. bsize-1
+    assert_raise ArgumentError, fn -> remove("1.1.1.1", 32, 0) end
+    assert_raise ArgumentError, fn -> remove("1.1.1.1", -33, 0) end
+
+    # from front
+    assert "2.3.0.0/16" == remove("1.2.3.0/24", 0, 8)
+    assert "2.3.0.0/16" == remove("1.2.3.0/24", 7, -8)
+    assert "2.3.0.0/16" == remove("1.2.3.0/24", -24, 8)
+    assert "2.3.0.0/16" == remove("1.2.3.0/24", -16, -8)
+
+    # from the end
+    assert "1.2.0.0/16" == remove("1.2.3.0/24", 16, 8)
+    assert "1.2.0.0/16" == remove("1.2.3.0/24", 23, -8)
+    assert "1.2.0.0/16" == remove("1.2.3.0/24", -8, 8)
+    assert "1.2.0.0/16" == remove("1.2.3.0/24", -1, -8)
+
+    # somewhere in the middle
+    assert "1.2.4.0/24" == remove("1.2.3.4", 16, 8)
+    assert "1.3.4.0/24" == remove("1.2.3.4", 15, -8)
+
+    # silently clip len when removing all bits
+    assert "0.0.0.0/0" == remove("255.255.255.255", 0, 200)
+    assert "0.0.0.0/0" == remove("255.255.255.255", -32, 200)
+    assert "0.0.0.0/0" == remove("255.255.255.255", -1, -200)
+
+    # also removes single bits
+    assert "0.0.0.0/7" == remove("128.0.0.0/8", 0, 1)
+    assert "255.255.255.254/31" == remove("255.255.255.255", -1, 1)
+    assert "255.255.255.254/31" == remove("255.255.255.255", -31, -1)
+
+    # representations
+    assert %Pfx{bits: <<1, 2, 3>>, maxlen: 32} ==
+             remove(%Pfx{bits: <<1, 2, 3, 1::1>>, maxlen: 32}, -1, 1)
+
+    assert {{1, 2, 0, 0}, 16} == remove({{1, 2, 3, 0}, 24}, 16, 8)
+    # TODO: hmm, mirroring should provide {{1,2,0,0}, 24} here?
+    assert {1, 2, 0, 0} == remove({1, 2, 3, 0}, 16, 8)
+  end
+
   # Partition/2
+
   test "partition/2" do
     assert_raise ArgumentError, fn -> partition(%Pfx{bits: <<255>>, maxlen: 4}, 1) end
     assert_raise ArgumentError, fn -> partition(%Pfx{bits: <<255>>, maxlen: 8.0}, 1) end
@@ -1359,11 +1483,27 @@ defmodule PfxTest do
     }
 
     map = teredo_decode(addr)
+    assert map.server == %Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}
+    assert map.client == %Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}
+    assert map.port == 33000
+    assert map.flags == {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+    assert map.prefix == addr
+
+    # follows representation of addr for client/server
+    map = teredo_decode("#{addr}")
     assert map.server == "1.2.3.4"
     assert map.client == "10.10.10.10"
     assert map.port == 33000
     assert map.flags == {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-    assert map.prefix == addr
+    assert map.prefix == "#{addr}"
+
+    # follows representation of addr for client/server
+    map = teredo_decode(digits(addr, 16))
+    assert map.server == {{1, 2, 3, 4}, 32}
+    assert map.client == {{10, 10, 10, 10}, 32}
+    assert map.port == 33000
+    assert map.flags == {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+    assert map.prefix == digits(addr, 16)
   end
 
   # Teredo_encode/4
