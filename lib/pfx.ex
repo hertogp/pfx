@@ -558,14 +558,17 @@ defmodule Pfx do
 
   """
   @spec bit(prefix, integer) :: 0 | 1
-  def bit(pfx, position) when is_pfx(pfx) do
+  def bit(pfx, position) when is_pfx(pfx) and is_integer(position) do
     pos = if position < 0, do: position + pfx.maxlen, else: position
     if pos < 0 or pos >= pfx.maxlen, do: raise(arg_error(:bitpos, position))
     bitp(pfx, pos)
   end
 
-  def bit(pfx, pos),
+  def bit(pfx, pos) when is_integer(pos),
     do: new(pfx) |> bit(pos)
+
+  def bit(_, pos),
+    do: raise(arg_error(:noint, pos))
 
   defp bitp(pfx, pos) when pos < bit_size(pfx.bits) do
     <<_::size(pos), bit::1, _::bitstring>> = pfx.bits
@@ -2682,10 +2685,13 @@ defmodule Pfx do
   @doc """
   Decode a modified EUI-64 back into the original EUI-48 address.
 
-  Despite [rfc7217](https://www.rfc-editor.org/rfc/rfc7217.html), modified
-  EUI-64's are still used in the wild.  This flips the 7-th bit and removes
-  `0xFFFE` from the middle. EUI-64's in tuple form, should be encoded by
-  `Pfx.from_mac/1` first.
+  Although [rfc7217](https://www.rfc-editor.org/rfc/rfc7217.html) provides an
+  alternative for modified EUI-64, they are still very much in use, especially
+  on network links using SLAAC.
+
+  This function flips the 7-th bit and removes `0xFFFE` from the middle.
+  Note that `eui64_encode` uses `Pfx.from_mac` to turn a string or tuple
+  into a new `t:Pfx.t/0`.
 
   ## Example
 
@@ -2695,30 +2701,36 @@ defmodule Pfx do
       iex> eui64_decode("0288.88FF.FE88.8888")
       "00-88-88-88-88-88"
 
-      # same
       iex> eui64_decode("02-88-88-FF-FE-88-88-88")
       "00-88-88-88-88-88"
 
-      iex> from_mac({0x02, 0x88, 0x88, 0xFF, 0xFE, 0x88, 0x88, 0x88}) |> eui64_decode() |> digits(8)
-      {{0x00, 0x88, 0x88, 0x88, 0x88, 0x88}, 48}
+      iex> eui64_decode({0x02, 0x88, 0x88, 0xFF, 0xFE, 0x88, 0x88, 0x88})
+      {0x00, 0x88, 0x88, 0x88, 0x88, 0x88}
+
+      iex> new("2001:db8:1:2:020c:29ff:fe0c:47d5")
+      ...> |> cut(-1, -64)
+      ...> |> eui64_decode()
+      ...> |> format()
+      "00-0C-29-0C-47-D5"
 
   """
   @doc section: :ip
   @spec eui64_decode(prefix) :: prefix
-  def eui64_decode(eui64)
-      when is_pfx(eui64) and eui64.maxlen == 64 and bit_size(eui64.bits) == 64 do
-    eui64
+  def eui64_decode(pfx) when is_pfx(pfx) do
+    unless bit_size(pfx.bits) == 64, do: raise(arg_error(:noeui64, pfx))
+
+    pfx
     |> flip(6)
     |> remove(24, 16)
     |> new(48)
   end
 
-  # if eui48 was a prefix, error out before we try new/1 (!)
+  # if pfx was a prefix, error out before we try new/1 (!)
   def eui64_decode(pfx) when is_pfx(pfx),
     do: raise(arg_error(:noeui64, pfx))
 
   def eui64_decode(pfx),
-    do: new(pfx) |> eui64_decode() |> marshall(pfx)
+    do: from_mac(pfx) |> eui64_decode() |> marshall(pfx)
 
   @doc """
   Returns true if `prefix` is a teredo address, false otherwise

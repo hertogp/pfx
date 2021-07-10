@@ -10,8 +10,6 @@
 - add Pfx.remove, remove some bits from bitstring
 - TODO:
   - functions raise their own exceptions when marshalling (instead of new/1), like remove/3
-  - add Pfx.join,   joins both bitstrings, retains maxlen of the first
-  - add Pfx.split,  split into list of bitstrings
 
 # 0.3.0
 - added `Pfx.keep/2` to keep some msb bits
