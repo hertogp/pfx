@@ -1545,7 +1545,7 @@ defmodule Pfx do
   @spec insert(t, bitstring, integer) :: t
   def insert(pfx, bits, position)
       when is_pfx(pfx) and is_bitstring(bits) and is_integer(position) do
-    pos = if position < 0, do: position + pfx.maxlen, else: position
+    pos = if position < 0, do: position + bit_size(pfx.bits), else: position
 
     if pos < 0 or pos > bit_size(pfx.bits) or pos >= pfx.maxlen,
       do: raise(arg_error(:bitpos, position))
@@ -3219,7 +3219,7 @@ defmodule Pfx do
 
   def nat64_decode(pfx, len) when is_pfx(pfx) and len in @nat64_lengths do
     unless bit_size(pfx.bits) == 128, do: raise(ArgumentError)
-    pfx = if len < 96, do: %{pfx | bits: bits(pfx, 0, 64) <> bits(pfx, 72, 56)}, else: pfx
+    pfx = if len < 96, do: remove(pfx, 64, 8), else: pfx
     %Pfx{bits: bits(pfx, len, 32), maxlen: 32}
   rescue
     _ -> raise arg_error(:nat64, pfx)
@@ -3271,10 +3271,8 @@ defmodule Pfx do
   """
   @doc section: :ip
   @spec nat64_encode(prefix(), prefix()) :: prefix
-  def nat64_encode(pfx6, pfx4) do
-    ip6 = new(pfx6)
-
-    unless bit_size(ip6.bits) in @nat64_lengths,
+  def nat64_encode(pfx6, pfx4) when is_pfx(pfx6) do
+    unless bit_size(pfx6.bits) in @nat64_lengths,
       do: raise(arg_error(:nat64, pfx6))
 
     ip4 = new(pfx4)
@@ -3282,20 +3280,23 @@ defmodule Pfx do
     unless bit_size(ip4.bits) == 32,
       do: raise(arg_error(:pfx4, pfx4))
 
-    ip6 = %{ip6 | bits: ip6.bits <> ip4.bits}
+    pfx6 = %{pfx6 | bits: pfx6.bits <> ip4.bits}
+    # pfx6 = insert(pfx6, ip4.bits, bit_size(pfx6.bits))
 
-    if bit_size(ip6.bits) < 128 do
-      %{
-        ip6
-        | bits:
-            <<bits(ip6, 0, 64)::bitstring, 0::8,
-              bits(ip6, 64, bit_size(ip6.bits) - 64)::bitstring>>
-      }
+    if bit_size(pfx6.bits) < 128 do
+      insert(pfx6, <<0>>, 64)
       |> padr(0)
-      |> marshall(pfx6)
     else
-      marshall(ip6, pfx6)
+      pfx6
     end
+  end
+
+  def nat64_encode(pfx6, pfx4) do
+    new(pfx6)
+    |> nat64_encode(pfx4)
+    |> marshall(pfx6)
+  rescue
+    err -> raise err
   end
 
   @doc """
