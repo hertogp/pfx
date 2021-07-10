@@ -909,6 +909,10 @@ defmodule PfxTest do
     assert "255.0.0.254" == flip("255.0.0.255", 31)
     assert "255.0.0.254" == flip("255.0.0.255", -1)
 
+    # flip bits in prefixes, not just addresses
+    assert "255.255.255.0/25" == flip("255.255.255.128/25", 24)
+    assert "255.255.255.0/25" == flip("255.255.255.128/25", -1)
+
     # inbetween bits
     assert %Pfx{bits: <<255, 255, 128, 0>>, maxlen: 32} ==
              flip(%Pfx{bits: <<255, 255, 0, 0>>, maxlen: 32}, 16)
@@ -1006,7 +1010,6 @@ defmodule PfxTest do
              remove(%Pfx{bits: <<1, 2, 3, 1::1>>, maxlen: 32}, -1, 1)
 
     assert {{1, 2, 0, 0}, 16} == remove({{1, 2, 3, 0}, 24}, 16, 8)
-    # TODO: hmm, mirroring should provide {{1,2,0,0}, 24} here?
     assert {1, 2, 0, 0} == remove({1, 2, 3, 0}, 16, 8)
   end
 

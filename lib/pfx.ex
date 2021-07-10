@@ -181,47 +181,6 @@ defmodule Pfx do
   # - pfx must be a %Pfx{}-struct, x can be 1 of 4 representations
   # - protocol version only matters for width when using digits or {digits, length}
 
-  @doc """
-  Given a `t.Pfx.t/0` prefix, try to represent it in its original form.
-
-  The exact original is not required, the `pfx` is transformed by the shape of
-  the `original` argument: string vs two-element tuple vs tuple.  If none of
-  the three shapes match, the `pfx` is returned unchanged.
-
-  This is used to allow results to be the same shape as their (first) argument
-  that needed to turn into a `t:Pfx.t/0` for some calculation.
-
-  ## Examples
-
-      # original is a string
-      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, "any string really")
-      "1.1.1.0/24"
-
-      # original is any two-element tuple
-      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, {0,0})
-      {{1, 1, 1, 0}, 24}
-
-      # original is any other tuple
-      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, {})
-      {1, 1, 1, 0}
-
-      # original is a Pfx struct
-      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, %Pfx{bits: <<>>, maxlen: 0})
-      %Pfx{bits: <<1, 1, 1>>, maxlen: 32}
-
-  """
-  @spec marshall(t, prefix) :: prefix
-  def marshall(pfx, original) when is_pfx(pfx) do
-    width = if pfx.maxlen == 128, do: 16, else: 8
-
-    cond do
-      is_binary(original) -> "#{pfx}"
-      is_tuple(original) and tuple_size(original) == 2 -> digits(pfx, width)
-      is_tuple(original) -> digits(pfx, width) |> elem(0)
-      true -> pfx
-    end
-  end
-
   # API
   # - new/1 and new/2 *MUST* raise an ArgumentError if it fails
   # - many functions use `new` to translate other representations into a 
@@ -1323,8 +1282,8 @@ defmodule Pfx do
   @doc """
   Cut out a series of bits and turn it into its own `Pfx`.
 
-  This basically uses `&bits/3` to extract the bits and wraps it in a
-  `t:Pfx.t/0` with its `maxlen` set to the length of the bits extracted.
+  Extracts the bits and returns a new `t:Pfx.t/0` with `bits` set to the
+  bits extracted and `maxlen` set to the length of the `bits`-string.
 
   ## Examples
 
@@ -1481,19 +1440,37 @@ defmodule Pfx do
   @doc """
   Flip a single bit at `position` in given `pfx.bits`
 
-  A negative `position` is relative to the end of the `pfx.bits` bitstring.  
-  It is an error to point to a bit outside the range of available bits.  
-  Bit positions are zero-based, with position `0` being the left-most bit.
+  A negative `position` is relative to the end of the `pfx.bits` bitstring.
+  It is an error to point to a bit outside the range of available bits. 
+
+  ## Examples
+
+      iex> flip("255.255.255.0", 24)
+      "255.255.255.128"
+
+      iex> flip("255.255.255.0", -8)
+      "255.255.255.128"
+
+      # flip the 7th bit
+      iex> flip("0088.8888.8888", 6)
+      "02-88-88-88-88-88"
+
+      iex> flip({1, 2, 3, 0}, 24)
+      {1, 2, 3, 128}
+
+      # flip last bit
+      iex> flip({{1, 2, 3, 128}, 25}, 24)
+      {{1, 2, 3, 0}, 25}
+
+      iex> flip({{1, 2, 3, 128}, 25}, -1)
+      {{1, 2, 3, 0}, 25}
 
   """
   @spec flip(t, non_neg_integer) :: t
   def flip(pfx, position) when is_pfx(pfx) and is_integer(position) do
-    pos = if position < 0, do: position + pfx.maxlen, else: position
+    pos = if position < 0, do: position + bit_size(pfx.bits), else: position
 
-    if pos < 0 or pos >= pfx.maxlen,
-      do: raise(arg_error(:bitpos, position))
-
-    if pos >= bit_size(pfx.bits),
+    if pos < 0 or pos >= bit_size(pfx.bits),
       do: raise(arg_error(:bitpos, position))
 
     <<left::size(pos), bit::1, right::bitstring>> = pfx.bits
@@ -1511,10 +1488,11 @@ defmodule Pfx do
   Insert some `bits` into `pfx`-s bitstring.
 
   The resulting bitstring is silently clipped to the `pfx.maxlen`.
-  Valid bit positions are `0..min(pfx.maxlen-1, bit_size(pfx.bits))`.  A
-  position of `0` will prepend the `bits`, while a position of
-  `bit_size(pfx.bits)` will append the `bits` as long as the prefix is not a
-  full length prefix already.
+
+  Valid bit positions are `bits_size(pfx.bits) .. min(pfx.maxlen-1,
+  bit_size(pfx.bits))`.  A position of `0` will prepend the `bits`, while a
+  position of `bit_size(pfx.bits)` will append the `bits` as long as the prefix
+  is not a full length prefix already.
 
   A negative position is taken relative to the end.  Note that this cannot
   be used for appending bits, since `-1` refers to the last actual bit and
@@ -1573,6 +1551,53 @@ defmodule Pfx do
 
   def insert(_pfx, _bit, pos),
     do: raise(arg_error(:bitpos, pos))
+
+  @doc """
+  Given a `t.Pfx.t/0` prefix, try to represent it in its original form.
+
+  The exact original is not required, the `pfx` is transformed by the shape of
+  the `original` argument: string vs two-element tuple vs tuple.  If none of
+  the three shapes match, the `pfx` is returned unchanged.
+
+  This is used to allow results to be the same shape as their (first) argument
+  that needed to turn into a `t:Pfx.t/0` for some calculation.
+
+  Note that when turning a prefix into a address-tuple, the first full length
+  member comes out as an address.
+
+  ## Examples
+
+      # original is a string
+      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, "any string really")
+      "1.1.1.0/24"
+
+      # original is any two-element tuple
+      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, {0,0})
+      {{1, 1, 1, 0}, 24}
+
+      # original is any other tuple, actually turns prefix into this-network address
+      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, {})
+      {1, 1, 1, 0}
+
+      # original is a Pfx struct
+      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, %Pfx{bits: <<>>, maxlen: 0})
+      %Pfx{bits: <<1, 1, 1>>, maxlen: 32}
+
+  """
+  @spec marshall(t, prefix) :: prefix
+  def marshall(pfx, original) when is_pfx(pfx) do
+    width = if pfx.maxlen == 128, do: 16, else: 8
+
+    cond do
+      is_binary(original) -> "#{pfx}"
+      is_tuple(original) and tuple_size(original) == 2 -> digits(pfx, width)
+      is_tuple(original) -> digits(pfx, width) |> elem(0)
+      true -> pfx
+    end
+  end
+
+  def marshall(pfx, _),
+    do: pfx
 
   @doc """
   Remove `length` bits from given `pfx`-s bitstring, starting at `position`.
