@@ -1,10 +1,10 @@
 # CHANGELOG
 
-# new
+# 0.4.0
 - add `Pfx.eui64_encode/1` to create a modified EUI-64 from a EUI-48 address
 - add `Pfx.eui64_decode/1` to create a EUI-48 from a modified EUI-64 address
 - fix so that `Pfx.new/1` and `Pfx.from_mac/1` also parse EUI-64 in Cisco's dot format
-- fix teredo_decode uses same representation for server/client as its pfx argument
+- fix so teredo_decode mirrors the representation for server/client to its pfx argument
 - add Pfx.flip,    flip a single bit in bitstring
 - add Pfx.insert,  insert some bits into bitstring
 - add Pfx.remove,  remove some bits from bitstring

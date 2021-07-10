@@ -10,7 +10,7 @@ defmodule Pfx.MixProject do
   # - git push --tags
   # mix hex.publish
 
-  @version "0.3.0"
+  @version "0.4.0"
   @url "https://github.com/hertogp/pfx"
 
   def project do
