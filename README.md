@@ -120,10 +120,11 @@ Bottom line: never go short, you may be unpleasantly surprised.
 
 Since a string is first parsed as an IP prefix, EUI-64's like
 "11:22:33:44:55:66:77:88" will come out as an IPv6 prefix with their `maxlen`
-property set to `128`.  So, when in doubt, parse EUI's with `Pfx.from_mac/1`.
-That also supports the tuple formats.
+property set to `128`.  So, when in doubt, parse EUI's with `Pfx.from_mac/1`,
+which also supports the tuple formats.  Like `Pfx.new/1`, this function always
+returns a `t:Pfx.t/0`-struct.
 
-    # turns it into IPv6
+    # new/1 turns it into IPv6
     iex> new("11:22:33:44:55:66:77:88")
     %Pfx{bits: <<0x11::16, 0x22::16, 0x33::16, 0x44::16, 0x55::16, 0x66::16, 0x77::16, 0x88::16>>, maxlen: 128}
 
@@ -288,6 +289,9 @@ Functions are sometimes IP specific, like:
       prefix: "2001:0000:4136:e378:8000:63bf:3fff:fdd2"
     }
 
+    iex> eui64_encode("0288.8888.8888")
+    "00-88-88-FF-FE-88-88-88"
+
 But most of the times, functions have generic names, since they apply to all
 sorts of prefixes, e.g.
 
@@ -299,9 +303,9 @@ sorts of prefixes, e.g.
       %Pfx{bits: <<10, 10, 10, 3::size(2)>>, maxlen: 32}
     ]
 
-The `Pfx.new/1` and `Pfx.new/2` always return a `t:Pfx.t/0` struct, but most
-other functions will return their results in the same representation they were
-given.  So the above could also be done as:
+The `Pfx.new/1`, `Pfx.new/2` and `Pfx.from_mac/1` always return a `t:Pfx.t/0`
+struct, but most other functions will return their results in the same
+representation they were given.  So the above could also be done as:
 
     iex> partition("10.10.10.0/24", 26)
     [ "10.10.10.0/26",

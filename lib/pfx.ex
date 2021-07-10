@@ -96,39 +96,107 @@ defmodule Pfx do
   defp arg_error(reason, data) do
     msg =
       case reason do
-        :bitpos -> "invalid bit position: #{inspect(data)}"
-        :einval -> "expected a ipv4/ipv6 CIDR or EUI-48/64 string, got #{inspect(data)}"
-        :create -> "cannot create a Pfx from: #{inspect(data)}"
-        :ip4dig -> "expected valid IPv4 digits, got #{inspect(data)}"
-        :ip4len -> "expected a valid IPv4 prefix length, got #{inspect(data)}"
-        :ip6dig -> "expected valid IPv6 digits, got #{inspect(data)}"
-        :ip6len -> "expected a valid IPv6 prefix length, got #{inspect(data)}"
-        :max -> "expected a non_neg_integer for maxlen, got #{inspect(data)}"
-        :nat64 -> "expected a valid IPv6 nat64 address, got #{inspect(data)}"
-        :nobit -> "expected a integer (bit) value 0..1, got #{inspect(data)}"
-        :nobits -> "expected a non-empty bitstring, got: #{inspect(data)}"
-        :nobitstr -> "expected a bitstring, got: #{inspect(data)}"
-        :nocompare -> "prefixes have different maxlen's: #{inspect(data)}"
-        :noeui -> "expected an EUI48/64 string or tuple, got #{inspect(data)}"
-        :noeui48 -> "expected an EUI-48 prefix, string or tuple(s), got #{inspect(data)}"
-        :noeui64 -> "expected an EUI-64 prefix, string or tuple(s), got #{inspect(data)}"
-        :noflags -> "expected a 16-element tuple of bits, got #{inspect(data)}"
-        :noint -> "expected an integer, got #{inspect(data)}"
-        :noints -> "expected all integers, got #{inspect(data)}"
-        :noneg -> "expected a non_neg_integer, got #{inspect(data)}"
-        :noneighbor -> "empty prefixes have no neighbor: #{inspect(data)}"
-        :nopart -> "cannot partition prefixes using #{inspect(data)}"
-        :nopfx -> "expected a valid %Pfx{}-struct, got #{inspect(data)}"
-        :nopos -> "expected a pos_integer, got #{inspect(data)}"
-        :noundig -> "expected {{n1, n2, ..}, length}, got #{inspect(data)}"
-        :nowidth -> "expected valid width, got #{inspect(data)}"
-        :pfx -> "expected a valid Pfx struct, got #{inspect(data)}"
-        :pfx4 -> "expected a valid IPv4 Pfx, got #{inspect(data)}"
-        :pfx4full -> "expected a full IPv4 address, got #{inspect(data)}"
-        :pfx6 -> "expected a valid IPv6 Pfx, got #{inspect(data)}"
-        :pfx6full -> "expected a full IPv6 address, got #{inspect(data)}"
-        :range -> "invalid index range: #{inspect(data)}"
-        reason -> "error #{reason}, #{inspect(data)}"
+        :bitpos ->
+          "invalid bit position: #{inspect(data)}"
+
+        :einval ->
+          "expected a ipv4/ipv6 CIDR or EUI-48/64 string, got #{inspect(data)}"
+
+        :create ->
+          "cannot create a Pfx from: #{inspect(data)}"
+
+        :ip4dig ->
+          "expected valid IPv4 digits, got #{inspect(data)}"
+
+        :ip4len ->
+          "expected a valid IPv4 prefix length, got #{inspect(data)}"
+
+        :ip6dig ->
+          "expected valid IPv6 digits, got #{inspect(data)}"
+
+        :ip6len ->
+          "expected a valid IPv6 prefix length, got #{inspect(data)}"
+
+        :max ->
+          "expected a non_neg_integer for maxlen, got #{inspect(data)}"
+
+        :nat64 ->
+          "expected a valid IPv6 nat64 address, got #{inspect(data)}"
+
+        :nat64len ->
+          "nat64 prefix length not in [#{Enum.join(@nat64_lengths, ", ")}], got #{inspect(data)}"
+
+        :nobit ->
+          "expected a integer (bit) value 0..1, got #{inspect(data)}"
+
+        :nobits ->
+          "expected a non-empty bitstring, got: #{inspect(data)}"
+
+        :nobitstr ->
+          "expected a bitstring, got: #{inspect(data)}"
+
+        :nocompare ->
+          "prefixes have different maxlen's: #{inspect(data)}"
+
+        :noeui ->
+          "expected an EUI48/64 string or tuple, got #{inspect(data)}"
+
+        :noeui48 ->
+          "expected an EUI-48 prefix, string or tuple(s), got #{inspect(data)}"
+
+        :noeui64 ->
+          "expected an EUI-64 prefix, string or tuple(s), got #{inspect(data)}"
+
+        :noflags ->
+          "expected a 16-element tuple of bits, got #{inspect(data)}"
+
+        :noint ->
+          "expected an integer, got #{inspect(data)}"
+
+        :noints ->
+          "expected all integers, got #{inspect(data)}"
+
+        :noneg ->
+          "expected a non_neg_integer, got #{inspect(data)}"
+
+        :noneighbor ->
+          "empty prefixes have no neighbor: #{inspect(data)}"
+
+        :nopart ->
+          "cannot partition prefixes using #{inspect(data)}"
+
+        :nopfx ->
+          "expected a valid %Pfx{}-struct, got #{inspect(data)}"
+
+        :nopos ->
+          "expected a pos_integer, got #{inspect(data)}"
+
+        :noundig ->
+          "expected {{n1, n2, ..}, length}, got #{inspect(data)}"
+
+        :nowidth ->
+          "expected valid width, got #{inspect(data)}"
+
+        :pfx ->
+          "expected a valid Pfx struct, got #{inspect(data)}"
+
+        :pfx4 ->
+          "expected a valid IPv4 Pfx, got #{inspect(data)}"
+
+        :pfx4full ->
+          "expected a full IPv4 address, got #{inspect(data)}"
+
+        :pfx6 ->
+          "expected a valid IPv6 Pfx, got #{inspect(data)}"
+
+        :pfx6full ->
+          "expected a full IPv6 address, got #{inspect(data)}"
+
+        :range ->
+          "invalid index range: #{inspect(data)}"
+
+        reason ->
+          "error #{reason}, #{inspect(data)}"
       end
 
     ArgumentError.exception(msg)
@@ -564,8 +632,12 @@ defmodule Pfx do
     bitp(pfx, pos)
   end
 
-  def bit(pfx, pos) when is_integer(pos),
-    do: new(pfx) |> bit(pos)
+  def bit(pfx, pos) when is_integer(pos) do
+    new(pfx)
+    |> bit(pos)
+  rescue
+    err -> raise err
+  end
 
   def bit(_, pos),
     do: raise(arg_error(:noint, pos))
@@ -645,8 +717,12 @@ defmodule Pfx do
   def bits(pfx, position, length) when is_pfx(pfx),
     do: raise(arg_error(:range, {position, length}))
 
-  def bits(pfx, position, length),
-    do: new(pfx) |> bits(position, length)
+  def bits(pfx, position, length) do
+    new(pfx)
+    |> bits(position, length)
+  rescue
+    err -> raise err
+  end
 
   @spec bitsp(t, integer, integer) :: bitstring
   defp bitsp(pfx, pos, len) when is_pfx(pfx) do
@@ -736,8 +812,12 @@ defmodule Pfx do
   def cast(pfx) when is_pfx(pfx),
     do: castp(pfx.bits, pfx.maxlen)
 
-  def cast(pfx),
-    do: new(pfx) |> cast()
+  def cast(pfx) do
+    new(pfx)
+    |> cast()
+  rescue
+    err -> raise err
+  end
 
   @doc """
   A bitwise NOT of the `pfx.bits`.
@@ -773,8 +853,13 @@ defmodule Pfx do
     %Pfx{pfx | bits: <<x::size(width)>>}
   end
 
-  def bnot(pfx),
-    do: new(pfx) |> bnot() |> marshall(pfx)
+  def bnot(pfx) do
+    new(pfx)
+    |> bnot()
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   @doc """
   A bitwise AND of two `t:prefix/0`'s.
@@ -825,8 +910,13 @@ defmodule Pfx do
   def band(pfx1, pfx2) when is_pfx(pfx1) and is_pfx(pfx2),
     do: raise(arg_error(:nocompare, {pfx1, pfx2}))
 
-  def band(pfx1, pfx2),
-    do: band(new(pfx1), new(pfx2)) |> marshall(pfx1)
+  def band(pfx1, pfx2) do
+    new(pfx1)
+    |> band(new(pfx2))
+    |> marshall(pfx1)
+  rescue
+    err -> raise err
+  end
 
   @doc """
   A bitwise OR of two prefixes.
@@ -867,8 +957,13 @@ defmodule Pfx do
   def bor(pfx1, pfx2) when is_pfx(pfx1) and is_pfx(pfx2),
     do: raise(arg_error(:nocompare, {pfx1, pfx2}))
 
-  def bor(pfx1, pfx2),
-    do: bor(new(pfx1), new(pfx2)) |> marshall(pfx1)
+  def bor(pfx1, pfx2) do
+    new(pfx1)
+    |> bor(new(pfx2))
+    |> marshall(pfx1)
+  rescue
+    err -> raise err
+  end
 
   @doc """
   A bitwise XOR of two `t:prefix`'s.
@@ -905,8 +1000,13 @@ defmodule Pfx do
   def bxor(pfx1, pfx2) when is_pfx(pfx1) and is_pfx(pfx2),
     do: raise(arg_error(:nocompare, {pfx1, pfx2}))
 
-  def bxor(pfx1, pfx2),
-    do: bxor(new(pfx1), new(pfx2)) |> marshall(pfx1)
+  def bxor(pfx1, pfx2) do
+    new(pfx1)
+    |> bxor(new(pfx2))
+    |> marshall(pfx1)
+  rescue
+    err -> raise err
+  end
 
   @doc """
   Rotate the `pfx.bits` by `n` positions.
@@ -958,8 +1058,13 @@ defmodule Pfx do
     %Pfx{pfx | bits: <<r::size(n), l::size(lw)>>}
   end
 
-  def brot(pfx, n) when is_integer(n),
-    do: brot(new(pfx), n) |> marshall(pfx)
+  def brot(pfx, n) when is_integer(n) do
+    new(pfx)
+    |> brot(n)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   def brot(_, n),
     do: raise(arg_error(:noint, n))
@@ -1003,8 +1108,13 @@ defmodule Pfx do
     %Pfx{pfx | bits: <<x::size(width)>>}
   end
 
-  def bsl(pfx, n) when is_integer(n),
-    do: bsl(new(pfx), n) |> marshall(pfx)
+  def bsl(pfx, n) when is_integer(n) do
+    new(pfx)
+    |> bsl(n)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   def bsl(_, n),
     do: raise(arg_error(:noint, n))
@@ -1046,8 +1156,13 @@ defmodule Pfx do
     %Pfx{pfx | bits: <<x::size(width)>>}
   end
 
-  def bsr(pfx, n) when is_integer(n),
-    do: bsr(new(pfx), n) |> marshall(pfx)
+  def bsr(pfx, n) when is_integer(n) do
+    new(pfx)
+    |> bsr(n)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   def bsr(_, n),
     do: raise(arg_error(:noint, n))
@@ -1079,8 +1194,13 @@ defmodule Pfx do
   def padr(pfx) when is_pfx(pfx),
     do: padr(pfx, 0, pfx.maxlen)
 
-  def padr(pfx),
-    do: new(pfx) |> padr() |> marshall(pfx)
+  def padr(pfx) do
+    new(pfx)
+    |> padr()
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   @doc """
   Right pad the `pfx.bits` to its full length using either `0` or `1`-bits.
@@ -1151,8 +1271,13 @@ defmodule Pfx do
     %Pfx{pfx | bits: <<x::size(width)>>}
   end
 
-  def padr(pfx, bit, n) when is_integer(n) and n >= 0 and (bit === 0 or bit === 1),
-    do: padr(new(pfx), bit, n) |> marshall(pfx)
+  def padr(pfx, bit, n) when is_integer(n) and n >= 0 and (bit === 0 or bit === 1) do
+    new(pfx)
+    |> padr(bit, n)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   def padr(_, bit, n) when bit === 0 or bit === 1,
     do: raise(arg_error(:noneg, n))
@@ -1179,8 +1304,13 @@ defmodule Pfx do
   def padl(pfx) when is_pfx(pfx),
     do: padl(pfx, 0, pfx.maxlen)
 
-  def padl(pfx),
-    do: padl(new(pfx)) |> marshall(pfx)
+  def padl(pfx) do
+    new(pfx)
+    |> padl()
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   @doc """
   Left pad the `pfx.bits` to its full length using either `0` or `1`-bits.
@@ -1201,10 +1331,58 @@ defmodule Pfx do
   def padl(pfx, bit) when is_pfx(pfx) and (bit === 0 or bit === 1),
     do: padl(pfx, bit, pfx.maxlen)
 
-  def padl(pfx, bit) when bit === 0 or bit === 1,
-    do: padl(new(pfx), bit) |> marshall(pfx)
+  def padl(pfx, bit) when bit === 0 or bit === 1 do
+    new(pfx)
+    |> padl(bit)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   def padl(_, bit),
+    do: raise(arg_error(:nobit, bit))
+
+  @doc """
+  Left pad the `pfx.bits` with `n` bits of either `0` or `1`'s.
+
+  ## Example
+
+      iex> padl("255.255.0.0/16", 0, 16)
+      "0.0.255.255"
+
+      iex> padl("255.255.0.0/16", 1, 16)
+      "255.255.255.255"
+
+      iex> padl({{255, 255, 0, 0}, 16}, 0, 16)
+      {{0, 0, 255, 255}, 32}
+
+      iex> padl(%Pfx{bits: <<255, 255>>, maxlen: 32}, 0, 16)
+      %Pfx{bits: <<0, 0, 255, 255>>, maxlen: 32}
+
+  """
+  @spec padl(prefix, 0 | 1, non_neg_integer) :: prefix
+  def padl(pfx, bit, n)
+      when is_pfx(pfx) and is_integer(n) and n >= 0 and (bit === 0 or bit === 1) do
+    bsize = bit_size(pfx.bits)
+    nbits = min(n, pfx.maxlen - bsize)
+    y = if bit == 0, do: 0, else: Bitwise.bsl(1, nbits) - 1
+    x = castp(pfx.bits, bsize)
+
+    %Pfx{pfx | bits: <<y::size(nbits), x::size(bsize)>>}
+  end
+
+  def padl(pfx, bit, n) when is_integer(n) and n >= 0 and (bit === 0 or bit === 1) do
+    new(pfx)
+    |> padl(bit, n)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  def padl(_, bit, n) when bit === 0 or bit === 1,
+    do: raise(arg_error(:noneg, n))
+
+  def padl(_, bit, _),
     do: raise(arg_error(:nobit, bit))
 
   @doc """
@@ -1238,48 +1416,15 @@ defmodule Pfx do
     %{pfx | bits: <<bit::size(len)>>}
   end
 
-  def bset(pfx, bit) when bit === 0 or bit === 1,
-    do: bset(new(pfx), bit) |> marshall(pfx)
-
-  def bset(_, bit),
-    do: raise(arg_error(:nobit, bit))
-
-  @doc """
-  Left pad the `pfx.bits` with `n` bits of either `0` or `1`'s.
-
-  ## Example
-
-      iex> padl("255.255.0.0/16", 0, 16)
-      "0.0.255.255"
-
-      iex> padl("255.255.0.0/16", 1, 16)
-      "255.255.255.255"
-
-      iex> padl({{255, 255, 0, 0}, 16}, 0, 16)
-      {{0, 0, 255, 255}, 32}
-
-      iex> padl(%Pfx{bits: <<255, 255>>, maxlen: 32}, 0, 16)
-      %Pfx{bits: <<0, 0, 255, 255>>, maxlen: 32}
-
-  """
-  @spec padl(prefix, 0 | 1, non_neg_integer) :: prefix
-  def padl(pfx, bit, n)
-      when is_pfx(pfx) and is_integer(n) and n >= 0 and (bit === 0 or bit === 1) do
-    bsize = bit_size(pfx.bits)
-    nbits = min(n, pfx.maxlen - bsize)
-    y = if bit == 0, do: 0, else: Bitwise.bsl(1, nbits) - 1
-    x = castp(pfx.bits, bsize)
-
-    %Pfx{pfx | bits: <<y::size(nbits), x::size(bsize)>>}
+  def bset(pfx, bit) when bit === 0 or bit === 1 do
+    new(pfx)
+    |> bset(bit)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
   end
 
-  def padl(pfx, bit, n) when is_integer(n) and n >= 0 and (bit === 0 or bit === 1),
-    do: padl(new(pfx), bit, n) |> marshall(pfx)
-
-  def padl(_, bit, n) when bit === 0 or bit === 1,
-    do: raise(arg_error(:noneg, n))
-
-  def padl(_, bit, _),
+  def bset(_, bit),
     do: raise(arg_error(:nobit, bit))
 
   @doc """
@@ -1346,7 +1491,11 @@ defmodule Pfx do
   end
 
   def cut(pfx, start, length) do
-    new(pfx) |> cut(start, length) |> marshall(pfx)
+    new(pfx)
+    |> cut(start, length)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
   end
 
   @doc """
@@ -1390,8 +1539,13 @@ defmodule Pfx do
     end
   end
 
-  def drop(pfx, count) when is_non_neg_integer(count),
-    do: new(pfx) |> drop(count) |> marshall(pfx)
+  def drop(pfx, count) when is_non_neg_integer(count) do
+    new(pfx)
+    |> drop(count)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   def drop(_, count),
     do: raise(arg_error(:nodrop, "expected a non_neg_integer for count, got: #{inspect(count)}"))
@@ -1437,8 +1591,13 @@ defmodule Pfx do
     end
   end
 
-  def keep(pfx, count) when is_non_neg_integer(count),
-    do: new(pfx) |> keep(count) |> marshall(pfx)
+  def keep(pfx, count) when is_non_neg_integer(count) do
+    new(pfx)
+    |> keep(count)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   # take nil to mean keep all, used possibly by new(binary)
   def keep(pfx, nil),
@@ -1492,8 +1651,13 @@ defmodule Pfx do
     %{pfx | bits: <<left::size(pos), bit::1, right::bitstring>>}
   end
 
-  def flip(pfx, position) when is_integer(position),
-    do: new(pfx) |> flip(position) |> marshall(pfx)
+  def flip(pfx, position) when is_integer(position) do
+    new(pfx)
+    |> flip(position)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   def flip(_pfx, pos),
     do: raise(arg_error(:bitpos, pos))
@@ -1557,8 +1721,13 @@ defmodule Pfx do
     %{pfx | bits: truncate(<<left::bitstring, bits::bitstring, right::bitstring>>, pfx.maxlen)}
   end
 
-  def insert(pfx, bits, position) when is_bitstring(bits) and is_integer(position),
-    do: new(pfx) |> insert(bits, position) |> marshall(pfx)
+  def insert(pfx, bits, position) when is_bitstring(bits) and is_integer(position) do
+    new(pfx)
+    |> insert(bits, position)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   def insert(_pfx, bits, pos) when is_integer(pos),
     do: raise(arg_error(:nobitstr, bits))
@@ -1728,8 +1897,13 @@ defmodule Pfx do
   def partition(pfx, bitlen) when is_pfx(pfx),
     do: raise(arg_error(:nopart, bitlen))
 
-  def partition(pfx, bitlen),
-    do: partition(new(pfx), bitlen) |> Enum.map(fn x -> marshall(x, pfx) end)
+  def partition(pfx, bitlen) do
+    new(pfx)
+    |> partition(bitlen)
+    |> Enum.map(fn x -> marshall(x, pfx) end)
+  rescue
+    err -> raise err
+  end
 
   @doc """
   Turn a `prefix` into a list of `{number, width}`-fields.
@@ -1767,8 +1941,12 @@ defmodule Pfx do
   def fields(pfx, width) when is_pfx(pfx) and is_integer(width) and width > 0,
     do: fields([], pfx.bits, width)
 
-  def fields(pfx, width) when is_integer(width) and width > 0,
-    do: fields(new(pfx), width)
+  def fields(pfx, width) when is_integer(width) and width > 0 do
+    new(pfx)
+    |> fields(width)
+  rescue
+    err -> raise err
+  end
 
   def fields(_, width),
     do: raise(arg_error(:nowidth, width))
@@ -1838,8 +2016,12 @@ defmodule Pfx do
     end
   end
 
-  def digits(pfx, width) when is_pos_integer(width),
-    do: new(pfx) |> digits(width)
+  def digits(pfx, width) when is_pos_integer(width) do
+    new(pfx)
+    |> digits(width)
+  rescue
+    err -> raise err
+  end
 
   def digits(_, width),
     do: raise(arg_error(:nowidth, width))
@@ -1950,8 +2132,13 @@ defmodule Pfx do
     %Pfx{pfx | bits: <<n::size(bsize)>>}
   end
 
-  def sibling(pfx, offset) when is_integer(offset),
-    do: sibling(new(pfx), offset) |> marshall(pfx)
+  def sibling(pfx, offset) when is_integer(offset) do
+    new(pfx)
+    |> sibling(offset)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   def sibling(_, offset),
     do: raise(arg_error(:noint, offset))
@@ -1981,8 +2168,12 @@ defmodule Pfx do
     :math.pow(2, pfx.maxlen - bit_size(pfx.bits)) |> trunc
   end
 
-  def size(pfx),
-    do: size(new(pfx))
+  def size(pfx) do
+    new(pfx)
+    |> size()
+  rescue
+    err -> raise err
+  end
 
   @doc """
   Return the `nth`-member of a given `pfx`.
@@ -2038,8 +2229,13 @@ defmodule Pfx do
   def member(pfx, nth) when is_pfx(pfx) and is_integer(nth),
     do: member(pfx, nth, pfx.maxlen - bit_size(pfx.bits))
 
-  def member(pfx, nth) when is_integer(nth),
-    do: member(new(pfx), nth) |> marshall(pfx)
+  def member(pfx, nth) when is_integer(nth) do
+    new(pfx)
+    |> member(nth)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   def member(_, nth),
     do: raise(arg_error(:noint, nth))
@@ -2080,8 +2276,13 @@ defmodule Pfx do
       when is_pfx(pfx) and is_inrange(width, 0, pfx.maxlen - bit_size(pfx.bits)),
       do: raise(arg_error(:noint, nth))
 
-  def member(pfx, nth, width),
-    do: member(new(pfx), nth, width) |> marshall(pfx)
+  def member(pfx, nth, width) do
+    new(pfx)
+    |> member(nth, width)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   @doc """
   Returns true is prefix `pfx1` is a member of prefix `pfx2`
@@ -2122,7 +2323,7 @@ defmodule Pfx do
     try do
       member?(new(pfx1), new(pfx2))
     rescue
-      ArgumentError -> false
+      _ -> false
     end
   end
 
@@ -2202,6 +2403,7 @@ defmodule Pfx do
   @spec format(prefix, Keyword.t()) :: String.t()
   def format(pfx, opts \\ [])
 
+  # NOTE: String.Chars, when using Pfx.format, MUST always provide at least 1 option
   def format(pfx, []) when is_pfx(pfx) and pfx.maxlen in [32, 48, 64, 128] do
     "#{pfx}"
   end
@@ -2234,8 +2436,12 @@ defmodule Pfx do
     end
   end
 
-  def format(pfx, opts),
-    do: new(pfx) |> format(opts)
+  def format(pfx, opts) do
+    new(pfx)
+    |> format(opts)
+  rescue
+    err -> raise err
+  end
 
   # do: raise(arg_error(:nopfx, "#{inspect(pfx)}"))
 
@@ -2349,8 +2555,12 @@ defmodule Pfx do
   def compare(x, y) when is_pfx(x) and is_pfx(y),
     do: raise(arg_error(:nocompare, {x, y}))
 
-  def compare(x, y),
-    do: compare(new(x), new(y))
+  def compare(x, y) do
+    new(x)
+    |> compare(new(y))
+  rescue
+    err -> raise err
+  end
 
   defp comparep(x, y) when bit_size(x) > bit_size(y), do: :lt
   defp comparep(x, y) when bit_size(x) < bit_size(y), do: :gt
@@ -2402,8 +2612,12 @@ defmodule Pfx do
   def contrast(x, y) when is_pfx(x) and is_pfx(y),
     do: raise(arg_error(:nocompare, {x, y}))
 
-  def contrast(x, y),
-    do: contrast(new(x), new(y))
+  def contrast(x, y) do
+    new(x)
+    |> contrast(new(y))
+  rescue
+    err -> raise err
+  end
 
   defp contrastp(x, y) when x == y,
     do: :equal
@@ -2455,8 +2669,13 @@ defmodule Pfx do
 
   """
   @spec network(prefix) :: prefix
-  def network(pfx),
-    do: new(pfx) |> padr(0) |> marshall(pfx)
+  def network(pfx) do
+    new(pfx)
+    |> padr(0)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   @doc """
   Returns the broadcast prefix (full address) for given `pfx`.
@@ -2488,8 +2707,13 @@ defmodule Pfx do
 
   """
   @spec broadcast(prefix) :: prefix
-  def broadcast(pfx),
-    do: new(pfx) |> padr(1) |> marshall(pfx)
+  def broadcast(pfx) do
+    new(pfx)
+    |> padr(1)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   @doc """
   Returns a list of address prefixes for given `pfx`.
@@ -2550,8 +2774,13 @@ defmodule Pfx do
 
   """
   @spec host(prefix, integer) :: prefix
-  def host(pfx, nth) when is_integer(nth),
-    do: new(pfx) |> member(nth) |> marshall(pfx)
+  def host(pfx, nth) when is_integer(nth) do
+    new(pfx)
+    |> member(nth)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   def host(_pfx, nth),
     do: raise(arg_error(:noint, nth))
@@ -2559,7 +2788,8 @@ defmodule Pfx do
   @doc """
   Return the mask for given `pfx`.
 
-  The result is in the same format as `pfx`.
+  The result is in the same format as `pfx`, but is always a full length
+  prefix.
 
   ## Examples
 
@@ -2572,13 +2802,23 @@ defmodule Pfx do
       iex> mask({{10, 10, 10, 0}, 25})
       {{255, 255, 255, 128}, 32}
 
-      iex> mask(%Pfx{bits: <<10, 10, 10, 0::1>>, maxlen: 32})
-      %Pfx{bits: <<255, 255, 255, 128>>, maxlen: 32}
+      iex> mask("acdc:1976::/32")
+      "ffff:ffff:0:0:0:0:0:0"
+
+      # and now for something completely different:
+      iex> mask(%Pfx{bits: <<10, 10, 0::1>>, maxlen: 20})
+      %Pfx{bits: <<255, 255, 8::4>>, maxlen: 20}
 
   """
   @spec mask(prefix) :: prefix
-  def mask(pfx),
-    do: new(pfx) |> bset(1) |> padr(0) |> marshall(pfx)
+  def mask(pfx) do
+    new(pfx)
+    |> bset(1)
+    |> padr(0)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   @doc """
   Returns the inverted mask for given `pfx`.
@@ -2601,8 +2841,14 @@ defmodule Pfx do
 
   """
   @spec inv_mask(prefix) :: prefix
-  def inv_mask(pfx),
-    do: new(pfx) |> bset(0) |> padr(1) |> marshall(pfx)
+  def inv_mask(pfx) do
+    new(pfx)
+    |> bset(0)
+    |> padr(1)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   @doc """
   Returns the neighboring prefix such that both can be combined in a supernet.
@@ -2639,6 +2885,8 @@ defmodule Pfx do
       offset = 1 - 2 * bit(x, bit_size(x.bits) - 1)
       sibling(x, offset) |> marshall(pfx)
     end
+  rescue
+    err -> raise err
   end
 
   # IP oriented
@@ -2679,8 +2927,13 @@ defmodule Pfx do
   def eui64_encode(pfx) when is_pfx(pfx),
     do: raise(arg_error(:noeui48, pfx))
 
-  def eui64_encode(pfx),
-    do: new(pfx) |> eui64_encode() |> marshall(pfx)
+  def eui64_encode(pfx) do
+    new(pfx)
+    |> eui64_encode()
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   @doc """
   Decode a modified EUI-64 back into the original EUI-48 address.
@@ -2729,8 +2982,13 @@ defmodule Pfx do
   def eui64_decode(pfx) when is_pfx(pfx),
     do: raise(arg_error(:noeui64, pfx))
 
-  def eui64_decode(pfx),
-    do: from_mac(pfx) |> eui64_decode() |> marshall(pfx)
+  def eui64_decode(pfx) do
+    from_mac(pfx)
+    |> eui64_decode()
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
 
   @doc """
   Returns true if `prefix` is a teredo address, false otherwise
@@ -2762,7 +3020,8 @@ defmodule Pfx do
   @doc """
   Returns a map with the teredo address components of `pfx` or nil.
 
-  Returns nil if `pfx` is not a teredo address.
+  Returns nil if `pfx` is not a
+  [teredo](https://www.rfc-editor.org/rfc/rfc4380.html#section-4) address.
 
   ## Examples
 
@@ -2792,7 +3051,6 @@ defmodule Pfx do
   @doc section: :ip
   @spec teredo_decode(prefix) :: map | nil
   def teredo_decode(pfx) do
-    # https://www.rfc-editor.org/rfc/rfc4380.html#section-4
     x = new(pfx)
 
     if teredo?(x) do
@@ -2806,6 +3064,8 @@ defmodule Pfx do
     else
       nil
     end
+  rescue
+    err -> raise err
   end
 
   @doc """
@@ -2854,6 +3114,8 @@ defmodule Pfx do
     }
 
     marshall(x, client)
+  rescue
+    err -> raise err
   end
 
   def teredo_encode(_client, _server, port, flags) when tuple_size(flags) == 16,
@@ -2954,6 +3216,8 @@ defmodule Pfx do
     else
       nil
     end
+  rescue
+    err -> raise err
   end
 
   @doc """
@@ -3006,8 +3270,6 @@ defmodule Pfx do
   @doc section: :ip
   @spec link_local?(prefix) :: boolean
   def link_local?(pfx) do
-    # rfc3927 and rfc4271 & friends
-    # and https://en.wikipedia.org/wiki/IPv6_address#Default_address_selection
     x = new(pfx)
 
     cond do
@@ -3020,7 +3282,7 @@ defmodule Pfx do
       true -> false
     end
   rescue
-    ArgumentError -> false
+    _ -> false
   end
 
   @doc """
@@ -3047,7 +3309,7 @@ defmodule Pfx do
       %{ preamble: 1018,
          prefix: "fe80:0:0:0:0:0:0:0/64",
          ifaceID: 2900105590,
-         address: "fe80:0:0:0:0:0:acdc:1976"
+         address: "fe80::acdc:1976"
       }
       #
       iex> host(y.prefix, y.ifaceID)
@@ -3066,7 +3328,7 @@ defmodule Pfx do
             preamble: cut(x, 0, 10) |> cast(),
             prefix: %Pfx{bits: bits(x, 0, 64), maxlen: 128} |> marshall(pfx),
             ifaceID: cut(x, 64, 64) |> cast(),
-            address: marshall(x, pfx)
+            address: pfx
           }
 
         32 ->
@@ -3074,22 +3336,23 @@ defmodule Pfx do
             digits: digits(x, 8) |> elem(0),
             prefix: %Pfx{bits: bits(x, 0, 16), maxlen: 32} |> marshall(pfx),
             ifaceID: cut(x, 16, 16) |> cast(),
-            address: marshall(x, pfx)
+            address: pfx
           }
       end
     end
+  rescue
+    err -> raise err
   end
 
   @doc """
   Returns true if `pfx` is designated as "private-use".
 
-  For IPv4 this includes the [rfc1918](https://www.iana.org/go/rfc1918)
-  prefixes:
+  This includes the [rfc1918](https://www.iana.org/go/rfc1918) prefixes:
   - `10.0.0.0/8`,
   - `172.16.0.0/12`, and
   - `192.168.0.0/16`.
 
-  For IPv6 this includes the [rfc4193](https://www.iana.org/go/rfc4193) prefix
+  And the [rfc4193](https://www.iana.org/go/rfc4193) prefix
   - `fc00::/7`.
 
   ## Examples
@@ -3184,8 +3447,8 @@ defmodule Pfx do
   @doc """
   Returns the embedded IPv4 address of a nat64 `pfx`
 
-  The `pfx` prefix should be a full IPv6 address.  The `len` defaults to `96`, but if
-  specified it should be one of [#{Enum.join(@nat64_lengths, ", ")}].
+  The `pfx` prefix should be a full IPv6 address.  The `len` defaults to `96`,
+  but if specified it should be one of [#{Enum.join(@nat64_lengths, ", ")}].
 
   ## Examples
 
@@ -3222,7 +3485,7 @@ defmodule Pfx do
       "192.0.2.33"
 
       iex> nat64_decode("2001:db8:122:344::192.0.2.33", 90)
-      ** (ArgumentError) error nat64_decode, "len 90 not in: 96, 64, 56, 48, 40, 32"
+      ** (ArgumentError) nat64 prefix length not in [96, 64, 56, 48, 40, 32], got 90
 
   """
   @doc section: :ip
@@ -3246,7 +3509,7 @@ defmodule Pfx do
   end
 
   def nat64_decode(_, len),
-    do: raise(arg_error(:nat64_decode, "len #{len} not in: #{Enum.join(@nat64_lengths, ", ")}"))
+    do: raise(arg_error(:nat64len, len))
 
   @doc """
   Return an IPv4 embedded IPv6 address for given `pfx6` and `pfx4`.
@@ -3301,6 +3564,8 @@ defmodule Pfx do
     else
       pfx6
     end
+  rescue
+    err -> raise err
   end
 
   def nat64_encode(pfx6, pfx4) do
@@ -3356,6 +3621,8 @@ defmodule Pfx do
     |> format(width: width, base: base, padding: false, reverse: true, mask: false)
     |> String.downcase()
     |> (&"#{&1}.#{suffix}").()
+  rescue
+    err -> raise err
   end
 end
 
