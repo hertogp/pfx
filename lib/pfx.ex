@@ -3200,6 +3200,12 @@ defmodule Pfx do
       iex> nat64_decode("2001:db8:122:344:c0:2:2100::", 64)
       "192.0.2.33"
 
+      iex> nat64_decode({0x2001, 0xdb8, 0x122, 0x344, 0xC0, 0x2, 0x2100, 0x0}, 64)
+      {192, 0, 2, 33}
+
+      iex> nat64_decode({{0x2001, 0xdb8, 0x122, 0x344, 0xC0, 0x2, 0x2100, 0x0}, 128}, 64)
+      {{192, 0, 2, 33}, 32}
+
       iex> nat64_decode("2001:db8:122:344::192.0.2.33", 96)
       "192.0.2.33"
 
@@ -3208,16 +3214,23 @@ defmodule Pfx do
 
   """
   @doc section: :ip
-  @spec nat64_decode(prefix, integer) :: String.t()
+  @spec nat64_decode(prefix, integer) :: prefix
   def nat64_decode(pfx, len \\ 96)
 
-  def nat64_decode(pfx, len) when len in @nat64_lengths do
-    x = new(pfx)
-    unless bit_size(x.bits) == 128, do: raise(ArgumentError)
-    x = if len < 96, do: %{x | bits: bits(x, 0, 64) <> bits(x, 72, 56)}, else: x
-    "#{%Pfx{bits: bits(x, len, 32), maxlen: 32}}"
+  def nat64_decode(pfx, len) when is_pfx(pfx) and len in @nat64_lengths do
+    unless bit_size(pfx.bits) == 128, do: raise(ArgumentError)
+    pfx = if len < 96, do: %{pfx | bits: bits(pfx, 0, 64) <> bits(pfx, 72, 56)}, else: pfx
+    %Pfx{bits: bits(pfx, len, 32), maxlen: 32}
   rescue
     _ -> raise arg_error(:nat64, pfx)
+  end
+
+  def nat64_decode(pfx, len) when len in @nat64_lengths do
+    new(pfx)
+    |> nat64_decode(len)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
   end
 
   def nat64_decode(_, len),
