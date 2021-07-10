@@ -1287,7 +1287,8 @@ defmodule Pfx do
 
   ## Examples
 
-  For [example](https://en.wikipedia.org/wiki/Teredo_tunneling#IPv6_addressing):
+      iex> cut("::ffff:192.0.2.128", -1, -32)
+      "192.0.2.128"
 
       iex> teredo = new("2001:0:4136:e378:8000:63bf:3fff:fdd2")
       iex>
@@ -1365,6 +1366,9 @@ defmodule Pfx do
       iex> drop("1.2.3.0/24", 512)
       "0.0.0.0/0"
 
+      iex> drop("2001:0db8:85a3:0000:0000:8a2e:0370:7334", 64)
+      "2001:db8:85a3:0:0:0:0:0/64"
+
       iex> drop({1, 2, 3, 4}, 8)
       {1, 2, 3, 0}
 
@@ -1396,6 +1400,9 @@ defmodule Pfx do
   bits.
 
   ## Examples
+
+      iex> keep("2001:0db8:85a3:0000:0000:8a2e:0370:7334", 64)
+      "2001:db8:85a3:0:0:0:0:0/64"
 
       iex> keep("1.2.3.0/31", 30)
       "1.2.3.0/30"
@@ -1445,11 +1452,12 @@ defmodule Pfx do
 
   ## Examples
 
-      iex> flip("255.255.255.0", 24)
-      "255.255.255.128"
+      # flip some bit
+      iex> flip("255.255.254.0", 23)
+      "255.255.255.0"
 
-      iex> flip("255.255.255.0", -8)
-      "255.255.255.128"
+      iex> flip("255.255.255.0", -9)
+      "255.255.254.0"
 
       # flip the 7th bit
       iex> flip("0088.8888.8888", 6)
@@ -1464,6 +1472,9 @@ defmodule Pfx do
 
       iex> flip({{1, 2, 3, 128}, 25}, -1)
       {{1, 2, 3, 0}, 25}
+
+      iex> flip(%Pfx{bits: <<1, 2, 3, 1::1>>, maxlen: 32}, -1)
+      %Pfx{bits: <<1, 2, 3, 0::1>>, maxlen: 32}
 
   """
   @spec flip(t, non_neg_integer) :: t
@@ -2696,12 +2707,10 @@ defmodule Pfx do
   @spec eui64_decode(prefix) :: prefix
   def eui64_decode(eui64)
       when is_pfx(eui64) and eui64.maxlen == 64 and bit_size(eui64.bits) == 64 do
-    {{a, b, c, _, _, d, e, f}, _} = digits(eui64, 8)
-    a = Bitwise.bxor(a, 2)
-    new(<<a, b, c, d, e, f>>, 48)
-    # eui64
-    # |> flip(6)
-    # |> remove(24, 16)
+    eui64
+    |> flip(6)
+    |> remove(24, 16)
+    |> new(48)
   end
 
   # if eui48 was a prefix, error out before we try new/1 (!)
@@ -3107,19 +3116,17 @@ defmodule Pfx do
   def unique_local?(pfx) do
     # TODO: what about the well-known nat64 address(es) that are used only
     # locally?
-    try do
-      x = new(pfx)
+    x = new(pfx)
 
-      cond do
-        member?(x, %Pfx{bits: <<10>>, maxlen: 32}) -> true
-        member?(x, %Pfx{bits: <<172, 1::4>>, maxlen: 32}) -> true
-        member?(x, %Pfx{bits: <<192, 168>>, maxlen: 32}) -> true
-        member?(x, %Pfx{bits: <<126::7>>, maxlen: 128}) -> true
-        true -> false
-      end
-    rescue
-      ArgumentError -> false
+    cond do
+      member?(x, %Pfx{bits: <<10>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<172, 1::4>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<192, 168>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<126::7>>, maxlen: 128}) -> true
+      true -> false
     end
+  rescue
+    _ -> false
   end
 
   @doc """
@@ -3154,14 +3161,12 @@ defmodule Pfx do
   @doc section: :ip
   @spec nat64?(prefix) :: boolean
   def nat64?(pfx) do
-    try do
-      x = new(pfx)
+    x = new(pfx)
 
-      member?(x, %Pfx{bits: <<0x0064::16, 0xFF9B::16, 0::64>>, maxlen: 128}) or
-        member?(x, %Pfx{bits: <<0x0064::16, 0xFF9B::16, 1::16>>, maxlen: 128})
-    rescue
-      ArgumentError -> false
-    end
+    member?(x, %Pfx{bits: <<0x0064::16, 0xFF9B::16, 0::64>>, maxlen: 128}) or
+      member?(x, %Pfx{bits: <<0x0064::16, 0xFF9B::16, 1::16>>, maxlen: 128})
+  rescue
+    _ -> false
   end
 
   @doc """
@@ -3207,14 +3212,12 @@ defmodule Pfx do
   def nat64_decode(pfx, len \\ 96)
 
   def nat64_decode(pfx, len) when len in @nat64_lengths do
-    try do
-      x = new(pfx)
-      unless bit_size(x.bits) == 128, do: raise(arg_error(:nat64, pfx))
-      x = if len < 96, do: %{x | bits: bits(x, 0, 64) <> bits(x, 72, 56)}, else: x
-      "#{%Pfx{bits: bits(x, len, 32), maxlen: 32}}"
-    rescue
-      ArgumentError -> raise arg_error(:nat64, pfx)
-    end
+    x = new(pfx)
+    unless bit_size(x.bits) == 128, do: raise(ArgumentError)
+    x = if len < 96, do: %{x | bits: bits(x, 0, 64) <> bits(x, 72, 56)}, else: x
+    "#{%Pfx{bits: bits(x, len, 32), maxlen: 32}}"
+  rescue
+    _ -> raise arg_error(:nat64, pfx)
   end
 
   def nat64_decode(_, len),
