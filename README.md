@@ -3,9 +3,9 @@
 [![Test](https://github.com/hertogp/pfx/actions/workflows/elixir.yml/badge.svg)](https://github.com/hertogp/pfx/actions/workflows/elixir.yml)
 [![Module Version](https://img.shields.io/hexpm/v/pfx.svg)](https://hex.pm/packages/pfx)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/pfx/)
-[![Total Download](https://img.shields.io/hexpm/dt/pfx.svg)](https://hex.pm/packages/pfx)
-[![License](https://img.shields.io/hexpm/l/pfx.svg)](https://github.com/hertogp/pfx/blob/master/LICENSE.md)
 [![Last Updated](https://img.shields.io/github/last-commit/hertogp/pfx.svg)](https://github.com/hertogp/pfx/commits/main)
+[![License](https://img.shields.io/hexpm/l/pfx.svg)](https://github.com/hertogp/pfx/blob/master/LICENSE.md)
+[![Total Download](https://img.shields.io/hexpm/dt/pfx.svg)](https://hex.pm/packages/pfx)
 
 <!-- @MODULEDOC -->
 
@@ -15,7 +15,7 @@ and IPv6).
 `Pfx` defines a prefix as a struct with a number of `bits` and a maximum
 `maxlen` length.  Hence a `Pfx` struct represents some domain-specific value,
 like an IPv4/6 address or network, a MAC address, a MAC OUI range or something
-else entirely.
+completely different.
 
 A `Pfx` struct can be created from:
 1. a `t:bitstring/0` and a `t:non_neg_integer/0` for the maximum length,
