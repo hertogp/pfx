@@ -274,6 +274,10 @@ defmodule Pfx do
       iex> new(%Pfx{bits: <<10, 10>>, maxlen: 32}, 128)
       %Pfx{bits: <<10, 10>>, maxlen: 128}
 
+      # EUI-48 to EUI-64
+      iex> new(%Pfx{bits: <<0x00, 0x88, 0x88, 0x88, 0x88, 0x88>>, maxlen: 48}, 64)
+      %Pfx{bits: <<0x00, 0x88, 0x88, 0x88, 0x88, 0x88>>, maxlen: 64}
+
   """
   @spec new(t() | bitstring, non_neg_integer) :: t()
   def new(bits, maxlen) when is_bitstring(bits) and is_non_neg_integer(maxlen),
@@ -2680,9 +2684,9 @@ defmodule Pfx do
   @doc """
   Returns the broadcast prefix (full address) for given `pfx`.
 
-  The result is in the same format as `pfx`. Again less useful for IPv6 since
-  that has no concept of broadcast.  Basically returns the last address in
-  given `pfx`.
+  The result is in the same format as `pfx`. The name is maybe a bit of a
+  misnomer for IPv6, since that has no broadcast concept, but this function
+  basically returns the last full length address in given `pfx`.
 
   ## Examples
 
@@ -3326,7 +3330,7 @@ defmodule Pfx do
         128 ->
           %{
             preamble: cut(x, 0, 10) |> cast(),
-            prefix: %Pfx{bits: bits(x, 0, 64), maxlen: 128} |> marshall(pfx),
+            prefix: keep(pfx, 64) |> marshall(pfx),
             ifaceID: cut(x, 64, 64) |> cast(),
             address: pfx
           }
@@ -3334,7 +3338,7 @@ defmodule Pfx do
         32 ->
           %{
             digits: digits(x, 8) |> elem(0),
-            prefix: %Pfx{bits: bits(x, 0, 16), maxlen: 32} |> marshall(pfx),
+            prefix: keep(pfx, 16) |> marshall(pfx),
             ifaceID: cut(x, 16, 16) |> cast(),
             address: pfx
           }

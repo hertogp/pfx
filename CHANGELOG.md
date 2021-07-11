@@ -1,15 +1,14 @@
 # CHANGELOG
 
 # 0.4.0
-- add `Pfx.eui64_encode/1` to create a modified EUI-64 from a EUI-48 address
-- add `Pfx.eui64_decode/1` to create a EUI-48 from a modified EUI-64 address
-- fix so that `Pfx.new/1` and `Pfx.from_mac/1` also parse EUI-64 in Cisco's dot format
-- fix so teredo_decode mirrors the representation for server/client to its pfx argument
-- add Pfx.flip,    flip a single bit in bitstring
-- add Pfx.insert,  insert some bits into bitstring
-- add Pfx.remove,  remove some bits from bitstring
-- TODO:
-  - functions raise their own exceptions when marshalling (instead of new/1), like remove/3
+- added `Pfx.eui64_encode/1` to create a modified EUI-64 from a EUI-48 address
+- added `Pfx.eui64_decode/1` to create a EUI-48 from a modified EUI-64 address
+- fixed so that `Pfx.new/1` and `Pfx.from_mac/1` also parse EUI-64 in Cisco's dot format
+- fixed so teredo_decode mirrors the representation for server/client to its pfx argument
+- added `Pfx.flip/2`, which flips a single bit in bitstring
+- added `Pfx.insert/3`,  which inserts some bits into bitstring
+- added `Pfx.remove/3`,  which removes some bits from bitstring
+- functions raise their own exceptions when marshalling (instead of leaving that up to `Pfx.new/1`)
 
 # 0.3.0
 - added `Pfx.keep/2` to keep some msb bits

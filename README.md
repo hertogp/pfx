@@ -1,6 +1,7 @@
 # README
 
 ![Pfx test](https://github.com/hertogp/pfx/actions/workflows/elixir.yml/badge.svg)
+[![Total Download](https://img.shields.io/hexpm/dt/pfx.svg)](https://hex.pm/packages/pfx)
 
 [Online Pfx Documentation](https://hexdocs.pm/pfx).
 
@@ -18,8 +19,7 @@ A `Pfx` struct can be created from:
 1. a `t:bitstring/0` and a `t:non_neg_integer/0` for the maximum length,
 2. a `t:Pfx.ip_address/0`,
 3. a `t:Pfx.ip_prefix/0`, or
-4. a `t:binary/0` denoting an IP prefix in CIDR-notation or an EUI-48/64
-   address
+4. a `t:binary/0`, a string in IPv4 CIDR, IPv6, EUI-48 or EUI-64 format
 
 The first option allows for the creation of any sort of prefix, the second and
 third option yield either an IPv4 or IPv6 prefix.  Lastly, strings can be used
@@ -29,7 +29,9 @@ Several functions, like `Pfx.unique_local?/1` are more IP oriented, and are
 included along with the more generic `Pfx` functions (like `Pfx.cut/3`) in
 order to have one module to rule them all.
 
-Functions generally accept all representations and, if possible,  yield their result in the same fashion:
+Functions generally accept either a `t:Pfx.t/0`, a `t:Pfx.ip_address/0`, a
+`t:Pfx.ip_prefix/0` or a binary from option 4 above and yield their result in
+the same fashion:
 
     iex> hosts("10.10.10.0/30")
     ["10.10.10.0", "10.10.10.1", "10.10.10.2", "10.10.10.3"]
@@ -57,9 +59,13 @@ Functions generally accept all representations and, if possible,  yield their re
     iex> multicast?("ff00::1")
     true
 
-    # MAC OUI
+    # MAC OUI prefix
     iex> keep("aa:bb:cc:dd:ee:ff", 24)
     "AA-BB-CC-00-00-00/24"
+
+    # get IPv4 from a IPv4 compatible IPv6 address
+    iex> cut("::1.2.3.4", -1, -32)
+    "1.2.3.4"
 
 ## Validity
 
@@ -81,10 +87,42 @@ struct.  IPv4 masks must be in range `0..32` and IPv6 masks in range `0..128`.
 The resulting `Pfx` will have its `maxlen` set to `32` for IPv4 tuples and
 `128` for IPv6 tuples.
 
-Last but not least, a binary is interpreted as a string either in CIDR-notation
-for some IPv4/IPv6 address or prefix or a representation of an EUI-48 or EUI-64
-address or prefix.
+Last but not least, binaries are interpreted as either an IPv4 in
+CIDR-notation, an IPv6 address/prefix, an EUI-48 or EUI-64 formatted string.
 
+    # IPv4
+    iex> new("1.2.3.4")
+    %Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}
+
+    iex> new({1, 2, 3, 4})
+    %Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}
+
+    iex> new("1.2.3.0/24")
+    %Pfx{bits: <<1, 2, 3>>, maxlen: 32}
+
+    iex> new({{1, 2, 3, 0}, 24})
+    %Pfx{bits: <<1, 2, 3>>, maxlen: 32}
+
+    # IPv6
+    iex> new("acdc:1975::")
+    %Pfx{bits: <<0xACDC::16, 0x1975::16, 0::96>>, maxlen: 128}
+
+    iex> new({44252, 6517, 0, 0, 0, 0, 0, 0})
+    %Pfx{bits: <<0xACDC::16, 0x1975::16, 0::96>>, maxlen: 128}
+
+    # EUI-48
+    iex> new("00-88-88-88-88-88")
+    %Pfx{bits: <<0, 0x88, 0x88, 0x88, 0x88, 0x88>>, maxlen: 48}
+
+    iex> new("0088.8888.8888")
+    %Pfx{bits: <<0, 0x88, 0x88, 0x88, 0x88, 0x88>>, maxlen: 48}
+
+    # EUI-64
+    iex> new("02-88-88-FF-FE-88-88-88")
+    %Pfx{bits: <<0x02, 0x88, 0x88, 0xFF, 0xFE, 0x88, 0x88, 0x88>>, maxlen: 64}
+
+    iex> new("0288.88FF.FE88.8888")
+    %Pfx{bits: <<0x02, 0x88, 0x88, 0xFF, 0xFE, 0x88, 0x88, 0x88>>, maxlen: 64}
 
 ## Ancient tradition
 
@@ -120,11 +158,19 @@ Bottom line: never go short, you may be unpleasantly surprised.
 
 Since a string is first parsed as an IP prefix, EUI-64's like
 "11:22:33:44:55:66:77:88" will come out as an IPv6 prefix with their `maxlen`
-property set to `128`.  So, when in doubt, parse EUI's with `Pfx.from_mac/1`,
-which also supports the tuple formats.  Like `Pfx.new/1`, this function always
-returns a `t:Pfx.t/0`-struct.
+property set to `128`.  So, when parising EUI's that might use ':'-s as
+punctuation, use `Pfx.from_mac/1`, which also supports the tuple formats.  Like
+`Pfx.new/1`, this function always returns a `t:Pfx.t/0`-struct.
 
-    # new/1 turns it into IPv6
+    # new/1 parses EUI's like
+    iex> new("1122.3344.5566.7788")
+    %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
+
+    # or
+    iex> new("11-22-33-44-55-66-77-88")
+    %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
+
+    # but new/1 turns these EUI64's into IPv6
     iex> new("11:22:33:44:55:66:77:88")
     %Pfx{bits: <<0x11::16, 0x22::16, 0x33::16, 0x44::16, 0x55::16, 0x66::16, 0x77::16, 0x88::16>>, maxlen: 128}
 
@@ -132,7 +178,7 @@ returns a `t:Pfx.t/0`-struct.
     iex> from_mac("11:22:33:44:55:66:77:88")
     %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
 
-    # from {digits}
+    # and supports digit-styled EUI's
     iex> from_mac({0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88})
     %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
 
@@ -161,7 +207,7 @@ prefixes that formats prefixes with:
 - `maxlen: 32` as an IPv4 CIDR string,
 - `maxlen: 48` as a EUI-48 address string and
 - `maxlen: 64` as a EUI-64 address string
-- `maxlen: 128` as an IPv6 CIDR string
+- `maxlen: 128` as an IPv6 string
 
 Other `maxlen`'s will simply come out as a series of 8-bit numbers joined by "."
 followed by `/num_of_bits`. The latter is omitted if equal to `pfx.bits`
@@ -195,6 +241,14 @@ some options that help shape the string representation for a `Pfx` struct.
       "1.2.3.3"
     ]
 
+    # or
+    iex> for ip <- new("1.2.3.0/30"), do: digits(ip, 8) |> elem(0)
+    [
+      {1, 2, 3, 0},
+      {1, 2, 3, 1},
+      {1, 2, 3, 2},
+      {1, 2, 3, 3}
+    ]
 
 ## Limitations
 
@@ -230,7 +284,7 @@ Anyway, enough downplay, here are some more examples.
     iex>
     iex> member?(vrrp_mac, vrrp_mac_range)
     true
-    iex> cut(vrrp_mac, 47, -8) |> cast()
+    iex> cut(vrrp_mac, -1, -8) |> cast()
     15
 
     # IPv4 examples
