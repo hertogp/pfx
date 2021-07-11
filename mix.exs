@@ -4,14 +4,14 @@ defmodule Pfx.MixProject do
   # Before publishing to Hex:
   # - set version tag in mix.exs, README.md & CHANGELOG.md
   # - mix test
-  # - mix docz
+  # - mix docs
   # - mix dialyzer
   # - git tag -a vx.y.z -m 'Release vx.y.z'
   # - git push --tags
   # mix hex.publish
 
   @version "0.4.0"
-  @url "https://github.com/hertogp/pfx"
+  @source_url "https://github.com/hertogp/pfx"
 
   def project do
     [
@@ -33,13 +33,20 @@ defmodule Pfx.MixProject do
 
   defp docs() do
     [
-      main: Pfx,
-      extras: ["README.md", "CHANGELOG.md"],
-      source_url: @url,
+      main: "readme",
+      extras: [
+        "README.md": [title: "Overview"],
+        "LICENSE.md": [title: "License"],
+        "CHANGELOG.md": []
+      ],
+      source_url: @source_url,
+      source_ref: "v#{@version}",
+      formatters: ["html"],
       groups_for_functions: [
         "IP Functions": &(&1[:section] == :ip),
         Guards: &(&1[:section] == :guard)
-      ]
+      ],
+      assets: "assets"
     ]
   end
 
@@ -47,12 +54,15 @@ defmodule Pfx.MixProject do
     %{
       licenses: ["MIT"],
       maintainers: ["hertogp"],
-      links: %{"GitHub" => @url}
+      links: %{
+        "Changelog" => "https://hexdocs/pm/pfx/changelog.html",
+        "GitHub" => @source_url
+      }
     }
   end
 
   defp aliases() do
-    [docz: ["docs", &cp_images/1]]
+    [docs: ["docs", &gen_images/1]]
   end
 
   defp deps do
@@ -63,23 +73,9 @@ defmodule Pfx.MixProject do
     ]
   end
 
-  defp cp_images(_) do
-    # On hex.pm, image links are taken to be relative to the repo's
-    # root/doc directory.  Hence, the img/*.dot files are processed into
-    # img/*.png files, after which the img/*.png files are copied to
-    # doc/img/*.png so everybody is happy.
-
-    # ensure the (untracked) doc/img directory for hex.pm
-    Path.join("doc", "img")
-    |> File.mkdir_p!()
-
-    # process all img/*.dot files into img/*.dot.png image files
-    Path.wildcard("img/*.dot")
-    |> Enum.map(fn file -> System.cmd("dot", ["-O", "-Tpng", file]) end)
-
-    # copy img/*.png to doc/img/*.png
-    Path.wildcard("img/*.png")
-    |> Enum.map(fn src -> {src, Path.join("doc", src)} end)
-    |> Enum.map(fn {src, dst} -> File.cp!(src, dst) end)
+  defp gen_images(_) do
+    for dot <- Path.wildcard("assets/*.dot") do
+      System.cmd("dot", ["-O", "-Tpng", dot])
+    end
   end
 end

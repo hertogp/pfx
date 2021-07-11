@@ -1,44 +1,70 @@
 # CHANGELOG
 
-# 0.4.0
-- added `Pfx.eui64_encode/1` to create a modified EUI-64 from a EUI-48 address
-- added `Pfx.eui64_decode/1` to create a EUI-48 from a modified EUI-64 address
-- fixed so that `Pfx.new/1` and `Pfx.from_mac/1` also parse EUI-64 in Cisco's dot format
-- fixed so teredo_decode mirrors the representation for server/client to its pfx argument
-- added `Pfx.flip/2`, which flips a single bit in bitstring
-- added `Pfx.insert/3`,  which inserts some bits into bitstring
-- added `Pfx.remove/3`,  which removes some bits from bitstring
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### changed
+- documentation improvements
+- `img` subdirectory has been replaced by `assets` subdirectory
+
+## [v0.4.0] - 2021-07-10
+
+### added
+- `Pfx.eui64_encode/1`, which creates a modified EUI-64 from a EUI-48 address
+- `Pfx.eui64_decode/1`, which reverses a modified EUI-64 to an EUI-48 address
+- `Pfx.flip/2`, which flips a single bit in bitstring
+- `Pfx.insert/3`, which inserts some bits into bitstring
+- `Pfx.remove/3`, which removes some bits from bitstring
+
+### changed
+- `Pfx.new/1` and `Pfx.from_mac/1` also parse EUI-64 in Cisco's dot format
+- `Pfx.teredo_decode/1` mirrors the representation for server/client to its pfx argument
 - functions raise their own exceptions when marshalling (instead of leaving that up to `Pfx.new/1`)
 
-# 0.3.0
-- added `Pfx.keep/2` to keep some msb bits
-- fixed `String.Chars` for MAC addresses with maxlen 48 (w/ hyphens)
-- added `String.Chars` for MAC addresses with maxlen 64 (w/ hyphens)
-- EUI-48 is now understood by `Pfx.new/1`
-- EUI-64 is now understood by `Pfx.new/1`, if using hyphens
-- added `Pfx.from_mac/1` to support EUI-64 with ":"'s
-- `String.Chars` no longer accepts invalid %Pfx structs
+## [v0.3.0] - 2021-07-08
+
+### added
+- `Pfx.keep/2` to keep some msb bits
+- `String.Chars` for MAC addresses with maxlen 64 (w/ hyphens)
+- `Pfx.from_mac/1` to support EUI-64 with ":"'s
+
+### changed
+- `Pfx.new/1` now parses EUI-48 as well
+- `Pfx.new/1` now parses EUI-64 as well, unless using ':' for punctuation
+- `String.Chars` for MAC addresses with maxlen 48 uses hyphens
+- `String.Chars` no longer accepts invalid `t:Pfx.t/0` structs
 - `Pfx.format/2` without `opts`, uses same defaults as `String.Chars`
 
-# 0.2.1
+## [v0.2.1] - 2021-07-04
+
+### added
 - `Pfx.marshall/2` is now a public function
+
+### changed
 - renamed `Pfx.teredo` to `Pfx.teredo_decode/1`
 
-# 0.2.0
-- added `Pfx.teredo_encode/4`
+## [v0.2.0] - 2021-07-03
 
-# 0.1.2
-- added `Pfx.drop/2`, which drops some lsb bits
+### added
+- `Pfx.teredo_encode/4`
+- `Pfx.drop/2`, which drops some lsb bits
 - improved documentation
 
-# 0.1.1
-- fixed `Pfx.brot/2`, rotating empty `pfx.bits`
-- fixed `Pfx.band/2`, result has same number of bits as its first argument
-- fixed `Pfx.bor/2`, result has same number of bits as its first argument
-- fixed `Pfx.bxor/2`, result has same number of bits as its first argument
-- fixed `Pfx.contrast/2`, 1.2.3.0/24 is really to the left of 1.2.4.0/24
+## [v0.1.1] - 2021-07-03
+
+### changed
+- `Pfx.band/2`, result has same number of bits as its first argument
+- `Pfx.bor/2`, result has same number of bits as its first argument
+- `Pfx.bxor/2`, result has same number of bits as its first argument
 - IPv6 addresses in lowercase
 
-# 0.1.0
-- initial version
+### fixed
+- `Pfx.brot/2`, won't choke on rotating empty `pfx.bits`
+- `Pfx.contrast/2`, 1.2.3.0/24 is really to the left of 1.2.4.0/24
 
+## [v0.1.0] - 2021-06-28
+- initial version

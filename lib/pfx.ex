@@ -492,6 +492,10 @@ defmodule Pfx do
       iex> from_mac({{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}, 24})
       %Pfx{bits: <<0x11, 0x22, 0x33>>, maxlen: 64}
 
+      # Note: from_mac reads nibbles so each address element must be 2 nibbles (!)
+      iex> from_mac("01:02:03:04:05:06:07:08")
+      %Pfx{bits: <<0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8>>, maxlen: 64}
+
       # mix and match
       # ":" and "-" are interchangeable
       iex> from_mac("11:22-33:44-55:66")
@@ -553,6 +557,7 @@ defmodule Pfx do
   @spec hexify(charlist) :: t
   defp hexify(clist) do
     {bits, hyphens} = hex(clist, <<>>, 0)
+
     bsize = bit_size(bits)
 
     case {bsize, hyphens} do
@@ -1176,7 +1181,7 @@ defmodule Pfx do
 
   The result is always a full prefix with `maxlen` bits.
 
-  ## Example
+  ## Examples
 
       # already a full address
       iex> padr("1.2.3.4")
@@ -1209,7 +1214,7 @@ defmodule Pfx do
   @doc """
   Right pad the `pfx.bits` to its full length using either `0` or `1`-bits.
 
-  ## Example
+  ## Examples
 
       iex> padr("1.2.0.0/16", 1)
       "1.2.255.255"
@@ -1292,7 +1297,7 @@ defmodule Pfx do
   @doc """
   Left pad the `pfx.bits` to its full length using `0`-bits.
 
-  ## Example
+  ## Examples
 
       iex> padl("1.2.0.0/16")
       "0.0.1.2"
@@ -1319,7 +1324,7 @@ defmodule Pfx do
   @doc """
   Left pad the `pfx.bits` to its full length using either `0` or `1`-bits.
 
-  ## Example
+  ## Examples
 
       iex> padl("1.2.0.0/16", 1)
       "255.255.1.2"
@@ -1349,7 +1354,7 @@ defmodule Pfx do
   @doc """
   Left pad the `pfx.bits` with `n` bits of either `0` or `1`'s.
 
-  ## Example
+  ## Examples
 
       iex> padl("255.255.0.0/16", 0, 16)
       "0.0.255.255"
@@ -1799,7 +1804,7 @@ defmodule Pfx do
   - `length` is silently clipped to the maximum number of bits available to remove
   - removing bits from `pfx.bits` does not change its `pfx.maxlen`
 
-  ## Example
+  ## Examples
 
       iex> remove("1.2.3.4", 8, 8)
       "1.3.4.0/24"
@@ -2761,7 +2766,7 @@ defmodule Pfx do
   The result is in the same format as `pfx`.  
   Note that offset `nth` wraps around. See `Pfx.member/2`.
 
-  ## Example
+  ## Examples
 
       iex> host("10.10.10.0/24", 128)
       "10.10.10.128"
@@ -2859,7 +2864,7 @@ defmodule Pfx do
 
   The result is in the same format as `pfx`.
 
-  ## Example
+  ## Examples
 
       iex> neighbor("1.1.1.128/25")
       "1.1.1.0/25"
@@ -2905,7 +2910,7 @@ defmodule Pfx do
   `Pfx`-struct, so to get the result in tuple-form, reroute it through
   `Pfx.digits/2`.
 
-  ## Example
+  ## Examples
 
       iex> eui64_encode("0088.8888.8888")
       "02-88-88-FF-FE-88-88-88"
@@ -2950,7 +2955,7 @@ defmodule Pfx do
   Note that `eui64_encode` uses `Pfx.from_mac` to turn a string or tuple
   into a new `t:Pfx.t/0`.
 
-  ## Example
+  ## Examples
 
       iex> eui64_decode("0088.88FE.FF88.8888")
       "02-88-88-88-88-88"
@@ -2999,7 +3004,7 @@ defmodule Pfx do
 
   See [rfc4380](https://www.iana.org/go/rfc4380).
 
-  ## Example
+  ## Examples
 
       iex> teredo?("2001:0000:4136:e378:8000:63bf:3fff:fdd2")
       true
@@ -3415,7 +3420,7 @@ defmodule Pfx do
 
   Note that organisation specific prefixes might still be used for nat64.
 
-  ## Example
+  ## Examples
 
       iex> nat64?("64:ff9b::10.10.10.10")
       true

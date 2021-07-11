@@ -1,14 +1,16 @@
-# README
+# Pfx
 
-![Pfx test](https://github.com/hertogp/pfx/actions/workflows/elixir.yml/badge.svg)
+[![Test](https://github.com/hertogp/pfx/actions/workflows/elixir.yml/badge.svg)](https://github.com/hertogp/pfx/actions/workflows/elixir.yml)
+[![Module Version](https://img.shields.io/hexpm/v/pfx.svg)](https://hex.pm/packages/pfx)
+[![Hex Docs](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/pfx/)
 [![Total Download](https://img.shields.io/hexpm/dt/pfx.svg)](https://hex.pm/packages/pfx)
-
-[Online Pfx Documentation](https://hexdocs.pm/pfx).
+[![License](https://img.shields.io/hexpm/l/pfx.svg)](https://github.com/hertogp/pfx/blob/master/LICENSE)
+[![Last Updated](https://img.shields.io/github/last-commit/hertogp/pfx.svg)](https://github.com/hertogp/pfx/commits/main)
 
 <!-- @MODULEDOC -->
 
-Functions to make working with prefixes easier, especially IP prefixes (IPv4 and
-IPv6).
+Functions to make working with prefixes easier, especially IP prefixes (IPv4
+and IPv6).
 
 `Pfx` defines a prefix as a struct with a number of `bits` and a maximum
 `maxlen` length.  Hence a `Pfx` struct represents some domain-specific value,
@@ -21,9 +23,10 @@ A `Pfx` struct can be created from:
 3. a `t:Pfx.ip_prefix/0`, or
 4. a `t:binary/0`, a string in IPv4 CIDR, IPv6, EUI-48 or EUI-64 format
 
-The first option allows for the creation of any sort of prefix, the second and
-third option yield either an IPv4 or IPv6 prefix.  Lastly, strings can be used
-to create either IPv4, IPv6, EUI-48 or EUI-64 prefixes.
+The first option allows for the creation of any sort of prefix using a
+`t:bitstring/0` and a `maxlen`.  The second and third option yield either an
+IPv4 or IPv6 prefix.  Lastly, strings can be used to create either IPv4, IPv6,
+EUI-48 or EUI-64 prefixes.
 
 Several functions, like `Pfx.unique_local?/1` are more IP oriented, and are
 included along with the more generic `Pfx` functions (like `Pfx.cut/3`) in
@@ -128,8 +131,8 @@ CIDR-notation, an IPv6 address/prefix, an EUI-48 or EUI-64 formatted string.
 
 `Pfx.new/1` accepts CIDR-strings which are ultimately processed using erlang's
 `:inet.parse_address` which, at the time of writing, still honors the ancient
-linux tradition of injecting zero's when presented with less than four IPv4
-digits in a CIDR string.
+linux tradition of injecting zero's (rather than appending them) when presented
+with less than four IPv4 digits in a CIDR string.
 
     # "d" -> "0.0.0.d"
     iex> new("10") |> format()
@@ -158,33 +161,32 @@ Bottom line: never go short, you may be unpleasantly surprised.
 
 Since a string is first parsed as an IP prefix, EUI-64's like
 "11:22:33:44:55:66:77:88" will come out as an IPv6 prefix with their `maxlen`
-property set to `128`.  So, when parising EUI's that might use ':'-s as
+property set to `128`.  So, when parsing EUI's that might use ':'-s as
 punctuation, use `Pfx.from_mac/1`, which also supports the tuple formats.  Like
 `Pfx.new/1`, this function always returns a `t:Pfx.t/0`-struct.
 
-    # new/1 parses EUI's like
+    # new/1 parses EUI-64's like these correctly:
     iex> new("1122.3344.5566.7788")
     %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
 
-    # or
     iex> new("11-22-33-44-55-66-77-88")
     %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
 
-    # but new/1 turns these EUI64's into IPv6
-    iex> new("11:22:33:44:55:66:77:88")
-    %Pfx{bits: <<0x11::16, 0x22::16, 0x33::16, 0x44::16, 0x55::16, 0x66::16, 0x77::16, 0x88::16>>, maxlen: 128}
+    # but new/1 turns these (valid) EUI-64's into IPv6 due to ':'-punctuation used:
+    iex> new("01:02:03:04:05:06:07:08")
+    %Pfx{bits: <<0x1::16, 0x2::16, 0x3::16, 0x4::16, 0x5::16, 0x6::16, 0x7::16, 0x8::16>>, maxlen: 128}
 
     # from_mac has 'context'
-    iex> from_mac("11:22:33:44:55:66:77:88")
-    %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
+    iex> from_mac("01:02:03:04:05:06:07:08")
+    %Pfx{bits: <<0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8>>, maxlen: 64}
 
     # and supports digit-styled EUI's
-    iex> from_mac({0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88})
-    %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
+    iex> from_mac({0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8})
+    %Pfx{bits: <<0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8>>, maxlen: 64}
 
     # from {{digits}, len}, keeping first 3 bytes
-    iex> from_mac({{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}, 24})
-    %Pfx{bits: <<0x11, 0x22, 0x33>>, maxlen: 64}
+    iex> from_mac({{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8}, 24})
+    %Pfx{bits: <<0x1, 0x2, 0x3>>, maxlen: 64}
 
 
 ## Enumeration
