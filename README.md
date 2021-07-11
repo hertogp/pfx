@@ -4,7 +4,7 @@
 [![Module Version](https://img.shields.io/hexpm/v/pfx.svg)](https://hex.pm/packages/pfx)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/pfx/)
 [![Total Download](https://img.shields.io/hexpm/dt/pfx.svg)](https://hex.pm/packages/pfx)
-[![License](https://img.shields.io/hexpm/l/pfx.svg)](https://github.com/hertogp/pfx/blob/master/LICENSE)
+[![License](https://img.shields.io/hexpm/l/pfx.svg)](https://github.com/hertogp/pfx/blob/master/LICENSE.md)
 [![Last Updated](https://img.shields.io/github/last-commit/hertogp/pfx.svg)](https://github.com/hertogp/pfx/commits/main)
 
 <!-- @MODULEDOC -->
