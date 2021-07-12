@@ -2903,12 +2903,15 @@ defmodule Pfx do
   @doc """
   Create a modified EUI-64 out of `eui48` (an EUI-48 address).
 
-  Despite [rfc7217](https://www.rfc-editor.org/rfc/rfc7217.html), modified
-  EUI-64's are still used in the wild.  This flips the 7-th bit and inserts
-  `0xFFFE` in the middle. EUI's in tuple form, should be encoded by
-  `Pfx.from_mac/1` first.  That always yields, pending any encoding errors, a
-  `Pfx`-struct, so to get the result in tuple-form, reroute it through
-  `Pfx.digits/2`.
+  This flips the 7-th bit (U/L - universal/local) and inserts `0xFFFE` in the
+  middle.
+
+  If the `eui48` is in tuple form, it should be encoded by `Pfx.from_mac/1`
+  first.  That always yields, pending any encoding errors, a `Pfx`-struct, so
+  to get the result in tuple-form, reroute it through `Pfx.digits/2`.
+
+  If an interface ID in modified EUI-64 format is to be created from an
+  EUI-64 address, you simply `Pfx.flip/2` the 7th bit.
 
   ## Examples
 
@@ -2920,6 +2923,11 @@ defmodule Pfx do
 
       iex> from_mac({0x00, 0x88, 0x88, 0x88, 0x88, 0x88}) |> eui64_encode() |> digits(8)
       {{0x02, 0x88, 0x88, 0xFF, 0xFE, 0x88, 0x88, 0x88}, 64}
+
+      # modified EUI-64 from an existing EUI-64, simply flip the 7th bit
+      iex> flip("01-23-45-67-89-AB-CD-EF", 6)
+      "03-23-45-67-89-AB-CD-EF"
+
 
   """
   @doc section: :ip
@@ -2947,13 +2955,8 @@ defmodule Pfx do
   @doc """
   Decode a modified EUI-64 back into the original EUI-48 address.
 
-  Although [rfc7217](https://www.rfc-editor.org/rfc/rfc7217.html) provides an
-  alternative for modified EUI-64, they are still very much in use, especially
-  on network links using SLAAC.
-
-  This function flips the 7-th bit and removes `0xFFFE` from the middle.
-  Note that `eui64_encode` uses `Pfx.from_mac` to turn a string or tuple
-  into a new `t:Pfx.t/0`.
+  This function flips the 7-th bit and removes 16-bits from the middle.
+  Those 16-bits should be `0xFFFE`, but this is not checked or enforced.
 
   ## Examples
 
@@ -3002,7 +3005,9 @@ defmodule Pfx do
   @doc """
   Returns true if `prefix` is a teredo address, false otherwise
 
-  See [rfc4380](https://www.iana.org/go/rfc4380).
+  IPv6 address within the teredo service prefix of `2000:0::/32`
+
+  More details in [rfc4380](https://www.iana.org/go/rfc4380).
 
   ## Examples
 
@@ -3031,6 +3036,15 @@ defmodule Pfx do
 
   Returns nil if `pfx` is not a
   [teredo](https://www.rfc-editor.org/rfc/rfc4380.html#section-4) address.
+
+  Teredo address consist of:
+  1. the teredo service prefix of `2000:0::/32`
+  2. IPv4 address of the teredo server
+  3. flags (16 bits) that document type of address and NAT
+  4. Port (16 bits), the obfuscated "mapped UDP port" at the client
+  5. IPv4 address (obfucated) of the teredo client.
+
+  More details in [rfc4380](https://www.iana.org/go/rfc4380).
 
   ## Examples
 
@@ -3083,20 +3097,23 @@ defmodule Pfx do
   The `client` and `server` must be full IPv4 adresses, while both `port` and `flags`
   are interpreted as 16-bit unsigned integers.
 
-  The result mirrors the representation format of `client`.
+  The result mirrors the representation format of the `client` argument.
 
   ## Example
 
       iex> flags = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
       iex> teredo_encode("192.0.2.45", "65.54.227.120", 40000, flags)
       "2001:0:4136:e378:8000:63bf:3fff:fdd2"
-      iex>
+
+      iex> flags = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
       iex> teredo_encode({192, 0, 2, 45}, "65.54.227.120", 40000, flags)
       {0x2001, 0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2}
-      iex>
+
+      iex> flags = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
       iex> teredo_encode({{192, 0, 2, 45}, 32}, "65.54.227.120", 40000, flags)
       {{0x2001, 0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2}, 128}
-      iex>
+
+      iex> flags = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
       iex> teredo_encode(%Pfx{bits: <<192, 0, 2, 45>>, maxlen: 32}, "65.54.227.120", 40000, flags)
       %Pfx{bits: <<0x2001::16, 0::16, 0x4136::16, 0xe378::16, 0x8000::16, 0x63bf::16, 0x3fff::16, 0xfdd2::16>>, maxlen: 128}
 
@@ -3187,7 +3204,7 @@ defmodule Pfx do
         preamble: 255,
         flags: {0, 0, 0, 0},
         scope: 2,
-        groupID: <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1>>,
+        groupID: 1,
         address: "ff02::1"
       }
 
@@ -3195,7 +3212,7 @@ defmodule Pfx do
       %{
         address: "224.0.0.1",
         digits: {224, 0, 0, 1},
-        groupID: <<0, 0, 0, 1::size(4)>>
+        groupID: 1
       }
 
   """
@@ -3211,14 +3228,14 @@ defmodule Pfx do
             preamble: cut(x, 0, 8) |> cast(),
             flags: cut(x, 8, 4) |> digits(1) |> elem(0),
             scope: cut(x, 12, 4) |> cast(),
-            groupID: bits(x, 16, 112),
+            groupID: cut(x, 16, 112) |> cast(),
             address: pfx
           }
 
         32 ->
           %{
             digits: digits(x, 8) |> elem(0),
-            groupID: bits(x, 4, 28),
+            groupID: cut(x, 4, 28) |> cast(),
             address: marshall(x, pfx)
           }
       end
@@ -3298,7 +3315,8 @@ defmodule Pfx do
   Return a map with link-local address components for given `pfx`.
 
   Returns nil if `pfx` is not link-local as per
-  [rfc3927](https://www.iana.org/go/rfc3927)
+  [rfc3927](https://www.iana.org/go/rfc3927) or
+  [rfc4291](https://www.rfc-editor.org/rfc/rfc4291)
 
   ## Examples
 
@@ -3335,7 +3353,7 @@ defmodule Pfx do
         128 ->
           %{
             preamble: cut(x, 0, 10) |> cast(),
-            prefix: keep(pfx, 64) |> marshall(pfx),
+            prefix: keep(x, 64) |> marshall(pfx),
             ifaceID: cut(x, 64, 64) |> cast(),
             address: pfx
           }
@@ -3343,11 +3361,13 @@ defmodule Pfx do
         32 ->
           %{
             digits: digits(x, 8) |> elem(0),
-            prefix: keep(pfx, 16) |> marshall(pfx),
+            prefix: keep(x, 16) |> marshall(pfx),
             ifaceID: cut(x, 16, 16) |> cast(),
             address: pfx
           }
       end
+    else
+      nil
     end
   rescue
     err -> raise err
@@ -3437,7 +3457,7 @@ defmodule Pfx do
       iex> nat64?(%Pfx{bits: <<0x64::16, 0xff9b::16, 0::64, 0x1010::16, 0x1010::16>>, maxlen: 128})
       true
 
-      # bad prefix
+      # illegal/bad prefix
       iex> nat64?("64:ff9b:1::10.10.10.256")
       false
 
@@ -3447,8 +3467,8 @@ defmodule Pfx do
   def nat64?(pfx) do
     x = new(pfx)
 
-    member?(x, %Pfx{bits: <<0x0064::16, 0xFF9B::16, 0::64>>, maxlen: 128}) or
-      member?(x, %Pfx{bits: <<0x0064::16, 0xFF9B::16, 1::16>>, maxlen: 128})
+    member?(x, %Pfx{bits: <<0x64::16, 0xFF9B::16, 0::64>>, maxlen: 128}) or
+      member?(x, %Pfx{bits: <<0x64::16, 0xFF9B::16, 1::16>>, maxlen: 128})
   rescue
     _ -> false
   end
