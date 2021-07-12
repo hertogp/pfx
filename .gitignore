@@ -24,3 +24,9 @@ pfx-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+# Where I keep local notes
+/_notes/
+
+# Scratch directory
+/scr/
