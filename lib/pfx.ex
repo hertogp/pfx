@@ -139,16 +139,16 @@ defmodule Pfx do
           "prefixes have different maxlen's: #{inspect(data)}"
 
         :noeui ->
-          "expected an EUI48/64 string or tuple, got #{inspect(data)}"
-
-        :noeui48 ->
-          "expected an EUI-48 prefix, string or tuple(s), got #{inspect(data)}"
+          "expected an EUI48/64 prefix, string or tuple, got #{inspect(data)}"
 
         :noeui64 ->
           "expected an EUI-64 prefix, string or tuple(s), got #{inspect(data)}"
 
         :noflags ->
           "expected a 16-element tuple of bits, got #{inspect(data)}"
+
+        :nohex ->
+          "expected a hexadecimal string, got #{inspect(data)}"
 
         :noint ->
           "expected an integer, got #{inspect(data)}"
@@ -269,14 +269,9 @@ defmodule Pfx do
       iex> new(<<10, 10>>, 8)
       %Pfx{bits: <<10>>, maxlen: 8}
 
-      # note that changing 'maxlen' usually changes the prefix' meaning
-
+      # changing 'maxlen' usually changes the prefix' meaning
       iex> new(%Pfx{bits: <<10, 10>>, maxlen: 32}, 128)
       %Pfx{bits: <<10, 10>>, maxlen: 128}
-
-      # EUI-48 to EUI-64
-      iex> new(%Pfx{bits: <<0x00, 0x88, 0x88, 0x88, 0x88, 0x88>>, maxlen: 48}, 64)
-      %Pfx{bits: <<0x00, 0x88, 0x88, 0x88, 0x88, 0x88>>, maxlen: 64}
 
   """
   @spec new(t() | bitstring, non_neg_integer) :: t()
@@ -552,6 +547,55 @@ defmodule Pfx do
 
   def from_mac(arg),
     do: raise(arg_error(:noeui, arg))
+
+  @doc """
+  Create a `t:Pfx.t/0` out of a hexadecimal string.
+
+  This always returns a `Pfx.t` struct.  A list of punctuation characters can
+  be supplied as a second argument and defaults to `[?:, ?-, ?.]`.  Note that
+  '/' should not be used as that separates the mask from the rest of the
+  binary.  Punctuation characeters are simply ignored and there are no
+  positional checks performed.
+
+  Contrary to `Pfx.from_mac/1`, this function turns a random hexadecimal into a
+  prefix.  Do not use this to create a prefix out of an IPv6 address.
+
+  ## Examples
+
+      iex> from_hex("1-2:3.4:a-bcdef")
+      %Pfx{bits: <<0x12, 0x34, 0xAB, 0xCD, 0xEF>>, maxlen: 40}
+
+      iex> from_hex("1-2:3.4:a-bcdef/16")
+      %Pfx{bits: <<0x12, 0x34>>, maxlen: 40}
+
+      iex> from_hex("1|2|3|A|B|C|DEF", [?|])
+      %Pfx{bits: <<0x12, 0x3A, 0xBC, 0xDE, 0xF::4>>, maxlen: 36}
+
+      iex> from_hex("ABC")
+      %Pfx{bits: <<0xAB, 0xC::4>>, maxlen: 12}
+
+      # not for IPv6 addresses ..
+      iex> from_hex("2001::1")
+      %Pfx{bits: <<0x20, 0x01, 0x1::4>>, maxlen: 20}
+
+
+  """
+  @spec from_hex(binary) :: t
+  def from_hex(string, punctuation \\ [?:, ?-, ?.])
+      when is_binary(string) and is_list(punctuation) do
+    charlist = String.to_charlist(string)
+
+    {address, mask} = splitp(charlist, [])
+
+    {bits, _} =
+      address
+      |> Enum.filter(fn c -> c not in punctuation end)
+      |> hex(<<>>, 0)
+
+    %Pfx{bits: truncate(bits, mask), maxlen: bit_size(bits)}
+  rescue
+    _ -> raise arg_error(:nohex, string)
+  end
 
   # turn a EUI-48/64 like string into bits
   @spec hexify(charlist) :: t
@@ -975,7 +1019,7 @@ defmodule Pfx do
   end
 
   @doc """
-  A bitwise XOR of two `t:prefix`'s.
+  A bitwise XOR of two `t:prefix/0`'s.
 
   Both prefixes must have the same `maxlen`.
 
@@ -2250,6 +2294,74 @@ defmodule Pfx do
     do: raise(arg_error(:noint, nth))
 
   @doc """
+  Returns the first full length prefix from the set represented by `pfx`.
+
+  ## Examples
+
+      iex> first("10.10.10.1/24")
+      "10.10.10.0"
+
+      iex> first("acdc:1976::/32")
+      "acdc:1976:0:0:0:0:0:0"
+
+      # a full address is its own this-network
+      iex> first({10, 10, 10, 1})
+      {10, 10, 10, 1}
+
+      iex> first({{10, 10, 10, 1}, 24})
+      {{10, 10, 10, 0}, 32}
+
+      iex> first(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
+      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
+
+      iex> first(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128})
+      %Pfx{bits: <<0xACDC::16, 0x1976::16, 0::96>>, maxlen: 128}
+
+  """
+  @spec first(prefix) :: prefix
+  def first(pfx) do
+    new(pfx)
+    |> padr(0)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  @doc """
+  Returns the last full length prefix from the set represented by `pfx`.
+
+  ## Examples
+
+      iex> last("10.10.0.0/16")
+      "10.10.255.255"
+
+      # a full address is its own last address
+      iex> last({10, 10, 10, 1})
+      {10, 10, 10, 1}
+
+      iex> last({{10, 10, 10, 1}, 30})
+      {{10, 10, 10, 3}, 32}
+
+      iex> last(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
+      %Pfx{bits: <<10, 10, 10, 255>>, maxlen: 32}
+
+      iex> last(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128})
+      %Pfx{bits: <<0xACDC::16, 0x1976::16, -1::96>>, maxlen: 128}
+
+      iex> last("acdc:1976::/112")
+      "acdc:1976:0:0:0:0:0:ffff"
+
+  """
+  @spec last(prefix) :: prefix
+  def last(pfx) do
+    new(pfx)
+    |> padr(1)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  @doc """
   Return the `nth` subprefix for a given `pfx`, using `width` bits.
 
   ## Examples
@@ -2412,7 +2524,7 @@ defmodule Pfx do
   @spec format(prefix, Keyword.t()) :: String.t()
   def format(pfx, opts \\ [])
 
-  # NOTE: String.Chars, when using Pfx.format, MUST always provide at least 1 option
+  # - NOTE: String.Chars, when using Pfx.format, MUST always provide at least 1 option
   def format(pfx, []) when is_pfx(pfx) and pfx.maxlen in [32, 48, 64, 128] do
     "#{pfx}"
   end
@@ -2652,8 +2764,7 @@ defmodule Pfx do
   @doc """
   Returns the this-network prefix (full address) for given `pfx`.
 
-  The result is in the same format as `pfx`.  Probably less usefull for IPv6,
-  but this is basically the first full length address in given `pfx`.
+  Yields the same result as `Pfx.first/1`, included for nostalgia.
 
   ## Examples
 
@@ -2677,11 +2788,10 @@ defmodule Pfx do
       %Pfx{bits: <<0xACDC::16, 0x1976::16, 0::96>>, maxlen: 128}
 
   """
+  @doc section: :ip
   @spec network(prefix) :: prefix
   def network(pfx) do
-    new(pfx)
-    |> padr(0)
-    |> marshall(pfx)
+    first(pfx)
   rescue
     err -> raise err
   end
@@ -2689,9 +2799,7 @@ defmodule Pfx do
   @doc """
   Returns the broadcast prefix (full address) for given `pfx`.
 
-  The result is in the same format as `pfx`. The name is maybe a bit of a
-  misnomer for IPv6, since that has no broadcast concept, but this function
-  basically returns the last full length address in given `pfx`.
+  Yields the same result as `Pfx.last/1`, included for nostalgia.
 
   ## Examples
 
@@ -2715,19 +2823,16 @@ defmodule Pfx do
       "acdc:1976:0:0:0:0:0:ffff"
 
   """
+  @doc section: :ip
   @spec broadcast(prefix) :: prefix
   def broadcast(pfx) do
-    new(pfx)
-    |> padr(1)
-    |> marshall(pfx)
+    last(pfx)
   rescue
     err -> raise err
   end
 
   @doc """
   Returns a list of address prefixes for given `pfx`.
-
-  The result is in the same format as `pfx`.
 
   ## Examples
 
@@ -2763,7 +2868,6 @@ defmodule Pfx do
   @doc """
   Return the `nth` host in given `pfx`.
 
-  The result is in the same format as `pfx`.  
   Note that offset `nth` wraps around. See `Pfx.member/2`.
 
   ## Examples
@@ -2797,8 +2901,7 @@ defmodule Pfx do
   @doc """
   Return the mask for given `pfx`.
 
-  The result is in the same format as `pfx`, but is always a full length
-  prefix.
+  The result is always a full length prefix.
 
   ## Examples
 
@@ -2832,7 +2935,7 @@ defmodule Pfx do
   @doc """
   Returns the inverted mask for given `pfx`.
 
-  The result is in the same format as `pfx`.
+  The result is always a full length prefix.
 
   ## Examples
 
@@ -2861,8 +2964,6 @@ defmodule Pfx do
 
   @doc """
   Returns the neighboring prefix such that both can be combined in a supernet.
-
-  The result is in the same format as `pfx`.
 
   ## Examples
 
@@ -2901,17 +3002,13 @@ defmodule Pfx do
   # IP oriented
 
   @doc """
-  Create a modified EUI-64 out of `eui48` (an EUI-48 address).
+  Create a modified EUI-64 out of `eui` (an EUI-48 address or an EUI-64).
 
   This flips the 7-th bit (U/L - universal/local) and inserts `0xFFFE` in the
   middle.
 
-  If the `eui48` is in tuple form, it should be encoded by `Pfx.from_mac/1`
-  first.  That always yields, pending any encoding errors, a `Pfx`-struct, so
-  to get the result in tuple-form, reroute it through `Pfx.digits/2`.
-
-  If an interface ID in modified EUI-64 format is to be created from an
-  EUI-64 address, you simply `Pfx.flip/2` the 7th bit.
+  The function assumes either an EUI-48 or EUI-64 address.  In the latter case,
+  it'll only flip the 7-th bit.
 
   ## Examples
 
@@ -2921,31 +3018,36 @@ defmodule Pfx do
       iex> eui64_encode("0288.8888.8888")
       "00-88-88-FF-FE-88-88-88"
 
-      iex> from_mac({0x00, 0x88, 0x88, 0x88, 0x88, 0x88}) |> eui64_encode() |> digits(8)
-      {{0x02, 0x88, 0x88, 0xFF, 0xFE, 0x88, 0x88, 0x88}, 64}
+      iex> eui64_encode({0x00, 0x88, 0x88, 0x88, 0x88, 0x88})
+      {0x02, 0x88, 0x88, 0xFF, 0xFE, 0x88, 0x88, 0x88}
 
       # modified EUI-64 from an existing EUI-64, simply flip the 7th bit
-      iex> flip("01-23-45-67-89-AB-CD-EF", 6)
+      iex> eui64_encode("01:23:45:67:89:AB:CD:EF")
       "03-23-45-67-89-AB-CD-EF"
 
 
   """
   @doc section: :ip
   @spec eui64_encode(prefix) :: prefix
-  def eui64_encode(eui48)
-      when is_pfx(eui48) and eui48.maxlen == 48 and bit_size(eui48.bits) == 48 do
-    eui48
+  def eui64_encode(eui)
+      when is_pfx(eui) and eui.maxlen == 48 and bit_size(eui.bits) == 48 do
+    eui
     |> new(64)
     |> insert(<<0xFF, 0xFE>>, 24)
     |> flip(6)
   end
 
+  def eui64_encode(eui)
+      when is_pfx(eui) and eui.maxlen == 64 and bit_size(eui.bits) == 64 do
+    flip(eui, 6)
+  end
+
   # if eui48 was a prefix, error out before we try new/1 (!)
   def eui64_encode(pfx) when is_pfx(pfx),
-    do: raise(arg_error(:noeui48, pfx))
+    do: raise(arg_error(:noeui, pfx))
 
   def eui64_encode(pfx) do
-    new(pfx)
+    from_mac(pfx)
     |> eui64_encode()
     |> marshall(pfx)
   rescue
@@ -3099,7 +3201,7 @@ defmodule Pfx do
 
   The result mirrors the representation format of the `client` argument.
 
-  ## Example
+  ## Examples
 
       iex> flags = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
       iex> teredo_encode("192.0.2.45", "65.54.227.120", 40000, flags)
@@ -3153,6 +3255,10 @@ defmodule Pfx do
   @doc """
   Returns true is `pfx` is a multicast prefix, false otherwise
 
+  Checks if `pfx` given is a member of:
+  - `224.0.0.0/4` [rfc1112](https://www.rfc-editor.org/rfc/rfc1112.html).
+  - `ff00:/8` [rfc4921](https://www.rfc-editor.org/rfc/rfc4291.html)
+
   ## Examples
 
       iex> multicast?("224.0.0.1")
@@ -3195,55 +3301,159 @@ defmodule Pfx do
   @doc """
   Returns a map with multicast address components for given `pfx`.
 
-  Returns nil if `pfx` is not a multicast address.
+  Address components are parsed according to:
+  - [rfc1112](https://www.rfc-editor.org/rfc/rfc1112.html) -
+    Host Extensions for IP Multicasting
+  - [rfc4291](https://www.rfc-editor.org/rfc/rfc4291.html) -
+    IP Version 6 Addressing Architecture
+
+  Rfc specific fields are put in their own map under the `rfc`-key.
+  - [rfc6034](https://www.rfc-editor.org/rfc/rfc6034.html) -
+    Unicast-Prefix-Based IPv4 Multicast Addresses
+  - [rfc3180](https://www.rfc-editor.org/rfc/rfc3180) -
+    GLOP Addressing in 233/8
+  - [rfc3956](https://www.rfc-editor.org/rfc/rfc3956) -
+    Embedding the Rendezvous Point (RP) Address in an IPv6 Multicast Address
+  - [rfc3306](https://www.rfc-editor.org/rfc/rfc3306) -
+    Unicast-Prefix-based IPv6 Multicast Addresses
+
+  Note that for unicast-prefix-based IPv4 multicast addresses, the unicast
+  prefix is always taken to be 24 bits long.  That should still allow for
+  identification of the origin by looking up the assigned unicast address space
+  that includes the /24.
 
   ## Examples
 
-      iex> multicast("ff02::1")
+      iex> multicast_decode("234.192.0.2")
       %{
-        preamble: 255,
-        flags: {0, 0, 0, 0},
-        scope: 2,
-        groupID: 1,
-        address: "ff02::1"
+        multicast_address: "234.192.0.2",
+        protocol: :ipv4,
+        rfc: %{
+          group_id: 2,
+          multicast_prefix: "234.0.0.0/8",
+          rfc: 6034,
+          unicast_prefix: "192.0.2.0/24"
+        }
       }
 
-      iex> multicast("224.0.0.1")
+      iex> Pfx.multicast_decode("FF32:0030:3FFE:FFFF:0001::/96")
       %{
-        address: "224.0.0.1",
-        digits: {224, 0, 0, 1},
-        groupID: 1
+        flags: {0, 0, 1, 1},
+        multicast_address: "ff32:30:3ffe:ffff:1:0:0:0/96",
+        multicast_prefix: "ff30:0:0:0:0:0:0:0/12",
+        protocol: :ipv6,
+        rfc: %{
+          group_id: 0,
+          unicast_prefix: "3ffe:ffff:1:0:0:0:0:0/48",
+          plen: 48,
+          reserved: 0,
+          rfc: 3306
+        },
+        scope: 2
       }
-
   """
   @doc section: :ip
-  @spec multicast(prefix) :: map | nil
-  def multicast(pfx) do
+  @spec multicast_decode(prefix) :: map | nil
+  def multicast_decode(pfx) do
     x = new(pfx)
 
     if multicast?(x) do
       case x.maxlen do
-        128 ->
-          %{
-            preamble: cut(x, 0, 8) |> cast(),
-            flags: cut(x, 8, 4) |> digits(1) |> elem(0),
-            scope: cut(x, 12, 4) |> cast(),
-            groupID: cut(x, 16, 112) |> cast(),
-            address: pfx
-          }
-
-        32 ->
-          %{
-            digits: digits(x, 8) |> elem(0),
-            groupID: cut(x, 4, 28) |> cast(),
-            address: marshall(x, pfx)
-          }
+        128 -> multicast_decode_ip6(x, pfx)
+        32 -> multicast_decode_ip4(x, pfx)
       end
     else
       nil
     end
   rescue
     err -> raise err
+  end
+
+  @spec multicast_decode_ip6(t, prefix) :: map
+  defp multicast_decode_ip6(x, pfx) do
+    flags = cut(x, 8, 4) |> digits(1) |> elem(0)
+
+    generic = %{
+      multicast_address: marshall(x, pfx),
+      multicast_prefix: keep(x, 12) |> marshall(pfx),
+      flags: flags,
+      scope: cut(x, 12, 4) |> cast(),
+      protocol: :ipv6
+    }
+
+    specific =
+      case flags do
+        {0, 0, 1, 1} ->
+          plen = cut(x, 24, 8) |> cast()
+
+          %{
+            rfc: 3306,
+            plen: plen,
+            reserved: cut(x, 16, 8) |> cast(),
+            unicast_prefix: cut(x, 32, 64) |> keep(plen) |> new(128) |> marshall(pfx),
+            group_id: cut(x, -1, -32) |> cast()
+          }
+
+        {0, 1, 1, 1} ->
+          plen = cut(x, 24, 8) |> cast()
+          rrid = cut(x, 20, 4) |> cast()
+          net_pfx = cut(x, 32, 64) |> keep(plen) |> new(128)
+
+          %{
+            rfc: 3956,
+            plen: plen,
+            reserved: cut(x, 16, 4) |> cast(),
+            unicast_prefix: marshall(net_pfx, pfx),
+            group_id: cut(x, -1, -32) |> cast(),
+            riid: rrid,
+            rp_prefix: padr(net_pfx) |> insert(<<rrid::4>>, -4) |> marshall(pfx)
+          }
+
+        _ ->
+          %{
+            rfc: 4291,
+            group_id: cut(x, 16, 112) |> cast()
+          }
+      end
+
+    Map.put(generic, :rfc, specific)
+  end
+
+  @spec multicast_decode_ip4(t, prefix) :: map
+  defp multicast_decode_ip4(x, pfx) do
+    byte0 = cut(x, 0, 8) |> cast()
+
+    generic = %{
+      multicast_address: marshall(x, pfx),
+      protocol: :ipv4
+    }
+
+    specific =
+      case byte0 do
+        233 ->
+          %{
+            rfc: 3180,
+            as: cut(x, 8, 16) |> cast(),
+            local_bits: cut(x, 24, 8) |> cast(),
+            multicast_prefix: keep(x, 8) |> marshall(pfx)
+          }
+
+        234 ->
+          %{
+            rfc: 6034,
+            unicast_prefix: cut(x, 8, 24) |> new(32) |> marshall(pfx),
+            group_id: cut(x, 24, 8) |> cast(),
+            multicast_prefix: keep(x, 8) |> marshall(pfx)
+          }
+
+        _ ->
+          %{
+            multicast_prefix: keep(x, 4) |> marshall(pfx),
+            rfc: 1112
+          }
+      end
+
+    Map.put(generic, :rfc, specific)
   end
 
   @doc """
@@ -3625,7 +3835,6 @@ defmodule Pfx do
       iex> dns_ptr("acdc:1976::/32")
       "6.7.9.1.c.d.c.a.ip6.arpa"
 
-      # https://www.youtube.com/watch?v=VD7BV-z5GsE
       iex> dns_ptr("acdc:1975::b1ba:2021")
       "1.2.0.2.a.b.1.b.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.5.7.9.1.c.d.c.a.ip6.arpa"
 

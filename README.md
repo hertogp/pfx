@@ -17,16 +17,19 @@ and IPv6).
 like an IPv4/6 address or network, a MAC address, a MAC OUI range or something
 completely different.
 
-A `Pfx` struct can be created from:
-1. a `t:bitstring/0` and a `t:non_neg_integer/0` for the maximum length,
-2. a `t:Pfx.ip_address/0`,
-3. a `t:Pfx.ip_prefix/0`, or
-4. a `t:binary/0`, a string in IPv4 CIDR, IPv6, EUI-48 or EUI-64 format
+A `Pfx` struct can be created with `Pfx.new/2` using:
+- a `t:bitstring/0` and a `t:non_neg_integer/0` for the maximum length,
+- a `t:Pfx.t/0` and a `t:non_neg_integer/0` for a (new) maximum length.
 
-The first option allows for the creation of any sort of prefix using a
-`t:bitstring/0` and a `maxlen`.  The second and third option yield either an
-IPv4 or IPv6 prefix.  Lastly, strings can be used to create either IPv4, IPv6,
-EUI-48 or EUI-64 prefixes.
+This allows for the creation of any sort of prefix.
+
+Use `Pfx.new/1` to create a prefix struct from:
+- a `t:Pfx.ip_address/0`,
+- a `t:Pfx.ip_prefix/0`, or
+- a `t:binary/0`, a string in IPv4 CIDR, IPv6, EUI-48 or EUI-64 format
+
+This creates a IPv4, IPv6, EUI-48 or an EUI-64 prefix.  Other means to create
+prefixes include `Pfx.from_mac/1` and `Pfx.from_hex/1`.
 
 Several functions, like `Pfx.unique_local?/1` are more IP oriented, and are
 included along with the more generic `Pfx` functions (like `Pfx.cut/3`) in
@@ -172,11 +175,11 @@ punctuation, use `Pfx.from_mac/1`, which also supports the tuple formats.  Like
     iex> new("11-22-33-44-55-66-77-88")
     %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
 
-    # but new/1 turns these (valid) EUI-64's into IPv6 due to ':'-punctuation used:
+    # but new/1 turns this valid EUI-64 into IPv6 due to ':'-punctuation used:
     iex> new("01:02:03:04:05:06:07:08")
     %Pfx{bits: <<0x1::16, 0x2::16, 0x3::16, 0x4::16, 0x5::16, 0x6::16, 0x7::16, 0x8::16>>, maxlen: 128}
 
-    # from_mac has 'context'
+    # in this case, use from_mac/1
     iex> from_mac("01:02:03:04:05:06:07:08")
     %Pfx{bits: <<0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8>>, maxlen: 64}
 
@@ -230,10 +233,6 @@ some options that help shape the string representation for a `Pfx` struct.
     iex> "#{new(<<1, 2, 3, 4, 5>>, 64)}"
     "01-02-03-04-05-00-00-00/40"
 
-    # an ip4 address formatted as a string of bits
-    iex> new(<<1, 2, 3, 4>>, 32) |> format(width: 1, unit: 8)
-    "00000001.00000010.00000011.00000100"
-
     # the enumeration example earlier, could also read:
     iex> for ip <- new("1.2.3.0/30"), do: "#{ip}"
     [
@@ -277,7 +276,7 @@ Anyway, enough downplay, here are some more examples.
     iex> new("00-00-5e-00-00-00/24")
     %Pfx{bits: <<0, 0, 94>>, maxlen: 48}
 
-    # IANA's assignment for the VRRP MAC address range 00-00-5e-00-01-{VRID}
+    # IANA's VRRP MAC address range 00-00-5e-00-01-{VRID}
     iex> vrrp_mac_range = new("00-00-5e-00-01-00/40")
     %Pfx{bits: <<0, 0, 94, 0, 1>>, maxlen: 48}
     iex>
@@ -289,49 +288,14 @@ Anyway, enough downplay, here are some more examples.
     iex> cut(vrrp_mac, -1, -8) |> cast()
     15
 
-    # IPv4 examples
     iex> new("10.10.10.0/24")
     %Pfx{bits: <<10, 10, 10>>, maxlen: 32}
 
-    iex> new({10, 10, 10, 10})
-    %Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}
+    iex> mask("10.10.10.0/25")
+    "255.255.255.128"
 
-    iex> new({{10, 10, 10, 10}, 24})
-    %Pfx{bits: <<10, 10, 10>>, maxlen: 32}
-
-    iex> new(<<10, 10, 10>>, 32)
-    %Pfx{bits: <<10, 10, 10>>, maxlen: 32}
-
-    # IPv6 examples
-    iex> new(<<44252::16, 6518::16>>, 128)
-    %Pfx{bits: <<0xACDC::16, 0x1976::16>>, maxlen: 128}
-
-    iex> new("acdc:1976::/32")
-    %Pfx{bits: <<44252::16, 6518::16>>, maxlen: 128}
-
-    iex> new({{44252, 6518, 0, 0, 0, 0, 0, 0}, 32})
-    %Pfx{bits: <<0xACDC::16, 0x1976::16>>, maxlen: 128}
-
-    # EUI-48 examples
-    iex> new("aa:bb:cc:dd:ee:ff")
-    %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
-
-    iex> new("aa-bb-cc-dd-ee-ff")
-    %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
-
-    iex> new("aabb.ccdd.eeff")
-    %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
-
-    # EUI-64 examples
-    iex> new("11-22-aa-bb-cc-dd-ee-ff")
-    %Pfx{bits: <<0x11, 0x22, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 64}
-
-    # for EUI-64's with ':' punctuation, use:
-    iex> from_mac("11:22:aa:bb:cc:dd:ee:ff")
-    %Pfx{bits: <<0x11, 0x22, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 64}
-
-
-Functions are sometimes IP specific, like:
+    iex> inv_mask("10.10.10.0/25")
+    "0.0.0.127"
 
     iex> dns_ptr("acdc:1975::b1ba:2021")
     "1.2.0.2.a.b.1.b.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.5.7.9.1.c.d.c.a.ip6.arpa"
@@ -348,20 +312,9 @@ Functions are sometimes IP specific, like:
     iex> eui64_encode("0288.8888.8888")
     "00-88-88-FF-FE-88-88-88"
 
-But most of the times, functions have generic names, since they apply to all
-sorts of prefixes, e.g.
-
-    iex> partition(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 26)
-    [
-      %Pfx{bits: <<10, 10, 10, 0::size(2)>>, maxlen: 32},
-      %Pfx{bits: <<10, 10, 10, 1::size(2)>>, maxlen: 32},
-      %Pfx{bits: <<10, 10, 10, 2::size(2)>>, maxlen: 32},
-      %Pfx{bits: <<10, 10, 10, 3::size(2)>>, maxlen: 32}
-    ]
-
-The `Pfx.new/1`, `Pfx.new/2` and `Pfx.from_mac/1` always return a `t:Pfx.t/0`
-struct, but most other functions will return their results in the same
-representation they were given.  So the above could also be done as:
+Some functions have IP related names (like `Pfx.teredo_decode/1`, but most of
+the times functions have generic names, since they apply to all sorts of
+prefixes, e.g.
 
     iex> partition("10.10.10.0/24", 26)
     [ "10.10.10.0/26",
@@ -370,14 +323,16 @@ representation they were given.  So the above could also be done as:
       "10.10.10.192/26"
     ]
 
-    # or
-    iex> partition({{10, 10, 10, 0}, 24}, 26)
-    [ {{10, 10, 10, 0}, 26},
-      {{10, 10, 10, 64}, 26},
-      {{10, 10, 10, 128}, 26},
-      {{10, 10, 10, 192}, 26}
-    ]
+    iex> new(<<1, 2, 3, 4>>, 32)
+    ...> |> format(width: 1, unit: 8)
+    "00000001.00000010.00000011.00000100"
 
+    iex> from_hex("123456789abcdef")
+    ...> |> keep(20)
+    %Pfx{bits: <<0x12, 0x34, 0x5::4>>, maxlen: 60}
+
+    iex> brot("1.2.3.4", 8)
+    "4.1.2.3"
 
 <!-- @MODULEDOC -->
 
@@ -389,7 +344,7 @@ list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:pfx, "~> 0.4.0"}
+    {:pfx, "~> 0.5.0"}
   ]
 end
 ```

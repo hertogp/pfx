@@ -5,11 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.5.0] - 2021-07-17
 
 ### changed
-- `img` subdirectory has been replaced by `assets` subdirectory
-- `Pfx.multicast/1` now decodes groupID a an integer instead of a bitstring.
+- "Pfx.multicast/1"  renamed to `Pfx.multicast_decode/1` and updated decoding
+- `Pfx.eui64_encode/1` now also accepts EUI-64 (only needs to flip 7th bit)
+
+### added
+- added `Pfx.first/1` as a more generic version of `Pfx.network/1`
+- added `Pfx.last/1` as a more generic version of `Pfx.broadcast/1`
+- added `Pfx.from_hex/1` to create a `t:Pfx.t/0` from any hex string
+
 
 ## [v0.4.0] - 2021-07-10
 

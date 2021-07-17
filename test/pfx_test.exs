@@ -212,6 +212,23 @@ defmodule PfxTest do
     assert oui == new("aabb.ccdd.eeff/24")
   end
 
+  # From_hex/1
+  test "from_hex/1" do
+    addr = %Pfx{bits: <<0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF>>, maxlen: 48}
+    assert addr == from_hex("aa:bb:cc:dd:ee:ff")
+    assert addr == from_hex("aa-bb-cc-dd-ee-ff")
+    assert addr == from_hex("aabb.ccdd.eeff")
+    assert addr == from_hex("aa:bb.cc-dd.ee:ff")
+
+    addr = %Pfx{bits: <<0x12, 0x34, 0x56>>, maxlen: 40}
+    assert addr == from_hex("123456789A/24")
+    assert addr == from_hex("123456789A/24", [])
+    assert addr == from_hex("1|2|3|4|5|6|7|8|9|A/24", [?|])
+
+    assert_raise ArgumentError, fn -> from_hex("ABCDEFG") end
+    assert_raise ArgumentError, fn -> from_hex("12|34|AB") end
+  end
+
   # From_mac/1
   test "from_mac/1" do
     f = fn x -> assert from_mac(x) end
@@ -1304,6 +1321,31 @@ defmodule PfxTest do
     assert :more == contrast("10.10.10.0/24", "10.10.0.0/16")
   end
 
+  # first/1
+  test "first/1" do
+    Enum.all?(@ip4_representations, fn x -> assert first(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert first(x) end)
+    Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> first(x) end end)
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 0} == first(%Pfx{bits: <<>>, maxlen: 0})
+
+    # only one bit
+    assert %Pfx{bits: <<0::1>>, maxlen: 1} == first(%Pfx{bits: <<>>, maxlen: 1})
+
+    # more bits
+    assert %Pfx{bits: <<255, 0>>, maxlen: 16} == first(%Pfx{bits: <<255>>, maxlen: 16})
+
+    # full address
+    assert %Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32} ==
+             first(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32})
+
+    # all formats
+    assert "1.1.1.0" == first("1.1.1.255/24")
+    assert "acdc:1976:0:0:0:0:0:0" == first("acdc:1976::/32")
+    assert {{1, 2, 3, 0}, 32} == first({{1, 2, 3, 4}, 24})
+  end
+
   # Network/1
   test "network/1" do
     Enum.all?(@ip4_representations, fn x -> assert network(x) end)
@@ -1327,6 +1369,33 @@ defmodule PfxTest do
     assert "1.1.1.0" == network("1.1.1.255/24")
     assert "acdc:1976:0:0:0:0:0:0" == network("acdc:1976::/32")
     assert {{1, 2, 3, 0}, 32} == network({{1, 2, 3, 4}, 24})
+  end
+
+  # last/1
+  test "last/1" do
+    Enum.all?(@ip4_representations, fn x -> assert last(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert last(x) end)
+
+    Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> last(x) end end)
+
+    # no bits
+    assert %Pfx{bits: <<>>, maxlen: 0} == last(%Pfx{bits: <<>>, maxlen: 0})
+
+    # only one bit
+    assert %Pfx{bits: <<1::1>>, maxlen: 1} == last(%Pfx{bits: <<>>, maxlen: 1})
+
+    # more bits
+    assert %Pfx{bits: <<255, 255>>, maxlen: 16} == last(%Pfx{bits: <<255>>, maxlen: 16})
+
+    # full address
+    assert %Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32} ==
+             last(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32})
+
+    # all formats
+    assert "1.1.1.255" == last("1.1.1.0/24")
+    assert "1.255.255.255" == last("1.0.0.0/8")
+    assert "acdc:1976:ffff:ffff:ffff:ffff:ffff:ffff" == last("acdc:1976::/32")
+    assert {{1, 2, 3, 255}, 32} == last({{1, 2, 3, 4}, 24})
   end
 
   # Broadcast/1
@@ -1557,11 +1626,146 @@ defmodule PfxTest do
 
   # Multicast/1
 
-  test "multicast/1" do
-    Enum.all?(@ip4_representations, fn x -> assert nil == multicast(x) end)
-    Enum.all?(@ip6_representations, fn x -> assert nil == multicast(x) end)
+  test "multicast_decode/1" do
+    Enum.all?(@ip4_representations, fn x -> assert nil == multicast_decode(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert nil == multicast_decode(x) end)
 
-    Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> multicast(x) end end)
+    Enum.all?(@bad_representations, fn x ->
+      assert_raise ArgumentError, fn -> multicast_decode(x) end
+    end)
+
+    # ipv4
+    assert multicast_decode("224.0.0.1") == %{
+             multicast_address: "224.0.0.1",
+             protocol: :ipv4,
+             rfc: %{multicast_prefix: "224.0.0.0/4", rfc: 1112}
+           }
+
+    # mirrors representation
+    map = multicast_decode(%Pfx{bits: <<224, 0, 0, 1>>, maxlen: 32})
+    assert map[:multicast_address] == %Pfx{bits: <<224, 0, 0, 1>>, maxlen: 32}
+    assert map[:rfc][:multicast_prefix] == %Pfx{bits: <<14::4>>, maxlen: 32}
+
+    assert multicast_decode("234.192.0.2") == %{
+             multicast_address: "234.192.0.2",
+             protocol: :ipv4,
+             rfc: %{
+               group_id: 2,
+               multicast_prefix: "234.0.0.0/8",
+               unicast_prefix: "192.0.2.0/24",
+               rfc: 6034
+             }
+           }
+
+    # mirrors representation
+    map = multicast_decode(%Pfx{bits: <<234, 192, 0, 2>>, maxlen: 32})
+    assert map[:multicast_address] == %Pfx{bits: <<234, 192, 0, 2>>, maxlen: 32}
+    assert map[:rfc][:multicast_prefix] == %Pfx{bits: <<234>>, maxlen: 32}
+    assert map[:rfc][:unicast_prefix] == %Pfx{bits: <<192, 0, 2>>, maxlen: 32}
+
+    assert multicast_decode("233.22.30.1") == %{
+             multicast_address: "233.22.30.1",
+             protocol: :ipv4,
+             rfc: %{
+               as: 5662,
+               local_bits: 1,
+               multicast_prefix: "233.0.0.0/8",
+               rfc: 3180
+             }
+           }
+
+    # mirrors representation
+    map = multicast_decode(%Pfx{bits: <<233, 22, 30, 1>>, maxlen: 32})
+    assert map[:multicast_address] == %Pfx{bits: <<233, 22, 30, 1>>, maxlen: 32}
+    assert map[:rfc][:multicast_prefix] == %Pfx{bits: <<233>>, maxlen: 32}
+
+    # ipv6
+    assert multicast_decode("ff71:340:2001:db8:beef:feed:0:f") == %{
+             flags: {0, 1, 1, 1},
+             multicast_address: "ff71:340:2001:db8:beef:feed:0:f",
+             multicast_prefix: "ff70:0:0:0:0:0:0:0/12",
+             protocol: :ipv6,
+             rfc: %{
+               group_id: 15,
+               unicast_prefix: "2001:db8:beef:feed:0:0:0:0/64",
+               plen: 64,
+               reserved: 0,
+               rfc: 3956,
+               riid: 3,
+               rp_prefix: "2001:db8:beef:feed:0:0:0:3"
+             },
+             scope: 1
+           }
+
+    # mirrors representation
+    map =
+      multicast_decode(%Pfx{
+        bits:
+          <<0xFF71::16, 0x340::16, 0x2001::16, 0xDB8::16, 0xBEEF::16, 0xFEED::16, 0::16, 0xF::16>>,
+        maxlen: 128
+      })
+
+    assert map[:multicast_address] ==
+             %Pfx{
+               bits:
+                 <<0xFF71::16, 0x340::16, 0x2001::16, 0xDB8::16, 0xBEEF::16, 0xFEED::16, 0::16,
+                   0xF::16>>,
+               maxlen: 128
+             }
+
+    assert map[:multicast_prefix] ==
+             %Pfx{
+               bits: <<0xFF7::12>>,
+               maxlen: 128
+             }
+
+    assert map[:rfc][:unicast_prefix] ==
+             %Pfx{
+               bits: <<0x2001::16, 0xDB8::16, 0xBEEF::16, 0xFEED::16>>,
+               maxlen: 128
+             }
+
+    assert map[:rfc][:rp_prefix] ==
+             %Pfx{
+               bits:
+                 <<0x2001::16, 0xDB8::16, 0xBEEF::16, 0xFEED::16, 0::16, 0::16, 0::16, 3::16>>,
+               maxlen: 128
+             }
+
+    assert multicast_decode("FF31:0030:3FFE:FFFF:0001::8") == %{
+             flags: {0, 0, 1, 1},
+             multicast_address: "ff31:30:3ffe:ffff:1:0:0:8",
+             multicast_prefix: "ff30:0:0:0:0:0:0:0/12",
+             protocol: :ipv6,
+             rfc: %{
+               group_id: 8,
+               unicast_prefix: "3ffe:ffff:1:0:0:0:0:0/48",
+               plen: 48,
+               reserved: 0,
+               rfc: 3306
+             },
+             scope: 1
+           }
+
+    # mirrors representation
+    map =
+      multicast_decode(%Pfx{
+        bits: <<0xFF31::16, 0x0030::16, 0x3FFE::16, 0xFFFF::16, 0x0001::16, 0::16, 0::16, 8::16>>,
+        maxlen: 128
+      })
+
+    assert map[:multicast_address] ==
+             %Pfx{
+               bits:
+                 <<0xFF31::16, 0x0030::16, 0x3FFE::16, 0xFFFF::16, 1::16, 0::16, 0::16, 8::16>>,
+               maxlen: 128
+             }
+
+    assert map[:multicast_prefix] ==
+             %Pfx{bits: <<0xFF3::12>>, maxlen: 128}
+
+    assert map[:rfc][:unicast_prefix] ==
+             %Pfx{bits: <<0x3FFE::16, 0xFFFF::16, 1::16>>, maxlen: 128}
   end
 
   # Link_local?/1
