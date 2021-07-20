@@ -55,7 +55,7 @@ defmodule Pfx.MixProject do
       licenses: ["MIT"],
       maintainers: ["hertogp"],
       links: %{
-        "Changelog" => "https://hexdocs/pm/pfx/changelog.html",
+        "Changelog" => "https://hexdocs.pm/pfx/changelog.html",
         "GitHub" => @source_url
       }
     }

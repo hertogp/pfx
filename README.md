@@ -348,3 +348,9 @@ def deps do
   ]
 end
 ```
+
+## Copyright and License
+
+Copyright (c) 2021 hertogp
+
+The source code is licensed under the [MIT License](./LICENSE.md).
