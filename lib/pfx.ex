@@ -255,389 +255,6 @@ defmodule Pfx do
   #   `Pfx` struct and call themselves again with that struct
 
   @doc """
-  Creates a new `t:Pfx.t/0`-prefix.
-
-  Create a new prefix from:
-  - from a bitstring and a maximum length, truncating the bits as needed,
-  - from a `t:Pfx.t/0` prefix and a new maxlen, again truncating as needed,
-
-  ## Examples
-
-      iex> new(<<10, 10>>, 32)
-      %Pfx{bits: <<10, 10>>, maxlen: 32}
-
-      iex> new(<<10, 10>>, 8)
-      %Pfx{bits: <<10>>, maxlen: 8}
-
-      # changing 'maxlen' usually changes the prefix' meaning
-      iex> new(%Pfx{bits: <<10, 10>>, maxlen: 32}, 128)
-      %Pfx{bits: <<10, 10>>, maxlen: 128}
-
-  """
-  @spec new(t() | bitstring, non_neg_integer) :: t()
-  def new(bits, maxlen) when is_bitstring(bits) and is_non_neg_integer(maxlen),
-    do: %__MODULE__{bits: truncate(bits, maxlen), maxlen: maxlen}
-
-  def new(pfx, maxlen) when is_pfx(pfx) and is_non_neg_integer(maxlen),
-    do: new(pfx.bits, maxlen)
-
-  def new(x, len) when is_pfx(x),
-    do: raise(arg_error(:maxlen, len))
-
-  def new(x, _),
-    do: raise(arg_error(:pfx, x))
-
-  @doc """
-  Creates a new prefix from address tuples or binaries.
-
-  Use:
-  - a binary in
-    [CIDR](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing)-notation,
-  - a binary in EUI-48 or EUI-64 format (EUI-64 must be using hyphens !)
-  - an {`t:ip_address/0`, `length`}-tuple to truncate the bits to `length`.
-  - an ipv4 or ipv6 `t:ip_address/0` tuple directly for a full address, or
-  - a `t:Pfx.t/0` struct
-
-  Binaries are processed by `:inet.parse_address/1`, so be aware of IPv4 shorthand
-  notations that may yield surprising results, since digits are taken to be:
-  - `d1.d2.d3.d4` -> `d1.d2.d3.d4` (full address)
-  - `d1.d2.d3` -> `d1.d2.0.d3`
-  - `d1.d2` -> `d1.0.0.d2`
-  - `d1` -> `0.0.0.d1`
-
-  If `:inet.parse_address/1` fails to create an IPv4 or IPv6 address, an
-  attempt is made to parse the binary as an EUI-48 or EUI-64 MAC address.
-  Parsing EUI's is somewhat relaxed, punctuation chars "-", ":", "." are
-  interchangeable, but their positions should be correct.
-
-  Note that EUI-64's that use ":"-punctuation are indistinguishable from IPv6,
-  e.g.  "11:22:33:44:55:66:77:88".  Use `from_mac/1` when in doubt about
-  punctuations used while parsing MAC addresses.
-
-  ## Examples
-
-      # from CIDR strings
-      iex> new("10.10.0.0")
-      %Pfx{bits: <<10, 10, 0, 0>>, maxlen: 32}
-
-      iex> new("10.10.10.10/16")
-      %Pfx{bits: <<10, 10>>, maxlen: 32}
-
-      iex> new("acdc:1976::/32")
-      %Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128}
-
-      # from an {address-tuple, length}
-      iex> new({{0xacdc, 0x1976, 0, 0, 0, 0, 0, 0}, 32})
-      %Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128}
-
-      iex> new({{10, 10, 0, 0}, 16})
-      %Pfx{bits: <<10, 10>>, maxlen: 32}
-
-      # from an address-tuple
-      iex> new({10, 10, 0, 0})
-      %Pfx{bits: <<10, 10, 0, 0>>, maxlen: 32}
-
-      # from a struct
-      iex> new(%Pfx{bits: <<10, 10>>, maxlen: 32})
-      %Pfx{bits: <<10, 10>>, maxlen: 32}
-
-      # 10.10/16 is interpreted as 10.0.0.10/16 (!)
-      iex> new("10.10/16")
-      %Pfx{bits: <<10, 0>>, maxlen: 32}
-
-      # some EUI-48's
-      iex> new("aa:bb:cc:dd:ee:ff")
-      %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
-
-      iex> new("aa-bb-cc-dd-ee-ff")
-      %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
-
-      iex> new("aabb.ccdd.eeff")
-      %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
-
-      # keep only OUI
-      iex> new("aa-bb-cc-dd-ee-ff/24")
-      %Pfx{bits: <<0xaa, 0xbb, 0xcc>>, maxlen: 48}
-
-      # some EUI-64's
-      iex> new("11-22-33-44-55-66-77-88")
-      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
-
-      iex> new("1122.3344.5566.7788")
-      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
-
-      # but note the maxlen here ...
-      iex> new("11:22:33:44:55:66:77:88")
-      %Pfx{bits: <<0x11::16, 0x22::16, 0x33::16, 0x44::16, 0x55::16, 0x66::16, 0x77::16, 0x88::16>>, maxlen: 128}
-
-  """
-  @spec new(ip_address | ip_prefix | String.t()) :: t()
-  def new(prefix)
-
-  # identity
-  def new(pfx) when is_pfx(pfx),
-    do: pfx
-
-  # ipv4 tuple(s)
-
-  def new({a, b, c, d}),
-    do: new({{a, b, c, d}, 32})
-
-  # ipv4 default mask is 32
-  def new({{a, b, c, d}, nil}),
-    do: new({{a, b, c, d}, 32})
-
-  def new({{a, b, c, d}, len}) when is_ip4(a, b, c, d, len) do
-    <<bits::bitstring-size(len), _::bitstring>> = <<a::8, b::8, c::8, d::8>>
-    %Pfx{bits: bits, maxlen: 32}
-  end
-
-  def new({{a, b, c, d} = digits, len}) when is_ip4(a, b, c, d, 0),
-    do: raise(arg_error(:ip4len, {digits, len}))
-
-  def new({{_, _, _, _} = digits, len}),
-    do: raise(arg_error(:ip4dig, {digits, len}))
-
-  # ipv6 tuple(s)
-
-  def new({a, b, c, d, e, f, g, h}),
-    do: new({{a, b, c, d, e, f, g, h}, 128})
-
-  # ipv6 default mask is 128
-  def new({{a, b, c, d, e, f, g, h}, nil}),
-    do: new({{a, b, c, d, e, f, g, h}, 128})
-
-  def new({{a, b, c, d, e, f, g, h}, len}) when is_ip6(a, b, c, d, e, f, g, h, len) do
-    <<bits::bitstring-size(len), _::bitstring>> =
-      <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>
-
-    %Pfx{bits: bits, maxlen: 128}
-  end
-
-  def new({{a, b, c, d, e, f, g, h} = digits, len}) when is_ip6(a, b, c, d, e, f, g, h, 0),
-    do: raise(arg_error(:ip6len, {digits, len}))
-
-  def new({{_, _, _, _, _, _, _, _} = digits, len}),
-    do: raise(arg_error(:ip6dig, {digits, len}))
-
-  # from ipv4/ipv6 CIDR binary or EUI-48/64 (w/ hyphens only)
-  def new(string) when is_binary(string) do
-    charlist = String.to_charlist(string)
-    {address, mask} = splitp(charlist, [])
-
-    case :inet.parse_address(address) do
-      {:ok, digits} -> new({digits, mask})
-      {:error, _} -> hexify(address) |> keep(mask)
-    end
-  rescue
-    _ -> raise arg_error(:einval, string)
-  end
-
-  def new(prefix),
-    do: raise(arg_error(:create, prefix))
-
-  @doc """
-  Create a `Pfx` struct from a EUI48/64 strings or tuples.
-
-  Parsing strings is somewhat relaxed since punctuation characters are
-  interchangeable as long as their positions are correct.
-
-  Note that `new/1` tries to parse binaries as IP prefixes first and would turn
-  an EUI-64 using ":" for punctuation into an IPv6 address.  Similarly, a
-  8-element tuple is seen as IPv6 address.  Hence, if you really need to parse
-  EUI-64 binaries with ":", or have EUI-48/64 tuples, use this function.
-
-  `from_mac/1` also accepts a `Pfx` struct, but only if its maxlen is either `48`
-  or `64`.  If not, an `ArgumentError` is raised.
-
-  ## Examples
-
-      iex> from_mac("11:22:33:44:55:66")
-      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66>>, maxlen: 48}
-
-      iex> from_mac("11-22-33-44-55-66")
-      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66>>, maxlen: 48}
-
-      iex> from_mac("1122.3344.5566")
-      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66>>, maxlen: 48}
-
-      iex> from_mac({0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff})
-      %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
-
-      # keep the OUI
-      iex> from_mac({{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}, 24})
-      %Pfx{bits: <<0xaa, 0xbb, 0xcc>>, maxlen: 48}
-
-      iex> from_mac("11:22:33:44:55:66/24")
-      %Pfx{bits: <<0x11, 0x22, 0x33>>, maxlen: 48}
-
-      # a EUI-64
-      iex> from_mac("11-22-33-44-55-66-77-88")
-      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
-
-      iex> from_mac("11:22:33:44:55:66:77:88")
-      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
-
-      iex> from_mac("11:22:33:44:55:66:77:88/24")
-      %Pfx{bits: <<0x11, 0x22, 0x33>>, maxlen: 64}
-
-      iex> from_mac({0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88})
-      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
-
-      iex> from_mac({{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}, 24})
-      %Pfx{bits: <<0x11, 0x22, 0x33>>, maxlen: 64}
-
-      # note: from_mac reads nibbles so each address element must be 2 nibbles (!)
-      iex> from_mac("01:02:03:04:05:06:07:08")
-      %Pfx{bits: <<0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8>>, maxlen: 64}
-
-      # mix and match
-      # ":" and "-" are interchangeable
-      iex> from_mac("11:22-33:44-55:66")
-      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66>>, maxlen: 48}
-
-  """
-  @spec from_mac(t | binary | tuple) :: t
-  def from_mac(string) when is_binary(string) do
-    charlist = String.to_charlist(string)
-    {address, mask} = splitp(charlist, [])
-
-    hexify(address)
-    |> keep(mask)
-  rescue
-    _ -> raise arg_error(:noeui, string)
-  end
-
-  # from EUI-48 tuples
-  def from_mac({a, b, c, d, e, f}),
-    do: from_mac({{a, b, c, d, e, f}, 48})
-
-  # splitp may produce nil to signal absence of /len in binary
-  def from_mac({{a, b, c, d, e, f}, nil}),
-    do: from_mac({{a, b, c, d, e, f}, 48})
-
-  def from_mac({{a, b, c, d, e, f}, len}) when is_eui48(a, b, c, d, e, f, len) do
-    <<bits::bitstring-size(len), _::bitstring>> = <<a::8, b::8, c::8, d::8, e::8, f::8>>
-    %Pfx{bits: bits, maxlen: 48}
-  end
-
-  # from EUI-64 tuples
-  def from_mac({a, b, c, d, e, f, g, h}),
-    do: from_mac({{a, b, c, d, e, f, g, h}, 64})
-
-  # splitp may produce nil to signal absence of /len in binary
-  def from_mac({{a, b, c, d, e, f, g, h}, nil}),
-    do: from_mac({{a, b, c, d, e, f, g, h}, 64})
-
-  def from_mac({{a, b, c, d, e, f, g, h}, len}) when is_eui64(a, b, c, d, e, f, g, h, len) do
-    <<bits::bitstring-size(len), _::bitstring>> =
-      <<a::8, b::8, c::8, d::8, e::8, f::8, g::8, h::8>>
-
-    %Pfx{bits: bits, maxlen: 64}
-  end
-
-  # from Pfx
-  def from_mac(pfx) when is_pfx(pfx) do
-    case pfx.maxlen do
-      48 -> pfx
-      64 -> pfx
-      _ -> raise arg_error(:noeui, pfx)
-    end
-  end
-
-  def from_mac(arg),
-    do: raise(arg_error(:noeui, arg))
-
-  @doc """
-  Create a `t:Pfx.t/0` out of a hexadecimal string.
-
-  This always returns a `Pfx.t` struct.  A list of punctuation characters can
-  be supplied as a second argument and defaults to `[?:, ?-, ?.]`.  Note that
-  '/' should not be used as that separates the mask from the rest of the
-  binary.  Punctuation characeters are simply ignored and there are no
-  positional checks performed.
-
-  Contrary to `Pfx.from_mac/1`, this function turns a random hexadecimal into a
-  prefix.  Do not use this to create a prefix out of an IPv6 address.
-
-  ## Examples
-
-      iex> from_hex("1-2:3.4:a-bcdef")
-      %Pfx{bits: <<0x12, 0x34, 0xAB, 0xCD, 0xEF>>, maxlen: 40}
-
-      iex> from_hex("1-2:3.4:a-bcdef/16")
-      %Pfx{bits: <<0x12, 0x34>>, maxlen: 40}
-
-      iex> from_hex("1|2|3|A|B|C|DEF", [?|])
-      %Pfx{bits: <<0x12, 0x3A, 0xBC, 0xDE, 0xF::4>>, maxlen: 36}
-
-      iex> from_hex("ABC")
-      %Pfx{bits: <<0xAB, 0xC::4>>, maxlen: 12}
-
-      # not for IPv6 addresses ..
-      iex> from_hex("2001::1")
-      %Pfx{bits: <<0x20, 0x01, 0x1::4>>, maxlen: 20}
-
-
-  """
-  @spec from_hex(binary) :: t
-  def from_hex(string, punctuation \\ [?:, ?-, ?.])
-      when is_binary(string) and is_list(punctuation) do
-    charlist = String.to_charlist(string)
-
-    {address, mask} = splitp(charlist, [])
-
-    {bits, _} =
-      address
-      |> Enum.filter(fn c -> c not in punctuation end)
-      |> hex(<<>>, 0)
-
-    %Pfx{bits: truncate(bits, mask), maxlen: bit_size(bits)}
-  rescue
-    _ -> raise arg_error(:nohex, string)
-  end
-
-  # turn a EUI-48/64 like string into bits
-  @spec hexify(charlist) :: t
-  defp hexify(clist) do
-    {bits, hyphens} = hex(clist, <<>>, 0)
-
-    bsize = bit_size(bits)
-
-    case {bsize, hyphens} do
-      {48, 2} -> new(bits, bsize)
-      {48, 5} -> new(bits, bsize)
-      {64, 3} -> new(bits, bsize)
-      {64, 7} -> new(bits, bsize)
-      _ -> raise ArgumentError
-    end
-  end
-
-  # 11:22:33:44:55:66 or 1122.3344.5566 or some weird mix thereof 11-22.33:44.5566
-  defp hex([], acc, n),
-    do: {acc, n}
-
-  defp hex([x | tail], acc, n) when ?0 <= x and x <= ?9,
-    do: hex(tail, <<acc::bits, x - ?0::4>>, n)
-
-  defp hex([x | tail], acc, n) when ?a <= x and x <= ?f,
-    do: hex(tail, <<acc::bits, x - ?a + 10::4>>, n)
-
-  defp hex([x | tail], acc, n) when ?A <= x and x <= ?F,
-    do: hex(tail, <<acc::bits, x - ?A + 10::4>>, n)
-
-  defp hex([?- | tail], acc, n) when bit_size(acc) in [8, 16, 24, 32, 40, 48, 56],
-    do: hex(tail, acc, n + 1)
-
-  defp hex([?: | tail], acc, n) when bit_size(acc) in [8, 16, 24, 32, 40, 48, 56],
-    do: hex(tail, acc, n + 1)
-
-  defp hex([?. | tail], acc, n) when bit_size(acc) in [16, 32, 48],
-    do: hex(tail, acc, n + 1)
-
-  # Bit ops
-
-  @doc """
   Return `pfx` prefix's bit-value at given `position`.
 
   A bit position is a `0`-based index from the left with range `0..maxlen-1`.  
@@ -816,61 +433,6 @@ defmodule Pfx do
   end
 
   defp joinbitsp(x, y), do: <<y::bitstring, x::bitstring>>
-
-  @doc """
-  Cast a `t:prefix/0` to an integer.
-
-  After right padding the given `pfx`, the `pfx.bits` are interpreted as a number
-  of `maxlen` bits wide.  Empty prefixes evaluate to `0`, since all 'missing'
-  bits are taken to be zero (even if `maxlen` is `0`).
-
-  See `cut/3` for how this capability might be useful.
-
-  ## Examples
-
-      iex> cast("255.255.0.0")
-      4294901760
-
-      iex> cast("255.255.0.0/16")
-      4294901760
-
-      iex> cast({255, 255, 0, 0})
-      4294901760
-
-      iex> cast({{255, 255, 0, 0}, 32})
-      4294901760
-
-      iex> cast(%Pfx{bits: <<255, 255>>, maxlen: 32})
-      4294901760
-
-      iex> %Pfx{bits: <<4294901760::32>>, maxlen: 32}
-      %Pfx{bits: <<255, 255, 0, 0>>, maxlen: 32}
-
-      # missing bits filled in as `0`s
-      iex> cast(%Pfx{bits: <<255>>, maxlen: 16})
-      65280
-
-      iex> cast(%Pfx{bits: <<-1::128>>, maxlen: 128})
-      340282366920938463463374607431768211455
-
-      iex> cast(%Pfx{bits: <<>>, maxlen: 8})
-      0
-
-      # a bit weird, but:
-      iex> cast(%Pfx{bits: <<>>, maxlen: 0})
-      0
-
-  """
-  @spec cast(prefix) :: non_neg_integer
-  def cast(pfx) when is_pfx(pfx),
-    do: castp(pfx.bits, pfx.maxlen)
-
-  def cast(pfx) do
-    new(pfx)
-    |> cast()
-  rescue
-    err -> raise err
-  end
 
   @doc """
   A bitwise NOT of the `pfx.bits`.
@@ -1123,6 +685,48 @@ defmodule Pfx do
     do: raise(arg_error(:noint, n))
 
   @doc """
+  Set all `pfx.bits` to either `0` or `1`.
+
+  ## Examples
+
+      # defaults to `0`-bit
+      iex> bset("1.1.1.0/24")
+      "0.0.0.0/24"
+
+      iex> bset("1.1.1.0/24", 1)
+      "255.255.255.0/24"
+
+      iex> bset({{1, 1, 1, 0}, 24}, 1)
+      {{255, 255, 255, 0}, 24}
+
+      iex> bset(%Pfx{bits: <<1, 1, 1>>, maxlen: 32})
+      %Pfx{bits: <<0, 0, 0>>, maxlen: 32}
+
+      iex> bset(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, 1)
+      %Pfx{bits: <<255, 255, 255>>, maxlen: 32}
+
+  """
+  @spec bset(prefix, 0 | 1) :: prefix
+  def bset(pfx, bit \\ 0)
+
+  def bset(pfx, bit) when is_pfx(pfx) and (bit === 0 or bit === 1) do
+    bit = -1 * bit
+    len = bit_size(pfx.bits)
+    %{pfx | bits: <<bit::size(len)>>}
+  end
+
+  def bset(pfx, bit) when bit === 0 or bit === 1 do
+    new(pfx)
+    |> bset(bit)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  def bset(_, bit),
+    do: raise(arg_error(:nobit, bit))
+
+  @doc """
   Arithmetic shift left the `pfx.bits` by `n` positions.
 
   A positive `n` shifts to the left, negative `n` shifts to the right.
@@ -1219,6 +823,1593 @@ defmodule Pfx do
 
   def bsr(_, n),
     do: raise(arg_error(:noint, n))
+
+  @doc """
+  Cast a `t:prefix/0` to an integer.
+
+  After right padding the given `pfx`, the `pfx.bits` are interpreted as a number
+  of `maxlen` bits wide.  Empty prefixes evaluate to `0`, since all 'missing'
+  bits are taken to be zero (even if `maxlen` is `0`).
+
+  See `cut/3` for how this capability might be useful.
+
+  ## Examples
+
+      iex> cast("255.255.0.0")
+      4294901760
+
+      iex> cast("255.255.0.0/16")
+      4294901760
+
+      iex> cast({255, 255, 0, 0})
+      4294901760
+
+      iex> cast({{255, 255, 0, 0}, 32})
+      4294901760
+
+      iex> cast(%Pfx{bits: <<255, 255>>, maxlen: 32})
+      4294901760
+
+      iex> %Pfx{bits: <<4294901760::32>>, maxlen: 32}
+      %Pfx{bits: <<255, 255, 0, 0>>, maxlen: 32}
+
+      # missing bits filled in as `0`s
+      iex> cast(%Pfx{bits: <<255>>, maxlen: 16})
+      65280
+
+      iex> cast(%Pfx{bits: <<-1::128>>, maxlen: 128})
+      340282366920938463463374607431768211455
+
+      iex> cast(%Pfx{bits: <<>>, maxlen: 8})
+      0
+
+      # a bit weird, but:
+      iex> cast(%Pfx{bits: <<>>, maxlen: 0})
+      0
+
+  """
+  @spec cast(prefix) :: non_neg_integer
+  def cast(pfx) when is_pfx(pfx),
+    do: castp(pfx.bits, pfx.maxlen)
+
+  def cast(pfx) do
+    new(pfx)
+    |> cast()
+  rescue
+    err -> raise err
+  end
+
+  @doc ~S"""
+  Compare function for sorting.
+
+  - `:eq` prefix1 is equal to prefix2
+  - `:lt` prefix1 has more bits *or* lies to the left of prefix2
+  - `:gt` prefix1 has less bits *or* lies to the right of prefix2
+
+  The prefixes must have the same *maxlen* and are first compared by size
+  (i.e. a *shorter* prefix is considered *larger*), and second on their
+  bitstring value.
+
+  ## Examples
+
+      iex> compare("10.0.0.0/8", "11.0.0.0/8")
+      :lt
+
+      iex> compare("10.0.0.0/8", {{11, 0, 0, 0}, 8})
+      :lt
+
+      iex> compare({10, 0, 0, 0}, {{11, 0, 0, 0}, 16})
+      :lt
+
+      iex> compare(new(<<10>>, 32), new(<<11>>, 32))
+      :lt
+
+      # sort on prefixes, first on bit_size than bits-values
+
+      iex> list = ["10.11.0.0/16", "10.10.10.0/24", "10.10.0.0/16"]
+      iex> Enum.sort(list, Pfx)
+      [
+        "10.10.10.0/24",
+        "10.10.0.0/16",
+        "10.11.0.0/16"
+      ]
+      #
+      # whereas regular sort does:
+      #
+      iex> Enum.sort(list)
+      [
+        "10.10.0.0/16",
+        "10.10.10.0/24",
+        "10.11.0.0/16"
+      ]
+
+      iex> list = [new(<<10, 11>>, 32), new(<<10,10,10>>, 32), new(<<10,10>>, 32)]
+      iex> Enum.sort(list, Pfx)
+      [
+        %Pfx{bits: <<10, 10, 10>>, maxlen: 32},
+        %Pfx{bits: <<10, 10>>, maxlen: 32},
+        %Pfx{bits: <<10, 11>>, maxlen: 32}
+      ]
+
+      # not advisable, but mixed representations are possible as well
+      iex> l = ["10.11.0.0/16", {{10, 10, 10, 0}, 24}, %Pfx{bits: <<10, 10>>, maxlen: 32}]
+      iex> Enum.sort(l, Pfx)
+      [
+        {{10, 10, 10, 0}, 24},
+        %Pfx{bits: <<10, 10>>, maxlen: 32},
+        "10.11.0.0/16",
+      ]
+
+      # note: all prefixes must have the same `maxlen`
+      iex> compare(new(<<10>>, 32), new(<<10>>, 128))
+      ** (ArgumentError) prefixes have different maxlen's: {%Pfx{bits: "\n", maxlen: 32}, %Pfx{bits: "\n", maxlen: 128}}
+
+  """
+  @spec compare(prefix, prefix) :: :eq | :lt | :gt
+  def compare(pfx1, pfx2)
+
+  def compare(x, y) when is_comparable(x, y),
+    do: comparep(x.bits, y.bits)
+
+  def compare(x, y) when is_pfx(x) and is_pfx(y),
+    do: raise(arg_error(:nocompare, {x, y}))
+
+  def compare(x, y) do
+    new(x)
+    |> compare(new(y))
+  rescue
+    err -> raise err
+  end
+
+  defp comparep(x, y) when bit_size(x) > bit_size(y), do: :lt
+  defp comparep(x, y) when bit_size(x) < bit_size(y), do: :gt
+  defp comparep(x, y) when x < y, do: :lt
+  defp comparep(x, y) when x > y, do: :gt
+  defp comparep(x, y) when x == y, do: :eq
+
+  @doc """
+  Contrast two `Pfx` prefixes
+
+  Contrasting two prefixes will yield one of:
+  - `:equal` pfx1 is equal to pfx2
+  - `:more` pfx1 is a more specific version of pfx2
+  - `:less` pfx1 is a less specific version of pfx2
+  - `:left` pfx1 is left-adjacent to pfx2
+  - `:right` pfx1 is right-adjacent to pfx2
+  - `:disjoint` pfx1 has no match with pfx2 whatsoever.
+
+  ## Examples
+
+      iex> contrast("10.10.0.0/16", "10.10.0.0/16")
+      :equal
+
+      iex> contrast("10.10.10.0/24", "10.10.0.0/16")
+      :more
+
+      iex> contrast("10.0.0.0/8", "10.255.255.0/24")
+      :less
+
+      iex> contrast("1.2.3.0/24", "1.2.4.0/24")
+      :left
+
+      iex> contrast("1.2.3.4/30", "1.2.3.0/30")
+      :right
+
+      iex> contrast("10.10.0.0/16", "9.0.0.0/8")
+      :disjoint
+
+      iex> contrast("10.10.0.0/16", %Pfx{bits: <<10,12>>, maxlen: 32})
+      :disjoint
+
+  """
+  @spec contrast(prefix, prefix) :: :equal | :more | :less | :left | :right | :disjoint
+  def contrast(pfx1, pfx2)
+
+  def contrast(x, y) when is_comparable(x, y),
+    do: contrastp(x.bits, y.bits)
+
+  def contrast(x, y) when is_pfx(x) and is_pfx(y),
+    do: raise(arg_error(:nocompare, {x, y}))
+
+  def contrast(x, y) do
+    new(x)
+    |> contrast(new(y))
+  rescue
+    err -> raise err
+  end
+
+  defp contrastp(x, y) when x == y,
+    do: :equal
+
+  defp contrastp(x, y) when bit_size(x) > bit_size(y),
+    do: if(y == truncate(x, bit_size(y)), do: :more, else: :disjoint)
+
+  defp contrastp(x, y) when bit_size(x) < bit_size(y),
+    do: if(x == truncate(y, bit_size(x)), do: :less, else: :disjoint)
+
+  defp contrastp(x, y) do
+    size = bit_size(x)
+    <<n::size(size)>> = x
+    <<m::size(size)>> = y
+
+    case n - m do
+      1 -> :right
+      -1 -> :left
+      _ -> :disjoint
+    end
+  end
+
+  @doc """
+  Cut out a series of bits and turn it into its own `Pfx`.
+
+  Extracts the bits and returns a new `t:Pfx.t/0` with `bits` set to the
+  bits extracted and `maxlen` set to the length of the `bits`-string.
+
+  ## Examples
+
+      iex> cut("::ffff:192.0.2.128", -1, -32)
+      "192.0.2.128"
+
+      iex> teredo = new("2001:0:4136:e378:8000:63bf:3fff:fdd2")
+      iex>
+      iex> # client
+      iex> cut(teredo, 96, 32) |> bnot() |> format()
+      "192.0.2.45"
+      iex>
+      iex>
+      iex> # udp port
+      iex> cut(teredo, 80, 16) |> bnot() |> cast()
+      40000
+      iex>
+      iex> # teredo server
+      iex> cut(teredo, 32, 32) |> format()
+      "65.54.227.120"
+      iex>
+      iex> # flags
+      iex> cut(teredo, 64, 16) |> digits(1) |> elem(0)
+      {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+
+  'Masked' bits are considered to be zero.
+
+      # extract 2nd and 3rd byte:
+      iex> %Pfx{bits: <<255, 255>>, maxlen: 32} |> cut(8, 16)
+      %Pfx{bits: <<255, 0>>, maxlen: 16}
+
+  Less useful, but cut will mirror the representation given:
+
+      iex> cut("10.11.12.13", 8, 16)
+      "11.12"
+
+      iex> cut({1, 2, 3, 4}, 16, 16)
+      {3, 4}
+
+      iex> cut({{1, 2, 0, 0}, 16}, 8, 16)
+      {{2, 0}, 16}
+
+
+  Extraction must stay within `maxlen` of given `pfx`.
+
+      # cannot exceed boundaries though:
+      iex> %Pfx{bits: <<255, 255>>, maxlen: 32} |> cut(8, 32)
+      ** (ArgumentError) invalid index range: {8, 32}
+
+  """
+  @spec cut(prefix, integer, integer) :: prefix
+  def cut(pfx, start, length) when is_pfx(pfx) do
+    bits = bits(pfx, start, length)
+    new(bits, bit_size(bits))
+  rescue
+    _ -> raise arg_error(:range, {start, length})
+  end
+
+  def cut(pfx, start, length) do
+    new(pfx)
+    |> cut(start, length)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  @doc """
+  Transform a `Pfx` prefix into `{{digit, ..}, length}` format.
+
+  The `pfx` is padded to its maximum length using `0`'s and the resulting
+  bits are grouped into *digits*, each `width`-bits wide.  The resulting `length`
+  denotes the prefix' original bit_size.
+
+  Note: works best if the prefix' `maxlen` is a multiple of the `width` used,
+  otherwise `maxlen` cannot be inferred from this format by `tuple_size(digits)
+  * width` (e.g. by `Pfx.undigits`)
+
+  ## Examples
+
+      iex> digits("10.11.12.0/24", 8)
+      {{10, 11, 12, 0}, 24}
+
+      # mask is applied first
+      iex> digits("10.11.12.13/24", 8)
+      {{10, 11, 12, 0}, 24}
+
+      iex> digits("acdc:1976::/32", 16)
+      {{44252, 6518, 0, 0, 0, 0, 0, 0}, 32}
+
+      iex> digits({{0xacdc, 0x1976, 0, 0, 0, 0, 0, 0}, 32}, 16)
+      {{44252, 6518, 0, 0, 0, 0, 0, 0}, 32}
+
+      iex> digits(%Pfx{bits: <<10, 11, 12>>, maxlen: 32}, 8)
+      {{10, 11, 12, 0}, 24}
+
+      iex> digits(%Pfx{bits: <<10, 11, 12, 1::1>>, maxlen: 32}, 8)
+      {{10, 11, 12, 128}, 25}
+
+      iex> digits(%Pfx{bits: <<0x12, 0x34, 0x56, 0x78>>, maxlen: 128}, 4)
+      {{1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 32}
+
+  """
+  @spec digits(prefix, pos_integer) :: {tuple(), pos_integer}
+  def digits(pfx, width) when is_pfx(pfx) and is_pos_integer(width) do
+    try do
+      digits =
+        pfx
+        |> padr()
+        |> fields(width)
+        |> Enum.map(fn {n, _w} -> n end)
+        |> List.to_tuple()
+
+      {digits, bit_size(pfx.bits)}
+    rescue
+      _ -> raise arg_error(:digits, {pfx, width})
+    end
+  end
+
+  def digits(pfx, width) when is_pos_integer(width) do
+    new(pfx)
+    |> digits(width)
+  rescue
+    err -> raise err
+  end
+
+  def digits(_, width),
+    do: raise(arg_error(:nowidth, width))
+
+  @doc """
+  Drop `count` lsb bits from given `pfx`.
+
+  If `count` exceeds the actual number of bits in `pfx.bits`, simply drops all
+  bits.
+
+  ## Examples
+
+      iex> drop("1.2.3.0/31", 1)
+      "1.2.3.0/30"
+
+      iex> drop("1.2.3.2/31", 1)
+      "1.2.3.0/30"
+
+      iex> drop("1.2.3.128/25", 1)
+      "1.2.3.0/24"
+
+      iex> drop("1.2.3.0/24", 512)
+      "0.0.0.0/0"
+
+      iex> drop("2001:0db8:85a3:0000:0000:8a2e:0370:7334", 64)
+      "2001:db8:85a3:0:0:0:0:0/64"
+
+      iex> drop({1, 2, 3, 4}, 8)
+      {1, 2, 3, 0}
+
+      iex> drop({{1, 2, 3, 4}, 32}, 16)
+      {{1, 2, 0, 0}, 16}
+
+      iex> drop(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}, 16)
+      %Pfx{bits: <<1, 2>>, maxlen: 32}
+
+  """
+  @spec drop(prefix, non_neg_integer) :: prefix
+  def drop(pfx, count) when is_pfx(pfx) and is_non_neg_integer(count) do
+    cond do
+      count < bit_size(pfx.bits) -> %{pfx | bits: truncate(pfx.bits, bit_size(pfx.bits) - count)}
+      true -> %{pfx | bits: <<>>}
+    end
+  end
+
+  def drop(pfx, count) when is_non_neg_integer(count) do
+    new(pfx)
+    |> drop(count)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  def drop(_, count),
+    do: raise(arg_error(:nodrop, "expected a non_neg_integer for count, got: #{inspect(count)}"))
+
+  @doc """
+  Turn a `prefix` into a list of `{number, width}`-fields.
+
+  If `bit_size(pfx.bits)` is not a multiple of `width`, the last
+  `{number, width}`-tuple, will have a smaller width.
+
+  ## Examples
+
+      iex> fields("10.11.12.13", 8)
+      [{10, 8}, {11, 8}, {12, 8}, {13, 8}]
+
+      iex> fields({10, 11, 12, 13}, 8)
+      [{10, 8}, {11, 8}, {12, 8}, {13, 8}]
+
+      iex> fields({{10, 11, 12, 0}, 24}, 8)
+      [{10, 8}, {11, 8}, {12, 8}]
+
+      iex> fields(%Pfx{bits: <<10, 11, 12, 13>>, maxlen: 32}, 8)
+      [{10, 8}, {11, 8}, {12, 8}, {13, 8}]
+
+      # pfx.bits is not a multiple of 8, hence the {0, 1} at the end
+      iex> fields("10.11.12.0/25", 8)
+      [{10, 8}, {11, 8}, {12, 8}, {0, 1}]
+
+      iex> new(<<0xacdc::16>>, 128) |> fields(4)
+      [{10, 4}, {12, 4}, {13, 4}, {12, 4}]
+
+      # only 1 field with less bits than given width of 64
+      iex> new(<<255, 255>>, 32) |> fields(64)
+      [{65535, 16}]
+
+  """
+  @spec fields(prefix, non_neg_integer) :: list({non_neg_integer, non_neg_integer})
+  def fields(pfx, width) when is_pfx(pfx) and is_integer(width) and width > 0,
+    do: fields([], pfx.bits, width)
+
+  def fields(pfx, width) when is_integer(width) and width > 0 do
+    new(pfx)
+    |> fields(width)
+  rescue
+    err -> raise err
+  end
+
+  def fields(_, width),
+    do: raise(arg_error(:nowidth, width))
+
+  defp fields(acc, <<>>, _width), do: Enum.reverse(acc)
+
+  defp fields(acc, bits, width) when bit_size(bits) >= width do
+    <<num::size(width), rest::bitstring>> = bits
+    fields([{num, width} | acc], rest, width)
+  end
+
+  defp fields(acc, bits, width) do
+    w = bit_size(bits)
+    <<num::size(w)>> = bits
+    fields([{num, w} | acc], "", width)
+  end
+
+  @doc """
+  Returns the first full length prefix from the set represented by `pfx`.
+
+  ## Examples
+
+      iex> first("10.10.10.1/24")
+      "10.10.10.0"
+
+      iex> first("acdc:1976::/32")
+      "acdc:1976:0:0:0:0:0:0"
+
+      # a full address is its own this-network
+      iex> first({10, 10, 10, 1})
+      {10, 10, 10, 1}
+
+      iex> first({{10, 10, 10, 1}, 24})
+      {{10, 10, 10, 0}, 32}
+
+      iex> first(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
+      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
+
+      iex> first(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128})
+      %Pfx{bits: <<0xACDC::16, 0x1976::16, 0::96>>, maxlen: 128}
+
+  """
+  @spec first(prefix) :: prefix
+  def first(pfx) do
+    new(pfx)
+    |> padr(0)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  @doc """
+  Flip a single bit at `position` in given `pfx.bits`
+
+  A negative `position` is relative to the end of the `pfx.bits` bitstring.
+  It is an error to point to a bit outside the range of available bits. 
+
+  ## Examples
+
+      # flip some bit
+      iex> flip("255.255.254.0", 23)
+      "255.255.255.0"
+
+      iex> flip("255.255.255.0", -9)
+      "255.255.254.0"
+
+      # flip the 7th bit
+      iex> flip("0088.8888.8888", 6)
+      "02-88-88-88-88-88"
+
+      iex> flip({1, 2, 3, 0}, 24)
+      {1, 2, 3, 128}
+
+      # flip last bit
+      iex> flip({{1, 2, 3, 128}, 25}, 24)
+      {{1, 2, 3, 0}, 25}
+
+      iex> flip({{1, 2, 3, 128}, 25}, -1)
+      {{1, 2, 3, 0}, 25}
+
+      iex> flip(%Pfx{bits: <<1, 2, 3, 1::1>>, maxlen: 32}, -1)
+      %Pfx{bits: <<1, 2, 3, 0::1>>, maxlen: 32}
+
+  """
+  @spec flip(t, non_neg_integer) :: t
+  def flip(pfx, position) when is_pfx(pfx) and is_integer(position) do
+    pos = if position < 0, do: position + bit_size(pfx.bits), else: position
+
+    if pos < 0 or pos >= bit_size(pfx.bits),
+      do: raise(arg_error(:bitpos, position))
+
+    <<left::size(pos), bit::1, right::bitstring>> = pfx.bits
+    bit = bit - 1
+    %{pfx | bits: <<left::size(pos), bit::1, right::bitstring>>}
+  end
+
+  def flip(pfx, position) when is_integer(position) do
+    new(pfx)
+    |> flip(position)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  def flip(_pfx, pos),
+    do: raise(arg_error(:bitpos, pos))
+
+  @doc ~S"""
+  Generic formatter to turn a `Pfx` into a string, using several options:
+  - `:width`, field width (default 8)
+  - `:base`, howto turn a field into a string (default 10, use 16 for hex numbers)
+  - `:unit`, how many fields go into 1 section (default 1)
+  - `:ssep`, howto join the sections together (default ".")
+  - `:lsep`, howto join a mask if required (default "/")
+  - `:mask`, whether to add a mask (default false)
+  - `:reverse`, whether to reverse fields before grouping/joining (default false)
+  - `:padding`, whether to pad out the `pfx.bits` (default true)
+
+  The defaults are geared towards IPv4 prefixes, but the options should be able
+  to accomodate other domains as well.
+
+  Notes:
+  - the *prefix.bits*-length is omitted if equal to the *prefix.bits*-size
+  - domain specific submodules probably implement their own formatter.
+
+  ## Examples
+
+      iex> format(%Pfx{bits: <<10, 11, 12>>, maxlen: 32})
+      "10.11.12.0/24"
+
+      iex> format({{10, 11, 12, 0}, 24})
+      "10.11.12.0/24"
+
+      iex> format({10, 11, 12, 0})
+      "10.11.12.0"
+
+      # non-sensical, but there you go
+      iex> format("10.11.12.0/24")
+      "10.11.12.0/24"
+
+      # bitstring, note that mask is applied when new creates the `pfx`
+      iex> format("1.2.3.4/24", width: 1, base: 2, unit: 8, mask: false)
+      "00000001.00000010.00000011.00000000"
+
+      # mask not appended as its redundant for a full-sized prefix
+      iex> format(%Pfx{bits: <<10, 11, 12, 13>>, maxlen: 32})
+      "10.11.12.13"
+
+      iex> pfx = new(<<0xacdc::16, 0x1976::16>>, 128)
+      iex> format(pfx, width: 16, base: 16, ssep: ":")
+      "acdc:1976:0:0:0:0:0:0/32"
+      #
+      # similar, but grouping 4 fields, each 4 bits wide, into a single section
+      #
+      iex> format(pfx, width: 4, base: 16, unit: 4, ssep: ":")
+      "acdc:1976:0000:0000:0000:0000:0000:0000/32"
+      #
+      # this time, omit the acutal pfx length
+      #
+      iex> format(pfx, width: 16, base: 16, ssep: ":", mask: false)
+      "acdc:1976:0:0:0:0:0:0"
+      #
+      # ptr for IPv6 using the nibble format:
+      # - dot-separated reversal of all hex digits in the expanded address
+      #
+      iex> pfx
+      ...> |> format(width: 4, base: 16, mask: false, reverse: true)
+      ...> |> String.downcase()
+      ...> |> (fn x -> "#{x}.ip6.arpa." end).()
+      "0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.6.7.9.1.c.d.c.a.ip6.arpa."
+
+      # turn off padding to get reverse zone dns ptr record
+      iex> new(<<10, 11, 12>>, 32)
+      ...> |> format(padding: false, reverse: true, mask: false)
+      ...> |> (&"#{&1}.in-addr.arpa.").()
+      "12.11.10.in-addr.arpa."
+
+  """
+  @spec format(prefix, Keyword.t()) :: String.t()
+  def format(pfx, opts \\ [])
+
+  # - NOTE: String.Chars, when using Pfx.format, MUST always provide at least 1 option
+  def format(pfx, []) when is_pfx(pfx) and pfx.maxlen in [32, 48, 64, 128] do
+    "#{pfx}"
+  end
+
+  def format(pfx, opts) when is_pfx(pfx) do
+    width = Keyword.get(opts, :width, 8)
+    base = Keyword.get(opts, :base, 10)
+    ssep = Keyword.get(opts, :ssep, ".")
+    lsep = Keyword.get(opts, :lsep, "/")
+    unit = Keyword.get(opts, :unit, 1)
+    mask = Keyword.get(opts, :mask, true)
+    reverse = Keyword.get(opts, :reverse, false)
+    padding = Keyword.get(opts, :padding, true)
+
+    string =
+      pfx
+      |> (fn x -> if padding, do: padr(x), else: x end).()
+      |> fields(width)
+      |> Enum.map(fn {n, _w} -> Integer.to_string(n, base) end)
+      |> (fn x -> if reverse, do: Enum.reverse(x), else: x end).()
+      |> Enum.chunk_every(unit)
+      |> Enum.join(ssep)
+
+    string = if pfx.maxlen == 128, do: String.downcase(string), else: string
+
+    if mask and bit_size(pfx.bits) < pfx.maxlen do
+      "#{string}#{lsep}#{bit_size(pfx.bits)}"
+    else
+      string
+    end
+  end
+
+  def format(pfx, opts) do
+    new(pfx)
+    |> format(opts)
+  rescue
+    err -> raise err
+  end
+
+  @doc """
+  Create a `Pfx` struct from a EUI48/64 strings or tuples.
+
+  Parsing strings is somewhat relaxed since punctuation characters are
+  interchangeable as long as their positions are correct.
+
+  Note that `new/1` tries to parse binaries as IP prefixes first and would turn
+  an EUI-64 using ":" for punctuation into an IPv6 address.  Similarly, a
+  8-element tuple is seen as IPv6 address.  Hence, if you really need to parse
+  EUI-64 binaries with ":", or have EUI-48/64 tuples, use this function.
+
+  `from_mac/1` also accepts a `Pfx` struct, but only if its maxlen is either `48`
+  or `64`.  If not, an `ArgumentError` is raised.
+
+  ## Examples
+
+      iex> from_mac("11:22:33:44:55:66")
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66>>, maxlen: 48}
+
+      iex> from_mac("11-22-33-44-55-66")
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66>>, maxlen: 48}
+
+      iex> from_mac("1122.3344.5566")
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66>>, maxlen: 48}
+
+      iex> from_mac({0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff})
+      %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
+
+      # keep the OUI
+      iex> from_mac({{0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}, 24})
+      %Pfx{bits: <<0xaa, 0xbb, 0xcc>>, maxlen: 48}
+
+      iex> from_mac("11:22:33:44:55:66/24")
+      %Pfx{bits: <<0x11, 0x22, 0x33>>, maxlen: 48}
+
+      # a EUI-64
+      iex> from_mac("11-22-33-44-55-66-77-88")
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
+
+      iex> from_mac("11:22:33:44:55:66:77:88")
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
+
+      iex> from_mac("11:22:33:44:55:66:77:88/24")
+      %Pfx{bits: <<0x11, 0x22, 0x33>>, maxlen: 64}
+
+      iex> from_mac({0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88})
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
+
+      iex> from_mac({{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}, 24})
+      %Pfx{bits: <<0x11, 0x22, 0x33>>, maxlen: 64}
+
+      # note: from_mac reads nibbles so each address element must be 2 nibbles (!)
+      iex> from_mac("01:02:03:04:05:06:07:08")
+      %Pfx{bits: <<0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8>>, maxlen: 64}
+
+      # mix and match
+      # ":" and "-" are interchangeable
+      iex> from_mac("11:22-33:44-55:66")
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66>>, maxlen: 48}
+
+  """
+  @spec from_mac(t | binary | tuple) :: t
+  def from_mac(string) when is_binary(string) do
+    charlist = String.to_charlist(string)
+    {address, mask} = splitp(charlist, [])
+
+    hexify(address)
+    |> keep(mask)
+  rescue
+    _ -> raise arg_error(:noeui, string)
+  end
+
+  # from EUI-48 tuples
+  def from_mac({a, b, c, d, e, f}),
+    do: from_mac({{a, b, c, d, e, f}, 48})
+
+  # splitp may produce nil to signal absence of /len in binary
+  def from_mac({{a, b, c, d, e, f}, nil}),
+    do: from_mac({{a, b, c, d, e, f}, 48})
+
+  def from_mac({{a, b, c, d, e, f}, len}) when is_eui48(a, b, c, d, e, f, len) do
+    <<bits::bitstring-size(len), _::bitstring>> = <<a::8, b::8, c::8, d::8, e::8, f::8>>
+    %Pfx{bits: bits, maxlen: 48}
+  end
+
+  # from EUI-64 tuples
+  def from_mac({a, b, c, d, e, f, g, h}),
+    do: from_mac({{a, b, c, d, e, f, g, h}, 64})
+
+  # splitp may produce nil to signal absence of /len in binary
+  def from_mac({{a, b, c, d, e, f, g, h}, nil}),
+    do: from_mac({{a, b, c, d, e, f, g, h}, 64})
+
+  def from_mac({{a, b, c, d, e, f, g, h}, len}) when is_eui64(a, b, c, d, e, f, g, h, len) do
+    <<bits::bitstring-size(len), _::bitstring>> =
+      <<a::8, b::8, c::8, d::8, e::8, f::8, g::8, h::8>>
+
+    %Pfx{bits: bits, maxlen: 64}
+  end
+
+  # from Pfx
+  def from_mac(pfx) when is_pfx(pfx) do
+    case pfx.maxlen do
+      48 -> pfx
+      64 -> pfx
+      _ -> raise arg_error(:noeui, pfx)
+    end
+  end
+
+  def from_mac(arg),
+    do: raise(arg_error(:noeui, arg))
+
+  @doc """
+  Create a `t:Pfx.t/0` out of a hexadecimal string.
+
+  This always returns a `Pfx.t` struct.  A list of punctuation characters can
+  be supplied as a second argument and defaults to `[?:, ?-, ?.]`.  Note that
+  '/' should not be used as that separates the mask from the rest of the
+  binary.  Punctuation characeters are simply ignored and there are no
+  positional checks performed.
+
+  Contrary to `Pfx.from_mac/1`, this function turns a random hexadecimal into a
+  prefix.  Do not use this to create a prefix out of an IPv6 address.
+
+  ## Examples
+
+      iex> from_hex("1-2:3.4:a-bcdef")
+      %Pfx{bits: <<0x12, 0x34, 0xAB, 0xCD, 0xEF>>, maxlen: 40}
+
+      iex> from_hex("1-2:3.4:a-bcdef/16")
+      %Pfx{bits: <<0x12, 0x34>>, maxlen: 40}
+
+      iex> from_hex("1|2|3|A|B|C|DEF", [?|])
+      %Pfx{bits: <<0x12, 0x3A, 0xBC, 0xDE, 0xF::4>>, maxlen: 36}
+
+      iex> from_hex("ABC")
+      %Pfx{bits: <<0xAB, 0xC::4>>, maxlen: 12}
+
+      # not for IPv6 addresses ..
+      iex> from_hex("2001::1")
+      %Pfx{bits: <<0x20, 0x01, 0x1::4>>, maxlen: 20}
+
+
+  """
+  @spec from_hex(binary) :: t
+  def from_hex(string, punctuation \\ [?:, ?-, ?.])
+      when is_binary(string) and is_list(punctuation) do
+    charlist = String.to_charlist(string)
+
+    {address, mask} = splitp(charlist, [])
+
+    {bits, _} =
+      address
+      |> Enum.filter(fn c -> c not in punctuation end)
+      |> hex(<<>>, 0)
+
+    %Pfx{bits: truncate(bits, mask), maxlen: bit_size(bits)}
+  rescue
+    _ -> raise arg_error(:nohex, string)
+  end
+
+  # turn a EUI-48/64 like string into bits
+  @spec hexify(charlist) :: t
+  defp hexify(clist) do
+    {bits, hyphens} = hex(clist, <<>>, 0)
+
+    bsize = bit_size(bits)
+
+    case {bsize, hyphens} do
+      {48, 2} -> new(bits, bsize)
+      {48, 5} -> new(bits, bsize)
+      {64, 3} -> new(bits, bsize)
+      {64, 7} -> new(bits, bsize)
+      _ -> raise ArgumentError
+    end
+  end
+
+  # 11:22:33:44:55:66 or 1122.3344.5566 or some weird mix thereof 11-22.33:44.5566
+  defp hex([], acc, n),
+    do: {acc, n}
+
+  defp hex([x | tail], acc, n) when ?0 <= x and x <= ?9,
+    do: hex(tail, <<acc::bits, x - ?0::4>>, n)
+
+  defp hex([x | tail], acc, n) when ?a <= x and x <= ?f,
+    do: hex(tail, <<acc::bits, x - ?a + 10::4>>, n)
+
+  defp hex([x | tail], acc, n) when ?A <= x and x <= ?F,
+    do: hex(tail, <<acc::bits, x - ?A + 10::4>>, n)
+
+  defp hex([?- | tail], acc, n) when bit_size(acc) in [8, 16, 24, 32, 40, 48, 56],
+    do: hex(tail, acc, n + 1)
+
+  defp hex([?: | tail], acc, n) when bit_size(acc) in [8, 16, 24, 32, 40, 48, 56],
+    do: hex(tail, acc, n + 1)
+
+  defp hex([?. | tail], acc, n) when bit_size(acc) in [16, 32, 48],
+    do: hex(tail, acc, n + 1)
+
+  @doc """
+  Return the `nth` host in given `pfx`.
+
+  Note that offset `nth` wraps around. See `Pfx.member/2`.
+
+  ## Examples
+
+      iex> host("10.10.10.0/24", 128)
+      "10.10.10.128"
+
+      iex> host({{10, 10, 10, 0}, 24}, 128)
+      {{10, 10, 10, 128}, 32}
+
+      iex> host(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 128)
+      %Pfx{bits: <<10, 10, 10, 128>>, maxlen: 32}
+
+      # wraps around
+      iex> host("10.10.10.0/24", 256)
+      "10.10.10.0"
+
+  """
+  @spec host(prefix, integer) :: prefix
+  def host(pfx, nth) when is_integer(nth) do
+    new(pfx)
+    |> member(nth)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  def host(_pfx, nth),
+    do: raise(arg_error(:noint, nth))
+
+  @doc """
+  Returns a list of address prefixes for given `pfx`.
+
+  ## Examples
+
+      iex> hosts("10.10.10.0/30")
+      [
+        "10.10.10.0",
+        "10.10.10.1",
+        "10.10.10.2",
+        "10.10.10.3"
+      ]
+
+      iex> hosts({{10, 10, 10, 0}, 30})
+      [
+        {{10, 10, 10, 0}, 32},
+        {{10, 10, 10, 1}, 32},
+        {{10, 10, 10, 2}, 32},
+        {{10, 10, 10, 3}, 32}
+      ]
+
+      iex> hosts(%Pfx{bits: <<10, 10, 10, 0::6>>, maxlen: 32})
+      [
+        %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32},
+        %Pfx{bits: <<10, 10, 10, 1>>, maxlen: 32},
+        %Pfx{bits: <<10, 10, 10, 2>>, maxlen: 32},
+        %Pfx{bits: <<10, 10, 10, 3>>, maxlen: 32}
+      ]
+
+  """
+  @spec hosts(prefix) :: list(prefix)
+  def hosts(pfx),
+    do: for(ip <- new(pfx), do: marshall(ip, pfx))
+
+  @doc """
+  Insert some `bits` into `pfx`-s bitstring.
+
+  The resulting bitstring is silently clipped to the `pfx.maxlen`.
+
+  Valid bit positions are `bits_size(pfx.bits) .. min(pfx.maxlen-1,
+  bit_size(pfx.bits))`.  A position of `0` will prepend the `bits`, while a
+  position of `bit_size(pfx.bits)` will append the `bits` as long as the prefix
+  is not a full length prefix already.
+
+  A negative position is taken relative to the end.  Note that this cannot
+  be used for appending bits, since `-1` refers to the last actual bit and
+  there is no such thing as `-0` ..
+
+  ## Examples
+
+      # prepend bits
+      iex> insert("0.0.0.0/0", <<255>>, 0)
+      "255.0.0.0/8"
+
+      # append bits
+      iex> insert("255.255.0.0/16", <<255>>, 16)
+      "255.255.255.0/24"
+
+      # cannot append to a full prefix, positions go from 0..31
+      iex> insert("1.2.3.4", <<255>>, 32)
+      ** (ArgumentError) invalid bit position: 32
+
+      # but inserting inside the bitstring, is ok
+      iex> insert("1.2.3.4", <<255>>, 16)
+      "1.2.255.3"
+
+      # turn EUI48 into a modified EUI64
+      iex> new("0088.8888.8888")
+      ...> |> new(64)
+      ...> |> flip(6)
+      ...> |> insert(<<0xFF, 0xFE>>, 24)
+      %Pfx{bits: <<0x02, 0x88, 0x88, 0xFF, 0xFE, 0x88, 0x88, 0x88>>, maxlen: 64}
+
+      # sliently clips to pfx's maxlen
+      iex> insert("1.2.3.0/24", <<255, 255, 255, 255>>, 0)
+      "255.255.255.255"
+
+      iex> insert("1.2.3.0/24", <<255, 255, 255, 255>>, 24)
+      "1.2.3.255"
+
+  """
+  @spec insert(t, bitstring, integer) :: t
+  def insert(pfx, bits, position)
+      when is_pfx(pfx) and is_bitstring(bits) and is_integer(position) do
+    pos = if position < 0, do: position + bit_size(pfx.bits), else: position
+
+    if pos < 0 or pos > bit_size(pfx.bits) or pos >= pfx.maxlen,
+      do: raise(arg_error(:bitpos, position))
+
+    <<left::bitstring-size(pos), right::bitstring>> = pfx.bits
+    %{pfx | bits: truncate(<<left::bitstring, bits::bitstring, right::bitstring>>, pfx.maxlen)}
+  end
+
+  def insert(pfx, bits, position) when is_bitstring(bits) and is_integer(position) do
+    new(pfx)
+    |> insert(bits, position)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  def insert(_pfx, bits, pos) when is_integer(pos),
+    do: raise(arg_error(:nobitstr, bits))
+
+  def insert(_pfx, _bit, pos),
+    do: raise(arg_error(:bitpos, pos))
+
+  @doc """
+  Returns the inverted mask for given `pfx`.
+
+  The result is always a full length prefix.
+
+  ## Examples
+
+      iex> inv_mask("10.10.10.0/25")
+      "0.0.0.127"
+
+      iex> inv_mask({10, 10, 10, 0})
+      {0, 0, 0, 0}
+
+      iex> inv_mask({{10, 10, 10, 0}, 25})
+      {{0, 0, 0, 127}, 32}
+
+      iex> inv_mask(%Pfx{bits: <<10, 10, 10, 0::1>>, maxlen: 32})
+      %Pfx{bits: <<0, 0, 0, 127>>, maxlen: 32}
+
+  """
+  @spec inv_mask(prefix) :: prefix
+  def inv_mask(pfx) do
+    new(pfx)
+    |> bset(0)
+    |> padr(1)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  @doc """
+  Keep `count` msb bits of given `pfx`.
+
+  If `count` exceeds the actual number of bits in `pfx.bits`, simply keeps all
+  bits.
+
+  ## Examples
+
+      iex> keep("2001:0db8:85a3:0000:0000:8a2e:0370:7334", 64)
+      "2001:db8:85a3:0:0:0:0:0/64"
+
+      iex> keep("1.2.3.0/31", 30)
+      "1.2.3.0/30"
+
+      iex> keep("1.2.3.2/31", 30)
+      "1.2.3.0/30"
+
+      iex> keep("1.2.3.128/25", 24)
+      "1.2.3.0/24"
+
+      iex> keep("1.2.3.0/24", 512)
+      "1.2.3.0/24"
+
+      iex> keep({1, 2, 3, 4}, 24)
+      {1, 2, 3, 0}
+
+      iex> keep({{1, 2, 3, 4}, 32}, 16)
+      {{1, 2, 0, 0}, 16}
+
+      iex> keep(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}, 16)
+      %Pfx{bits: <<1, 2>>, maxlen: 32}
+
+  """
+  @spec keep(prefix, non_neg_integer) :: prefix
+  def keep(pfx, count) when is_pfx(pfx) and is_non_neg_integer(count) do
+    cond do
+      count < bit_size(pfx.bits) -> %{pfx | bits: truncate(pfx.bits, count)}
+      true -> pfx
+    end
+  end
+
+  def keep(pfx, count) when is_non_neg_integer(count) do
+    new(pfx)
+    |> keep(count)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  # take nil to mean keep all, used possibly by new(binary)
+  def keep(pfx, nil),
+    do: pfx
+
+  def keep(_, count),
+    do: raise(arg_error(:noneg, "expected a non_neg_integer for count, got: #{inspect(count)}"))
+
+  @doc """
+  Returns the last full length prefix from the set represented by `pfx`.
+
+  ## Examples
+
+      iex> last("10.10.0.0/16")
+      "10.10.255.255"
+
+      # a full address is its own last address
+      iex> last({10, 10, 10, 1})
+      {10, 10, 10, 1}
+
+      iex> last({{10, 10, 10, 1}, 30})
+      {{10, 10, 10, 3}, 32}
+
+      iex> last(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
+      %Pfx{bits: <<10, 10, 10, 255>>, maxlen: 32}
+
+      iex> last(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128})
+      %Pfx{bits: <<0xACDC::16, 0x1976::16, -1::96>>, maxlen: 128}
+
+      iex> last("acdc:1976::/112")
+      "acdc:1976:0:0:0:0:0:ffff"
+
+  """
+  @spec last(prefix) :: prefix
+  def last(pfx) do
+    new(pfx)
+    |> padr(1)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  @doc """
+  Returns the mask for given `pfx`.
+
+  The result is always a full length prefix.
+
+  ## Examples
+
+      iex> mask("10.10.10.0/25")
+      "255.255.255.128"
+
+      iex> mask({10, 10, 10, 0})
+      {255, 255, 255, 255}
+
+      iex> mask({{10, 10, 10, 0}, 25})
+      {{255, 255, 255, 128}, 32}
+
+      iex> mask("acdc:1976::/32")
+      "ffff:ffff:0:0:0:0:0:0"
+
+      # some prefix with some other maxlen
+      iex> mask(%Pfx{bits: <<10, 10, 0::1>>, maxlen: 20})
+      %Pfx{bits: <<255, 255, 8::4>>, maxlen: 20}
+
+  """
+  @spec mask(prefix) :: prefix
+  def mask(pfx) do
+    new(pfx)
+    |> bset(1)
+    |> padr(0)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  @doc """
+  Applies a `mask` to given `prefix`.
+
+  Applying a mask may trim off bits from given `prefix` depending on the mask.
+  A mask can never add bits to the `prefix.bits` though.  The representation of
+  the result mirrors that of given `prefix`.  Note that both `prefix` and
+  `mask` must be of the same type (same maxlen).
+
+  ## Examples
+
+      iex> mask("1.1.1.1", "255.255.255.0")
+      "1.1.1.0"
+
+      iex> mask("1.1.1.1", "255.0.0.255")
+      "1.0.0.1"
+
+      iex> mask({1, 1, 1, 1}, {255, 0, 0, 255})
+      {1, 0, 0, 1}
+
+      iex> mask({1, 1, 1, 1}, "255.0.0.255")
+      {1, 0, 0, 1}
+
+      iex> mask("1.1.1.1", "255.255.0.0/16")
+      "1.1.0.0/16"
+
+      iex> mask("1.1.1.0/24", "255.255.0.0/16")
+      "1.1.0.0/16"
+
+      # this mask has no effect
+      iex> mask("1.1.0.0/16", "255.255.255.0/24")
+      "1.1.0.0/16"
+
+  """
+  @spec mask(prefix, prefix) :: prefix
+  def mask(prefix, mask) when is_pfx(mask) do
+    pfx = new(prefix)
+
+    unless is_comparable(pfx, mask),
+      do: raise(arg_error(:nocompare, {"#{pfx}", "#{mask}"}))
+
+    len = min(bit_size(pfx.bits), bit_size(mask.bits))
+
+    mask
+    |> band(pfx)
+    |> keep(len)
+    |> marshall(prefix)
+  rescue
+    err -> raise err
+  end
+
+  def mask(prefix, mask) do
+    mask(prefix, new(mask))
+  rescue
+    err -> raise err
+  end
+
+  @doc """
+  Given a `t.Pfx.t/0` prefix, try to represent it in its original form.
+
+  The exact original is not required, the `pfx` is transformed by the shape of
+  the `original` argument: string vs two-element tuple vs tuple.  If none of
+  the three shapes match, the `pfx` is returned unchanged.
+
+  This is used to allow results to be the same shape as their (first) argument
+  that needed to turn into a `t:Pfx.t/0` for some calculation.
+
+  Note that when turning a prefix into a address-tuple, the first full length
+  member comes out as an address.
+
+  ## Examples
+
+      # original is a string
+      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, "any string really")
+      "1.1.1.0/24"
+
+      # original is any two-element tuple
+      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, {0,0})
+      {{1, 1, 1, 0}, 24}
+
+      # original is any other tuple, actually turns prefix into this-network address
+      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, {})
+      {1, 1, 1, 0}
+
+      # original is a Pfx struct
+      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, %Pfx{bits: <<>>, maxlen: 0})
+      %Pfx{bits: <<1, 1, 1>>, maxlen: 32}
+
+  """
+  @spec marshall(t, prefix) :: prefix
+  def marshall(pfx, original) when is_pfx(pfx) do
+    width = if pfx.maxlen == 128, do: 16, else: 8
+
+    cond do
+      is_binary(original) -> "#{pfx}"
+      is_tuple(original) and tuple_size(original) == 2 -> digits(pfx, width)
+      is_tuple(original) -> digits(pfx, width) |> elem(0)
+      true -> pfx
+    end
+  end
+
+  def marshall(pfx, _),
+    do: pfx
+
+  @doc """
+  Return the `nth`-member of a given `pfx`.
+
+  A prefix represents a range of (possibly longer) prefixes which can be
+  seen as *members* of the prefix.  So a prefix of `n`-bits long represents:
+  - 1 prefix of `n`-bits long (i.e. itself),
+  - 2 prefixes of `n+1`-bits long,
+  - 4 prefixes of `n+2`-bits long
+  - ..
+  - 2^w prefixes of `n+w`-bits long
+
+  where `n+w` <= `pfx.maxlen`.
+
+  Not specifying a `width` assumes the maximum width available.  If a `width`
+  is specified, the `nth`-offset is added to the prefix as a number
+  `width`-bits wide.  This wraps around the available address space.
+
+  ## Examples
+
+      iex> member("10.10.10.0/24", 255)
+      "10.10.10.255"
+
+      # wraps around
+      iex> member("10.10.10.0/24", 256)
+      "10.10.10.0"
+
+      iex> member({{10, 10, 10, 0}, 24}, 255)
+      {{10, 10, 10, 255}, 32}
+
+      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 0)
+      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
+
+      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 255)
+      %Pfx{bits: <<10, 10, 10, 255>>, maxlen: 32}
+
+      # wraps around
+      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 256)
+      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
+
+      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, -1)
+      %Pfx{bits: <<10, 10, 10, 255>>, maxlen: 32}
+
+      # a full prefix always returns itself
+      iex> member(%Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}, 0)
+      %Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}
+
+      iex> member(%Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}, 3)
+      %Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}
+
+  """
+  @spec member(prefix, integer) :: prefix
+  def member(pfx, nth) when is_pfx(pfx) and is_integer(nth),
+    do: member(pfx, nth, pfx.maxlen - bit_size(pfx.bits))
+
+  def member(pfx, nth) when is_integer(nth) do
+    new(pfx)
+    |> member(nth)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  def member(_, nth),
+    do: raise(arg_error(:noint, nth))
+
+  @doc """
+  Returns true is prefix `pfx1` is a member of prefix `pfx2`
+
+  If either `prfx1` or `pfx2` is invalid or they are of different types,
+  member? simply returns false.
+
+  ## Examples
+
+      iex> member?("10.10.10.10", "10.0.0.0/8")
+      true
+
+      iex> member?({10, 10, 10, 10}, "10.0.0.0/8")
+      true
+
+      iex> member?({{10, 10, 10, 10}, 24}, "10.0.0.0/8")
+      true
+
+      iex> member?({{11, 0, 0, 0}, 8}, {{10, 0, 0, 0}, 8})
+      false
+
+      iex> member?(%Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}, %Pfx{bits: <<10>>, maxlen: 32})
+      true
+
+      # bad prefix
+      iex> member?("10.10.10.10", "10.10.10.256/24")
+      false
+
+  """
+  @spec member?(prefix, prefix) :: boolean
+  def member?(pfx1, pfx2)
+      when is_comparable(pfx1, pfx2) and bit_size(pfx2.bits) <= bit_size(pfx1.bits),
+      do: pfx2.bits == truncate(pfx1.bits, bit_size(pfx2.bits))
+
+  def member?(pfx1, pfx2) when is_pfx(pfx1) and is_pfx(pfx2),
+    do: false
+
+  def member?(pfx1, pfx2) do
+    try do
+      member?(new(pfx1), new(pfx2))
+    rescue
+      _ -> false
+    end
+  end
+
+  @doc """
+  Returns the neighboring prefix such that both can be combined in a supernet.
+
+  ## Examples
+
+      iex> neighbor("1.1.1.128/25")
+      "1.1.1.0/25"
+
+      iex> neighbor("1.1.1.0/25")
+      "1.1.1.128/25"
+
+      iex> neighbor({1, 1, 1, 1})
+      {1, 1, 1, 0}
+
+      iex> neighbor({{1, 1, 1, 128}, 25})
+      {{1, 1, 1, 0}, 25}
+
+      iex> neighbor(%Pfx{bits: <<1, 1, 1, 1::1>>, maxlen: 32})
+      %Pfx{bits: <<1, 1, 1, 0::1>>, maxlen: 32}
+
+  """
+  @spec neighbor(prefix) :: prefix
+  def neighbor(pfx) do
+    x = new(pfx)
+    size = bit_size(x.bits)
+
+    if size == 0 do
+      # empty prefix doesn't have a neigbor, really.
+      raise arg_error(:noneighbor, pfx)
+    else
+      offset = 1 - 2 * bit(x, bit_size(x.bits) - 1)
+      sibling(x, offset) |> marshall(pfx)
+    end
+  rescue
+    err -> raise err
+  end
+
+  @doc """
+  Creates a new `t:Pfx.t/0`-prefix.
+
+  Create a new prefix from:
+  - from a bitstring and a maximum length, truncating the bits as needed,
+  - from a `t:Pfx.t/0` prefix and a new maxlen, again truncating as needed,
+
+  ## Examples
+
+      iex> new(<<10, 10>>, 32)
+      %Pfx{bits: <<10, 10>>, maxlen: 32}
+
+      iex> new(<<10, 10>>, 8)
+      %Pfx{bits: <<10>>, maxlen: 8}
+
+      # changing 'maxlen' usually changes the prefix' meaning
+      iex> new(%Pfx{bits: <<10, 10>>, maxlen: 32}, 128)
+      %Pfx{bits: <<10, 10>>, maxlen: 128}
+
+  """
+  @spec new(t() | bitstring, non_neg_integer) :: t()
+  def new(bits, maxlen) when is_bitstring(bits) and is_non_neg_integer(maxlen),
+    do: %__MODULE__{bits: truncate(bits, maxlen), maxlen: maxlen}
+
+  def new(pfx, maxlen) when is_pfx(pfx) and is_non_neg_integer(maxlen),
+    do: new(pfx.bits, maxlen)
+
+  def new(x, len) when is_pfx(x),
+    do: raise(arg_error(:maxlen, len))
+
+  def new(x, _),
+    do: raise(arg_error(:pfx, x))
+
+  @doc """
+  Creates a new prefix from address tuples or binaries.
+
+  Use:
+  - a binary in
+    [CIDR](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing)-notation,
+  - a binary in EUI-48 or EUI-64 format (EUI-64 must be using hyphens !)
+  - an {`t:ip_address/0`, `length`}-tuple to truncate the bits to `length`.
+  - an ipv4 or ipv6 `t:ip_address/0` tuple directly for a full address, or
+  - a `t:Pfx.t/0` struct
+
+  Binaries are processed by `:inet.parse_address/1`, so be aware of IPv4 shorthand
+  notations that may yield surprising results, since digits are taken to be:
+  - `d1.d2.d3.d4` -> `d1.d2.d3.d4` (full address)
+  - `d1.d2.d3` -> `d1.d2.0.d3`
+  - `d1.d2` -> `d1.0.0.d2`
+  - `d1` -> `0.0.0.d1`
+
+  If `:inet.parse_address/1` fails to create an IPv4 or IPv6 address, an
+  attempt is made to parse the binary as an EUI-48 or EUI-64 MAC address.
+  Parsing EUI's is somewhat relaxed, punctuation chars "-", ":", "." are
+  interchangeable, but their positions should be correct.
+
+  Note that EUI-64's that use ":"-punctuation are indistinguishable from IPv6,
+  e.g.  "11:22:33:44:55:66:77:88".  Use `from_mac/1` when in doubt about
+  punctuations used while parsing MAC addresses.
+
+  ## Examples
+
+      # from CIDR strings
+      iex> new("10.10.0.0")
+      %Pfx{bits: <<10, 10, 0, 0>>, maxlen: 32}
+
+      iex> new("10.10.10.10/16")
+      %Pfx{bits: <<10, 10>>, maxlen: 32}
+
+      iex> new("acdc:1976::/32")
+      %Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128}
+
+      # from an {address-tuple, length}
+      iex> new({{0xacdc, 0x1976, 0, 0, 0, 0, 0, 0}, 32})
+      %Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128}
+
+      iex> new({{10, 10, 0, 0}, 16})
+      %Pfx{bits: <<10, 10>>, maxlen: 32}
+
+      # from an address-tuple
+      iex> new({10, 10, 0, 0})
+      %Pfx{bits: <<10, 10, 0, 0>>, maxlen: 32}
+
+      # from a struct
+      iex> new(%Pfx{bits: <<10, 10>>, maxlen: 32})
+      %Pfx{bits: <<10, 10>>, maxlen: 32}
+
+      # 10.10/16 is interpreted as 10.0.0.10/16 (!)
+      iex> new("10.10/16")
+      %Pfx{bits: <<10, 0>>, maxlen: 32}
+
+      # some EUI-48's
+      iex> new("aa:bb:cc:dd:ee:ff")
+      %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
+
+      iex> new("aa-bb-cc-dd-ee-ff")
+      %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
+
+      iex> new("aabb.ccdd.eeff")
+      %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff>>, maxlen: 48}
+
+      # keep only OUI
+      iex> new("aa-bb-cc-dd-ee-ff/24")
+      %Pfx{bits: <<0xaa, 0xbb, 0xcc>>, maxlen: 48}
+
+      # some EUI-64's
+      iex> new("11-22-33-44-55-66-77-88")
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
+
+      iex> new("1122.3344.5566.7788")
+      %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88>>, maxlen: 64}
+
+      # but note the maxlen here ...
+      iex> new("11:22:33:44:55:66:77:88")
+      %Pfx{bits: <<0x11::16, 0x22::16, 0x33::16, 0x44::16, 0x55::16, 0x66::16, 0x77::16, 0x88::16>>, maxlen: 128}
+
+  """
+  @spec new(ip_address | ip_prefix | String.t()) :: t()
+  def new(prefix)
+
+  # identity
+  def new(pfx) when is_pfx(pfx),
+    do: pfx
+
+  # ipv4 tuple(s)
+
+  def new({a, b, c, d}),
+    do: new({{a, b, c, d}, 32})
+
+  # ipv4 default mask is 32
+  def new({{a, b, c, d}, nil}),
+    do: new({{a, b, c, d}, 32})
+
+  def new({{a, b, c, d}, len}) when is_ip4(a, b, c, d, len) do
+    <<bits::bitstring-size(len), _::bitstring>> = <<a::8, b::8, c::8, d::8>>
+    %Pfx{bits: bits, maxlen: 32}
+  end
+
+  def new({{a, b, c, d} = digits, len}) when is_ip4(a, b, c, d, 0),
+    do: raise(arg_error(:ip4len, {digits, len}))
+
+  def new({{_, _, _, _} = digits, len}),
+    do: raise(arg_error(:ip4dig, {digits, len}))
+
+  # ipv6 tuple(s)
+
+  def new({a, b, c, d, e, f, g, h}),
+    do: new({{a, b, c, d, e, f, g, h}, 128})
+
+  # ipv6 default mask is 128
+  def new({{a, b, c, d, e, f, g, h}, nil}),
+    do: new({{a, b, c, d, e, f, g, h}, 128})
+
+  def new({{a, b, c, d, e, f, g, h}, len}) when is_ip6(a, b, c, d, e, f, g, h, len) do
+    <<bits::bitstring-size(len), _::bitstring>> =
+      <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>
+
+    %Pfx{bits: bits, maxlen: 128}
+  end
+
+  def new({{a, b, c, d, e, f, g, h} = digits, len}) when is_ip6(a, b, c, d, e, f, g, h, 0),
+    do: raise(arg_error(:ip6len, {digits, len}))
+
+  def new({{_, _, _, _, _, _, _, _} = digits, len}),
+    do: raise(arg_error(:ip6dig, {digits, len}))
+
+  # from ipv4/ipv6 CIDR binary or EUI-48/64 (w/ hyphens only)
+  def new(string) when is_binary(string) do
+    charlist = String.to_charlist(string)
+    {address, mask} = splitp(charlist, [])
+
+    case :inet.parse_address(address) do
+      {:ok, digits} -> new({digits, mask})
+      {:error, _} -> hexify(address) |> keep(mask)
+    end
+  rescue
+    _ -> raise arg_error(:einval, string)
+  end
+
+  def new(prefix),
+    do: raise(arg_error(:create, prefix))
 
   @doc """
   Right pad the `pfx.bits` to its full length using `0`-bits.
@@ -1439,401 +2630,59 @@ defmodule Pfx do
     do: raise(arg_error(:nobit, bit))
 
   @doc """
-  Set all `pfx.bits` to either `0` or `1`.
+  Partition a `Pfx` prefix into a list of new prefixes, each `bitlen` long.
+
+  Note that `bitlen` must be in the range of `bit_size(pfx.bits)..pfx.maxlen-1`.
 
   ## Examples
 
-      # defaults to `0`-bit
-      iex> bset("1.1.1.0/24")
-      "0.0.0.0/24"
+      # break out the /26's in a /24
+      iex> partition("10.11.12.0/24", 26)
+      [
+        "10.11.12.0/26",
+        "10.11.12.64/26",
+        "10.11.12.128/26",
+        "10.11.12.192/26"
+      ]
 
-      iex> bset("1.1.1.0/24", 1)
-      "255.255.255.0/24"
+      iex> partition({{10, 11, 12, 0}, 24}, 26)
+      [
+        {{10, 11, 12, 0}, 26},
+        {{10, 11, 12, 64}, 26},
+        {{10, 11, 12, 128}, 26},
+        {{10, 11, 12, 192}, 26},
+      ]
 
-      iex> bset({{1, 1, 1, 0}, 24}, 1)
-      {{255, 255, 255, 0}, 24}
-
-      iex> bset(%Pfx{bits: <<1, 1, 1>>, maxlen: 32})
-      %Pfx{bits: <<0, 0, 0>>, maxlen: 32}
-
-      iex> bset(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, 1)
-      %Pfx{bits: <<255, 255, 255>>, maxlen: 32}
-
-  """
-  @spec bset(prefix, 0 | 1) :: prefix
-  def bset(pfx, bit \\ 0)
-
-  def bset(pfx, bit) when is_pfx(pfx) and (bit === 0 or bit === 1) do
-    bit = -1 * bit
-    len = bit_size(pfx.bits)
-    %{pfx | bits: <<bit::size(len)>>}
-  end
-
-  def bset(pfx, bit) when bit === 0 or bit === 1 do
-    new(pfx)
-    |> bset(bit)
-    |> marshall(pfx)
-  rescue
-    err -> raise err
-  end
-
-  def bset(_, bit),
-    do: raise(arg_error(:nobit, bit))
-
-  @doc """
-  Cut out a series of bits and turn it into its own `Pfx`.
-
-  Extracts the bits and returns a new `t:Pfx.t/0` with `bits` set to the
-  bits extracted and `maxlen` set to the length of the `bits`-string.
-
-  ## Examples
-
-      iex> cut("::ffff:192.0.2.128", -1, -32)
-      "192.0.2.128"
-
-      iex> teredo = new("2001:0:4136:e378:8000:63bf:3fff:fdd2")
-      iex>
-      iex> # client
-      iex> cut(teredo, 96, 32) |> bnot() |> format()
-      "192.0.2.45"
-      iex>
-      iex>
-      iex> # udp port
-      iex> cut(teredo, 80, 16) |> bnot() |> cast()
-      40000
-      iex>
-      iex> # teredo server
-      iex> cut(teredo, 32, 32) |> format()
-      "65.54.227.120"
-      iex>
-      iex> # flags
-      iex> cut(teredo, 64, 16) |> digits(1) |> elem(0)
-      {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-
-  'Masked' bits are considered to be zero.
-
-      # extract 2nd and 3rd byte:
-      iex> %Pfx{bits: <<255, 255>>, maxlen: 32} |> cut(8, 16)
-      %Pfx{bits: <<255, 0>>, maxlen: 16}
-
-  Less useful, but cut will mirror the representation given:
-
-      iex> cut("10.11.12.13", 8, 16)
-      "11.12"
-
-      iex> cut({1, 2, 3, 4}, 16, 16)
-      {3, 4}
-
-      iex> cut({{1, 2, 0, 0}, 16}, 8, 16)
-      {{2, 0}, 16}
-
-
-  Extraction must stay within `maxlen` of given `pfx`.
-
-      # cannot exceed boundaries though:
-      iex> %Pfx{bits: <<255, 255>>, maxlen: 32} |> cut(8, 32)
-      ** (ArgumentError) invalid index range: {8, 32}
+      iex> partition(%Pfx{bits: <<10, 11, 12>>, maxlen: 32}, 26)
+      [
+        %Pfx{bits: <<10, 11, 12, 0::size(2)>>, maxlen: 32},
+        %Pfx{bits: <<10, 11, 12, 1::size(2)>>, maxlen: 32},
+        %Pfx{bits: <<10, 11, 12, 2::size(2)>>, maxlen: 32},
+        %Pfx{bits: <<10, 11, 12, 3::size(2)>>, maxlen: 32}
+      ]
 
   """
-  @spec cut(prefix, integer, integer) :: prefix
-  def cut(pfx, start, length) when is_pfx(pfx) do
-    bits = bits(pfx, start, length)
-    new(bits, bit_size(bits))
-  rescue
-    _ -> raise arg_error(:range, {start, length})
-  end
+  @spec partition(prefix, non_neg_integer) :: list(prefix)
+  def partition(pfx, bitlen)
+      when is_pfx(pfx) and is_inrange(bitlen, bit_size(pfx.bits), pfx.maxlen) do
+    width = bitlen - bit_size(pfx.bits)
+    max = Bitwise.bsl(1, width) - 1
 
-  def cut(pfx, start, length) do
-    new(pfx)
-    |> cut(start, length)
-    |> marshall(pfx)
-  rescue
-    err -> raise err
-  end
-
-  @doc """
-  Drop `count` lsb bits from given `pfx`.
-
-  If `count` exceeds the actual number of bits in `pfx.bits`, simply drops all
-  bits.
-
-  ## Examples
-
-      iex> drop("1.2.3.0/31", 1)
-      "1.2.3.0/30"
-
-      iex> drop("1.2.3.2/31", 1)
-      "1.2.3.0/30"
-
-      iex> drop("1.2.3.128/25", 1)
-      "1.2.3.0/24"
-
-      iex> drop("1.2.3.0/24", 512)
-      "0.0.0.0/0"
-
-      iex> drop("2001:0db8:85a3:0000:0000:8a2e:0370:7334", 64)
-      "2001:db8:85a3:0:0:0:0:0/64"
-
-      iex> drop({1, 2, 3, 4}, 8)
-      {1, 2, 3, 0}
-
-      iex> drop({{1, 2, 3, 4}, 32}, 16)
-      {{1, 2, 0, 0}, 16}
-
-      iex> drop(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}, 16)
-      %Pfx{bits: <<1, 2>>, maxlen: 32}
-
-  """
-  @spec drop(prefix, non_neg_integer) :: prefix
-  def drop(pfx, count) when is_pfx(pfx) and is_non_neg_integer(count) do
-    cond do
-      count < bit_size(pfx.bits) -> %{pfx | bits: truncate(pfx.bits, bit_size(pfx.bits) - count)}
-      true -> %{pfx | bits: <<>>}
+    for n <- 0..max do
+      %Pfx{pfx | bits: <<pfx.bits::bitstring, n::size(width)>>}
     end
   end
 
-  def drop(pfx, count) when is_non_neg_integer(count) do
+  def partition(pfx, bitlen) when is_pfx(pfx),
+    do: raise(arg_error(:nopart, bitlen))
+
+  def partition(pfx, bitlen) do
     new(pfx)
-    |> drop(count)
-    |> marshall(pfx)
+    |> partition(bitlen)
+    |> Enum.map(fn x -> marshall(x, pfx) end)
   rescue
     err -> raise err
   end
-
-  def drop(_, count),
-    do: raise(arg_error(:nodrop, "expected a non_neg_integer for count, got: #{inspect(count)}"))
-
-  @doc """
-  Keep `count` msb bits of given `pfx`.
-
-  If `count` exceeds the actual number of bits in `pfx.bits`, simply keeps all
-  bits.
-
-  ## Examples
-
-      iex> keep("2001:0db8:85a3:0000:0000:8a2e:0370:7334", 64)
-      "2001:db8:85a3:0:0:0:0:0/64"
-
-      iex> keep("1.2.3.0/31", 30)
-      "1.2.3.0/30"
-
-      iex> keep("1.2.3.2/31", 30)
-      "1.2.3.0/30"
-
-      iex> keep("1.2.3.128/25", 24)
-      "1.2.3.0/24"
-
-      iex> keep("1.2.3.0/24", 512)
-      "1.2.3.0/24"
-
-      iex> keep({1, 2, 3, 4}, 24)
-      {1, 2, 3, 0}
-
-      iex> keep({{1, 2, 3, 4}, 32}, 16)
-      {{1, 2, 0, 0}, 16}
-
-      iex> keep(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}, 16)
-      %Pfx{bits: <<1, 2>>, maxlen: 32}
-
-  """
-  @spec keep(prefix, non_neg_integer) :: prefix
-  def keep(pfx, count) when is_pfx(pfx) and is_non_neg_integer(count) do
-    cond do
-      count < bit_size(pfx.bits) -> %{pfx | bits: truncate(pfx.bits, count)}
-      true -> pfx
-    end
-  end
-
-  def keep(pfx, count) when is_non_neg_integer(count) do
-    new(pfx)
-    |> keep(count)
-    |> marshall(pfx)
-  rescue
-    err -> raise err
-  end
-
-  # take nil to mean keep all, used possibly by new(binary)
-  def keep(pfx, nil),
-    do: pfx
-
-  def keep(_, count),
-    do: raise(arg_error(:noneg, "expected a non_neg_integer for count, got: #{inspect(count)}"))
-
-  @doc """
-  Flip a single bit at `position` in given `pfx.bits`
-
-  A negative `position` is relative to the end of the `pfx.bits` bitstring.
-  It is an error to point to a bit outside the range of available bits. 
-
-  ## Examples
-
-      # flip some bit
-      iex> flip("255.255.254.0", 23)
-      "255.255.255.0"
-
-      iex> flip("255.255.255.0", -9)
-      "255.255.254.0"
-
-      # flip the 7th bit
-      iex> flip("0088.8888.8888", 6)
-      "02-88-88-88-88-88"
-
-      iex> flip({1, 2, 3, 0}, 24)
-      {1, 2, 3, 128}
-
-      # flip last bit
-      iex> flip({{1, 2, 3, 128}, 25}, 24)
-      {{1, 2, 3, 0}, 25}
-
-      iex> flip({{1, 2, 3, 128}, 25}, -1)
-      {{1, 2, 3, 0}, 25}
-
-      iex> flip(%Pfx{bits: <<1, 2, 3, 1::1>>, maxlen: 32}, -1)
-      %Pfx{bits: <<1, 2, 3, 0::1>>, maxlen: 32}
-
-  """
-  @spec flip(t, non_neg_integer) :: t
-  def flip(pfx, position) when is_pfx(pfx) and is_integer(position) do
-    pos = if position < 0, do: position + bit_size(pfx.bits), else: position
-
-    if pos < 0 or pos >= bit_size(pfx.bits),
-      do: raise(arg_error(:bitpos, position))
-
-    <<left::size(pos), bit::1, right::bitstring>> = pfx.bits
-    bit = bit - 1
-    %{pfx | bits: <<left::size(pos), bit::1, right::bitstring>>}
-  end
-
-  def flip(pfx, position) when is_integer(position) do
-    new(pfx)
-    |> flip(position)
-    |> marshall(pfx)
-  rescue
-    err -> raise err
-  end
-
-  def flip(_pfx, pos),
-    do: raise(arg_error(:bitpos, pos))
-
-  @doc """
-  Insert some `bits` into `pfx`-s bitstring.
-
-  The resulting bitstring is silently clipped to the `pfx.maxlen`.
-
-  Valid bit positions are `bits_size(pfx.bits) .. min(pfx.maxlen-1,
-  bit_size(pfx.bits))`.  A position of `0` will prepend the `bits`, while a
-  position of `bit_size(pfx.bits)` will append the `bits` as long as the prefix
-  is not a full length prefix already.
-
-  A negative position is taken relative to the end.  Note that this cannot
-  be used for appending bits, since `-1` refers to the last actual bit and
-  there is no such thing as `-0` ..
-
-  ## Examples
-
-      # prepend bits
-      iex> insert("0.0.0.0/0", <<255>>, 0)
-      "255.0.0.0/8"
-
-      # append bits
-      iex> insert("255.255.0.0/16", <<255>>, 16)
-      "255.255.255.0/24"
-
-      # cannot append to a full prefix, positions go from 0..31
-      iex> insert("1.2.3.4", <<255>>, 32)
-      ** (ArgumentError) invalid bit position: 32
-
-      # but inserting inside the bitstring, is ok
-      iex> insert("1.2.3.4", <<255>>, 16)
-      "1.2.255.3"
-
-      # turn EUI48 into a modified EUI64
-      iex> new("0088.8888.8888")
-      ...> |> new(64)
-      ...> |> flip(6)
-      ...> |> insert(<<0xFF, 0xFE>>, 24)
-      %Pfx{bits: <<0x02, 0x88, 0x88, 0xFF, 0xFE, 0x88, 0x88, 0x88>>, maxlen: 64}
-
-      # sliently clips to pfx's maxlen
-      iex> insert("1.2.3.0/24", <<255, 255, 255, 255>>, 0)
-      "255.255.255.255"
-
-      iex> insert("1.2.3.0/24", <<255, 255, 255, 255>>, 24)
-      "1.2.3.255"
-
-  """
-  @spec insert(t, bitstring, integer) :: t
-  def insert(pfx, bits, position)
-      when is_pfx(pfx) and is_bitstring(bits) and is_integer(position) do
-    pos = if position < 0, do: position + bit_size(pfx.bits), else: position
-
-    if pos < 0 or pos > bit_size(pfx.bits) or pos >= pfx.maxlen,
-      do: raise(arg_error(:bitpos, position))
-
-    <<left::bitstring-size(pos), right::bitstring>> = pfx.bits
-    %{pfx | bits: truncate(<<left::bitstring, bits::bitstring, right::bitstring>>, pfx.maxlen)}
-  end
-
-  def insert(pfx, bits, position) when is_bitstring(bits) and is_integer(position) do
-    new(pfx)
-    |> insert(bits, position)
-    |> marshall(pfx)
-  rescue
-    err -> raise err
-  end
-
-  def insert(_pfx, bits, pos) when is_integer(pos),
-    do: raise(arg_error(:nobitstr, bits))
-
-  def insert(_pfx, _bit, pos),
-    do: raise(arg_error(:bitpos, pos))
-
-  @doc """
-  Given a `t.Pfx.t/0` prefix, try to represent it in its original form.
-
-  The exact original is not required, the `pfx` is transformed by the shape of
-  the `original` argument: string vs two-element tuple vs tuple.  If none of
-  the three shapes match, the `pfx` is returned unchanged.
-
-  This is used to allow results to be the same shape as their (first) argument
-  that needed to turn into a `t:Pfx.t/0` for some calculation.
-
-  Note that when turning a prefix into a address-tuple, the first full length
-  member comes out as an address.
-
-  ## Examples
-
-      # original is a string
-      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, "any string really")
-      "1.1.1.0/24"
-
-      # original is any two-element tuple
-      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, {0,0})
-      {{1, 1, 1, 0}, 24}
-
-      # original is any other tuple, actually turns prefix into this-network address
-      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, {})
-      {1, 1, 1, 0}
-
-      # original is a Pfx struct
-      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, %Pfx{bits: <<>>, maxlen: 0})
-      %Pfx{bits: <<1, 1, 1>>, maxlen: 32}
-
-  """
-  @spec marshall(t, prefix) :: prefix
-  def marshall(pfx, original) when is_pfx(pfx) do
-    width = if pfx.maxlen == 128, do: 16, else: 8
-
-    cond do
-      is_binary(original) -> "#{pfx}"
-      is_tuple(original) and tuple_size(original) == 2 -> digits(pfx, width)
-      is_tuple(original) -> digits(pfx, width) |> elem(0)
-      true -> pfx
-    end
-  end
-
-  def marshall(pfx, _),
-    do: pfx
 
   @doc """
   Remove `length` bits from given `pfx`-s bitstring, starting at `position`.
@@ -1900,242 +2749,6 @@ defmodule Pfx do
 
   def remove(_, start, length),
     do: raise(arg_error(:range, {start, length}))
-
-  # Numbers
-
-  @doc """
-  Partition a `Pfx` prefix into a list of new prefixes, each `bitlen` long.
-
-  Note that `bitlen` must be in the range of `bit_size(pfx.bits)..pfx.maxlen-1`.
-
-  ## Examples
-
-      # break out the /26's in a /24
-      iex> partition("10.11.12.0/24", 26)
-      [
-        "10.11.12.0/26",
-        "10.11.12.64/26",
-        "10.11.12.128/26",
-        "10.11.12.192/26"
-      ]
-
-      iex> partition({{10, 11, 12, 0}, 24}, 26)
-      [
-        {{10, 11, 12, 0}, 26},
-        {{10, 11, 12, 64}, 26},
-        {{10, 11, 12, 128}, 26},
-        {{10, 11, 12, 192}, 26},
-      ]
-
-      iex> partition(%Pfx{bits: <<10, 11, 12>>, maxlen: 32}, 26)
-      [
-        %Pfx{bits: <<10, 11, 12, 0::size(2)>>, maxlen: 32},
-        %Pfx{bits: <<10, 11, 12, 1::size(2)>>, maxlen: 32},
-        %Pfx{bits: <<10, 11, 12, 2::size(2)>>, maxlen: 32},
-        %Pfx{bits: <<10, 11, 12, 3::size(2)>>, maxlen: 32}
-      ]
-
-  """
-  @spec partition(prefix, non_neg_integer) :: list(prefix)
-  def partition(pfx, bitlen)
-      when is_pfx(pfx) and is_inrange(bitlen, bit_size(pfx.bits), pfx.maxlen) do
-    width = bitlen - bit_size(pfx.bits)
-    max = Bitwise.bsl(1, width) - 1
-
-    for n <- 0..max do
-      %Pfx{pfx | bits: <<pfx.bits::bitstring, n::size(width)>>}
-    end
-  end
-
-  def partition(pfx, bitlen) when is_pfx(pfx),
-    do: raise(arg_error(:nopart, bitlen))
-
-  def partition(pfx, bitlen) do
-    new(pfx)
-    |> partition(bitlen)
-    |> Enum.map(fn x -> marshall(x, pfx) end)
-  rescue
-    err -> raise err
-  end
-
-  @doc """
-  Turn a `prefix` into a list of `{number, width}`-fields.
-
-  If `bit_size(pfx.bits)` is not a multiple of `width`, the last
-  `{number, width}`-tuple, will have a smaller width.
-
-  ## Examples
-
-      iex> fields("10.11.12.13", 8)
-      [{10, 8}, {11, 8}, {12, 8}, {13, 8}]
-
-      iex> fields({10, 11, 12, 13}, 8)
-      [{10, 8}, {11, 8}, {12, 8}, {13, 8}]
-
-      iex> fields({{10, 11, 12, 0}, 24}, 8)
-      [{10, 8}, {11, 8}, {12, 8}]
-
-      iex> fields(%Pfx{bits: <<10, 11, 12, 13>>, maxlen: 32}, 8)
-      [{10, 8}, {11, 8}, {12, 8}, {13, 8}]
-
-      # pfx.bits is not a multiple of 8, hence the {0, 1} at the end
-      iex> fields("10.11.12.0/25", 8)
-      [{10, 8}, {11, 8}, {12, 8}, {0, 1}]
-
-      iex> new(<<0xacdc::16>>, 128) |> fields(4)
-      [{10, 4}, {12, 4}, {13, 4}, {12, 4}]
-
-      # only 1 field with less bits than given width of 64
-      iex> new(<<255, 255>>, 32) |> fields(64)
-      [{65535, 16}]
-
-  """
-  @spec fields(prefix, non_neg_integer) :: list({non_neg_integer, non_neg_integer})
-  def fields(pfx, width) when is_pfx(pfx) and is_integer(width) and width > 0,
-    do: fields([], pfx.bits, width)
-
-  def fields(pfx, width) when is_integer(width) and width > 0 do
-    new(pfx)
-    |> fields(width)
-  rescue
-    err -> raise err
-  end
-
-  def fields(_, width),
-    do: raise(arg_error(:nowidth, width))
-
-  defp fields(acc, <<>>, _width), do: Enum.reverse(acc)
-
-  defp fields(acc, bits, width) when bit_size(bits) >= width do
-    <<num::size(width), rest::bitstring>> = bits
-    fields([{num, width} | acc], rest, width)
-  end
-
-  defp fields(acc, bits, width) do
-    w = bit_size(bits)
-    <<num::size(w)>> = bits
-    fields([{num, w} | acc], "", width)
-  end
-
-  @doc """
-  Transform a `Pfx` prefix into `{{digit, ..}, length}` format.
-
-  The `pfx` is padded to its maximum length using `0`'s and the resulting
-  bits are grouped into *digits*, each `width`-bits wide.  The resulting `length`
-  denotes the prefix' original bit_size.
-
-  Note: works best if the prefix' `maxlen` is a multiple of the `width` used,
-  otherwise `maxlen` cannot be inferred from this format by `tuple_size(digits)
-  * width` (e.g. by `Pfx.undigits`)
-
-  ## Examples
-
-      iex> digits("10.11.12.0/24", 8)
-      {{10, 11, 12, 0}, 24}
-
-      # mask is applied first
-      iex> digits("10.11.12.13/24", 8)
-      {{10, 11, 12, 0}, 24}
-
-      iex> digits("acdc:1976::/32", 16)
-      {{44252, 6518, 0, 0, 0, 0, 0, 0}, 32}
-
-      iex> digits({{0xacdc, 0x1976, 0, 0, 0, 0, 0, 0}, 32}, 16)
-      {{44252, 6518, 0, 0, 0, 0, 0, 0}, 32}
-
-      iex> digits(%Pfx{bits: <<10, 11, 12>>, maxlen: 32}, 8)
-      {{10, 11, 12, 0}, 24}
-
-      iex> digits(%Pfx{bits: <<10, 11, 12, 1::1>>, maxlen: 32}, 8)
-      {{10, 11, 12, 128}, 25}
-
-      iex> digits(%Pfx{bits: <<0x12, 0x34, 0x56, 0x78>>, maxlen: 128}, 4)
-      {{1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 32}
-
-  """
-  @spec digits(prefix, pos_integer) :: {tuple(), pos_integer}
-  def digits(pfx, width) when is_pfx(pfx) and is_pos_integer(width) do
-    try do
-      digits =
-        pfx
-        |> padr()
-        |> fields(width)
-        |> Enum.map(fn {n, _w} -> n end)
-        |> List.to_tuple()
-
-      {digits, bit_size(pfx.bits)}
-    rescue
-      _ -> raise arg_error(:digits, {pfx, width})
-    end
-  end
-
-  def digits(pfx, width) when is_pos_integer(width) do
-    new(pfx)
-    |> digits(width)
-  rescue
-    err -> raise err
-  end
-
-  def digits(_, width),
-    do: raise(arg_error(:nowidth, width))
-
-  @doc """
-  Return the `Pfx` prefix represented by the `digits`, actual `length` and a given
-  field `width`.
-
-  The `pfx.bits` are formed by first concatenating the `digits` expressed as
-  bitstrings of `width`-bits wide and then truncating to the `length`-msb bits.
-
-  The `pfx.maxlen` is inferred as `tuple_size(digits) * width`.
-
-  Note: if a digit does not fit in `width`-bits, only the `width`-least
-  significant bits are preserved, which may yield surprising results.
-
-  ## Examples
-
-      # truncated to the first 24 bits and maxlen is 32 (4*8)
-      iex> undigits({{10, 11, 12, 0}, 24}, 8)
-      %Pfx{bits: <<10, 11, 12>>, maxlen: 32}
-
-      iex> undigits({{-1, -1, 0, 0}, 32}, 8) |> format()
-      "255.255.0.0"
-
-      # bits are truncated to empty bitstring (`length` is 0)
-      iex> undigits({{1,2,3,4}, 0}, 8)
-      %Pfx{bits: <<>>, maxlen: 32}
-
-      # 32 4-bit wide numbers turn into an IPv6 prefix, truncated to 32 bits
-      # and maxlen is set to 32 * 4 = 128
-      iex> undigits({{1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 32},4)
-      %Pfx{bits: <<0x12, 0x34, 0x56, 0x78>>, maxlen: 128}
-
-  """
-  @spec undigits({tuple(), pos_integer}, pos_integer) :: t
-  def undigits({digits, length}, width)
-      when is_pos_integer(width) and is_non_neg_integer(length) do
-    try do
-      bits =
-        digits
-        |> Tuple.to_list()
-        |> Enum.map(fn x -> <<x::size(width)>> end)
-        |> Enum.reduce(fn x, acc -> <<acc::bitstring, x::bitstring>> end)
-        |> truncate(length)
-
-      Pfx.new(bits, tuple_size(digits) * width)
-    rescue
-      # in case digits-tuple contains non-integers
-      _ -> raise arg_error(:noints, digits)
-    end
-  end
-
-  def undigits({_digits, length}, width) when is_pos_integer(width),
-    do: raise(arg_error(:noneg, length))
-
-  def undigits({_digits, _length}, width),
-    do: raise(arg_error(:nopos, width))
-
-  def undigits(digits, _),
-    do: raise(arg_error(:noundig, digits))
 
   @doc """
   Returns another `Pfx` at distance `offset`.
@@ -2264,137 +2877,62 @@ defmodule Pfx do
   end
 
   @doc """
-  Return the `nth`-member of a given `pfx`.
+  Return the `Pfx` prefix represented by the `digits`, actual `length` and a given
+  field `width`.
 
-  A prefix represents a range of (possibly longer) prefixes which can be
-  seen as *members* of the prefix.  So a prefix of `n`-bits long represents:
-  - 1 prefix of `n`-bits long (i.e. itself),
-  - 2 prefixes of `n+1`-bits long,
-  - 4 prefixes of `n+2`-bits long
-  - ..
-  - 2^w prefixes of `n+w`-bits long
+  The `pfx.bits` are formed by first concatenating the `digits` expressed as
+  bitstrings of `width`-bits wide and then truncating to the `length`-msb bits.
 
-  where `n+w` <= `pfx.maxlen`.
+  The `pfx.maxlen` is inferred as `tuple_size(digits) * width`.
 
-  Not specifying a `width` assumes the maximum width available.  If a `width`
-  is specified, the `nth`-offset is added to the prefix as a number
-  `width`-bits wide.  This wraps around the available address space.
+  Note: if a digit does not fit in `width`-bits, only the `width`-least
+  significant bits are preserved, which may yield surprising results.
 
   ## Examples
 
-      iex> member("10.10.10.0/24", 255)
-      "10.10.10.255"
+      # truncated to the first 24 bits and maxlen is 32 (4*8)
+      iex> undigits({{10, 11, 12, 0}, 24}, 8)
+      %Pfx{bits: <<10, 11, 12>>, maxlen: 32}
 
-      # wraps around
-      iex> member("10.10.10.0/24", 256)
-      "10.10.10.0"
+      iex> undigits({{-1, -1, 0, 0}, 32}, 8) |> format()
+      "255.255.0.0"
 
-      iex> member({{10, 10, 10, 0}, 24}, 255)
-      {{10, 10, 10, 255}, 32}
+      # bits are truncated to empty bitstring (`length` is 0)
+      iex> undigits({{1,2,3,4}, 0}, 8)
+      %Pfx{bits: <<>>, maxlen: 32}
 
-      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 0)
-      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
-
-      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 255)
-      %Pfx{bits: <<10, 10, 10, 255>>, maxlen: 32}
-
-      # wraps around
-      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 256)
-      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
-
-      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, -1)
-      %Pfx{bits: <<10, 10, 10, 255>>, maxlen: 32}
-
-      # a full prefix always returns itself
-      iex> member(%Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}, 0)
-      %Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}
-
-      iex> member(%Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}, 3)
-      %Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}
+      # 32 4-bit wide numbers turn into an IPv6 prefix, truncated to 32 bits
+      # and maxlen is set to 32 * 4 = 128
+      iex> undigits({{1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 32},4)
+      %Pfx{bits: <<0x12, 0x34, 0x56, 0x78>>, maxlen: 128}
 
   """
-  @spec member(prefix, integer) :: prefix
-  def member(pfx, nth) when is_pfx(pfx) and is_integer(nth),
-    do: member(pfx, nth, pfx.maxlen - bit_size(pfx.bits))
+  @spec undigits({tuple(), pos_integer}, pos_integer) :: t
+  def undigits({digits, length}, width)
+      when is_pos_integer(width) and is_non_neg_integer(length) do
+    try do
+      bits =
+        digits
+        |> Tuple.to_list()
+        |> Enum.map(fn x -> <<x::size(width)>> end)
+        |> Enum.reduce(fn x, acc -> <<acc::bitstring, x::bitstring>> end)
+        |> truncate(length)
 
-  def member(pfx, nth) when is_integer(nth) do
-    new(pfx)
-    |> member(nth)
-    |> marshall(pfx)
-  rescue
-    err -> raise err
+      Pfx.new(bits, tuple_size(digits) * width)
+    rescue
+      # in case digits-tuple contains non-integers
+      _ -> raise arg_error(:noints, digits)
+    end
   end
 
-  def member(_, nth),
-    do: raise(arg_error(:noint, nth))
+  def undigits({_digits, length}, width) when is_pos_integer(width),
+    do: raise(arg_error(:noneg, length))
 
-  @doc """
-  Returns the first full length prefix from the set represented by `pfx`.
+  def undigits({_digits, _length}, width),
+    do: raise(arg_error(:nopos, width))
 
-  ## Examples
-
-      iex> first("10.10.10.1/24")
-      "10.10.10.0"
-
-      iex> first("acdc:1976::/32")
-      "acdc:1976:0:0:0:0:0:0"
-
-      # a full address is its own this-network
-      iex> first({10, 10, 10, 1})
-      {10, 10, 10, 1}
-
-      iex> first({{10, 10, 10, 1}, 24})
-      {{10, 10, 10, 0}, 32}
-
-      iex> first(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
-      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
-
-      iex> first(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128})
-      %Pfx{bits: <<0xACDC::16, 0x1976::16, 0::96>>, maxlen: 128}
-
-  """
-  @spec first(prefix) :: prefix
-  def first(pfx) do
-    new(pfx)
-    |> padr(0)
-    |> marshall(pfx)
-  rescue
-    err -> raise err
-  end
-
-  @doc """
-  Returns the last full length prefix from the set represented by `pfx`.
-
-  ## Examples
-
-      iex> last("10.10.0.0/16")
-      "10.10.255.255"
-
-      # a full address is its own last address
-      iex> last({10, 10, 10, 1})
-      {10, 10, 10, 1}
-
-      iex> last({{10, 10, 10, 1}, 30})
-      {{10, 10, 10, 3}, 32}
-
-      iex> last(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
-      %Pfx{bits: <<10, 10, 10, 255>>, maxlen: 32}
-
-      iex> last(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128})
-      %Pfx{bits: <<0xACDC::16, 0x1976::16, -1::96>>, maxlen: 128}
-
-      iex> last("acdc:1976::/112")
-      "acdc:1976:0:0:0:0:0:ffff"
-
-  """
-  @spec last(prefix) :: prefix
-  def last(pfx) do
-    new(pfx)
-    |> padr(1)
-    |> marshall(pfx)
-  rescue
-    err -> raise err
-  end
+  def undigits(digits, _),
+    do: raise(arg_error(:noundig, digits))
 
   @doc """
   Return the `nth` subprefix for a given `pfx`, using `width` bits.
@@ -2441,168 +2979,6 @@ defmodule Pfx do
   end
 
   @doc """
-  Returns true is prefix `pfx1` is a member of prefix `pfx2`
-
-  If either `prfx1` or `pfx2` is invalid or they are of different types,
-  member? simply returns false.
-
-  ## Examples
-
-      iex> member?("10.10.10.10", "10.0.0.0/8")
-      true
-
-      iex> member?({10, 10, 10, 10}, "10.0.0.0/8")
-      true
-
-      iex> member?({{10, 10, 10, 10}, 24}, "10.0.0.0/8")
-      true
-
-      iex> member?({{11, 0, 0, 0}, 8}, {{10, 0, 0, 0}, 8})
-      false
-
-      iex> member?(%Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}, %Pfx{bits: <<10>>, maxlen: 32})
-      true
-
-      # bad prefix
-      iex> member?("10.10.10.10", "10.10.10.256/24")
-      false
-
-  """
-  @spec member?(prefix, prefix) :: boolean
-  def member?(pfx1, pfx2)
-      when is_comparable(pfx1, pfx2) and bit_size(pfx2.bits) <= bit_size(pfx1.bits),
-      do: pfx2.bits == truncate(pfx1.bits, bit_size(pfx2.bits))
-
-  def member?(pfx1, pfx2) when is_pfx(pfx1) and is_pfx(pfx2),
-    do: false
-
-  def member?(pfx1, pfx2) do
-    try do
-      member?(new(pfx1), new(pfx2))
-    rescue
-      _ -> false
-    end
-  end
-
-  # Format
-
-  @doc ~S"""
-  Generic formatter to turn a `Pfx` into a string, using several options:
-  - `:width`, field width (default 8)
-  - `:base`, howto turn a field into a string (default 10, use 16 for hex numbers)
-  - `:unit`, how many fields go into 1 section (default 1)
-  - `:ssep`, howto join the sections together (default ".")
-  - `:lsep`, howto join a mask if required (default "/")
-  - `:mask`, whether to add a mask (default false)
-  - `:reverse`, whether to reverse fields before grouping/joining (default false)
-  - `:padding`, whether to pad out the `pfx.bits` (default true)
-
-  The defaults are geared towards IPv4 prefixes, but the options should be able
-  to accomodate other domains as well.
-
-  Notes:
-  - the *prefix.bits*-length is omitted if equal to the *prefix.bits*-size
-  - domain specific submodules probably implement their own formatter.
-
-  ## Examples
-
-      iex> format(%Pfx{bits: <<10, 11, 12>>, maxlen: 32})
-      "10.11.12.0/24"
-
-      iex> format({{10, 11, 12, 0}, 24})
-      "10.11.12.0/24"
-
-      iex> format({10, 11, 12, 0})
-      "10.11.12.0"
-
-      # non-sensical, but there you go
-      iex> format("10.11.12.0/24")
-      "10.11.12.0/24"
-
-      # bitstring, note that mask is applied when new creates the `pfx`
-      iex> format("1.2.3.4/24", width: 1, base: 2, unit: 8, mask: false)
-      "00000001.00000010.00000011.00000000"
-
-      # mask not appended as its redundant for a full-sized prefix
-      iex> format(%Pfx{bits: <<10, 11, 12, 13>>, maxlen: 32})
-      "10.11.12.13"
-
-      iex> pfx = new(<<0xacdc::16, 0x1976::16>>, 128)
-      iex> format(pfx, width: 16, base: 16, ssep: ":")
-      "acdc:1976:0:0:0:0:0:0/32"
-      #
-      # similar, but grouping 4 fields, each 4 bits wide, into a single section
-      #
-      iex> format(pfx, width: 4, base: 16, unit: 4, ssep: ":")
-      "acdc:1976:0000:0000:0000:0000:0000:0000/32"
-      #
-      # this time, omit the acutal pfx length
-      #
-      iex> format(pfx, width: 16, base: 16, ssep: ":", mask: false)
-      "acdc:1976:0:0:0:0:0:0"
-      #
-      # ptr for IPv6 using the nibble format:
-      # - dot-separated reversal of all hex digits in the expanded address
-      #
-      iex> pfx
-      ...> |> format(width: 4, base: 16, mask: false, reverse: true)
-      ...> |> String.downcase()
-      ...> |> (fn x -> "#{x}.ip6.arpa." end).()
-      "0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.6.7.9.1.c.d.c.a.ip6.arpa."
-
-      # turn off padding to get reverse zone dns ptr record
-      iex> new(<<10, 11, 12>>, 32)
-      ...> |> format(padding: false, reverse: true, mask: false)
-      ...> |> (&"#{&1}.in-addr.arpa.").()
-      "12.11.10.in-addr.arpa."
-
-  """
-  @spec format(prefix, Keyword.t()) :: String.t()
-  def format(pfx, opts \\ [])
-
-  # - NOTE: String.Chars, when using Pfx.format, MUST always provide at least 1 option
-  def format(pfx, []) when is_pfx(pfx) and pfx.maxlen in [32, 48, 64, 128] do
-    "#{pfx}"
-  end
-
-  def format(pfx, opts) when is_pfx(pfx) do
-    width = Keyword.get(opts, :width, 8)
-    base = Keyword.get(opts, :base, 10)
-    ssep = Keyword.get(opts, :ssep, ".")
-    lsep = Keyword.get(opts, :lsep, "/")
-    unit = Keyword.get(opts, :unit, 1)
-    mask = Keyword.get(opts, :mask, true)
-    reverse = Keyword.get(opts, :reverse, false)
-    padding = Keyword.get(opts, :padding, true)
-
-    string =
-      pfx
-      |> (fn x -> if padding, do: padr(x), else: x end).()
-      |> fields(width)
-      |> Enum.map(fn {n, _w} -> Integer.to_string(n, base) end)
-      |> (fn x -> if reverse, do: Enum.reverse(x), else: x end).()
-      |> Enum.chunk_every(unit)
-      |> Enum.join(ssep)
-
-    string = if pfx.maxlen == 128, do: String.downcase(string), else: string
-
-    if mask and bit_size(pfx.bits) < pfx.maxlen do
-      "#{string}#{lsep}#{bit_size(pfx.bits)}"
-    else
-      string
-    end
-  end
-
-  def format(pfx, opts) do
-    new(pfx)
-    |> format(opts)
-  rescue
-    err -> raise err
-  end
-
-  # do: raise(arg_error(:nopfx, "#{inspect(pfx)}"))
-
-  @doc """
   Returns boolean indicating whether `pfx` is a valid `t:prefix/0` or not.
 
   ## Examples
@@ -2633,392 +3009,6 @@ defmodule Pfx do
     true
   rescue
     _ -> false
-  end
-
-  # Sorting
-
-  @doc ~S"""
-  Compare function for sorting.
-
-  - `:eq` prefix1 is equal to prefix2
-  - `:lt` prefix1 has more bits *or* lies to the left of prefix2
-  - `:gt` prefix1 has less bits *or* lies to the right of prefix2
-
-  The prefixes must have the same *maxlen* and are first compared by size
-  (i.e. a *shorter* prefix is considered *larger*), and second on their
-  bitstring value.
-
-  ## Examples
-
-      iex> compare("10.0.0.0/8", "11.0.0.0/8")
-      :lt
-
-      iex> compare("10.0.0.0/8", {{11, 0, 0, 0}, 8})
-      :lt
-
-      iex> compare({10, 0, 0, 0}, {{11, 0, 0, 0}, 16})
-      :lt
-
-      iex> compare(new(<<10>>, 32), new(<<11>>, 32))
-      :lt
-
-      # sort on prefixes, first on bit_size than bits-values
-
-      iex> list = ["10.11.0.0/16", "10.10.10.0/24", "10.10.0.0/16"]
-      iex> Enum.sort(list, Pfx)
-      [
-        "10.10.10.0/24",
-        "10.10.0.0/16",
-        "10.11.0.0/16"
-      ]
-      #
-      # whereas regular sort does:
-      #
-      iex> Enum.sort(list)
-      [
-        "10.10.0.0/16",
-        "10.10.10.0/24",
-        "10.11.0.0/16"
-      ]
-
-      iex> list = [new(<<10, 11>>, 32), new(<<10,10,10>>, 32), new(<<10,10>>, 32)]
-      iex> Enum.sort(list, Pfx)
-      [
-        %Pfx{bits: <<10, 10, 10>>, maxlen: 32},
-        %Pfx{bits: <<10, 10>>, maxlen: 32},
-        %Pfx{bits: <<10, 11>>, maxlen: 32}
-      ]
-
-      # not advisable, but mixed representations are possible as well
-      iex> l = ["10.11.0.0/16", {{10, 10, 10, 0}, 24}, %Pfx{bits: <<10, 10>>, maxlen: 32}]
-      iex> Enum.sort(l, Pfx)
-      [
-        {{10, 10, 10, 0}, 24},
-        %Pfx{bits: <<10, 10>>, maxlen: 32},
-        "10.11.0.0/16",
-      ]
-
-      # note: all prefixes must have the same `maxlen`
-      iex> compare(new(<<10>>, 32), new(<<10>>, 128))
-      ** (ArgumentError) prefixes have different maxlen's: {%Pfx{bits: "\n", maxlen: 32}, %Pfx{bits: "\n", maxlen: 128}}
-
-  """
-  @spec compare(prefix, prefix) :: :eq | :lt | :gt
-  def compare(pfx1, pfx2)
-
-  def compare(x, y) when is_comparable(x, y),
-    do: comparep(x.bits, y.bits)
-
-  def compare(x, y) when is_pfx(x) and is_pfx(y),
-    do: raise(arg_error(:nocompare, {x, y}))
-
-  def compare(x, y) do
-    new(x)
-    |> compare(new(y))
-  rescue
-    err -> raise err
-  end
-
-  defp comparep(x, y) when bit_size(x) > bit_size(y), do: :lt
-  defp comparep(x, y) when bit_size(x) < bit_size(y), do: :gt
-  defp comparep(x, y) when x < y, do: :lt
-  defp comparep(x, y) when x > y, do: :gt
-  defp comparep(x, y) when x == y, do: :eq
-
-  @doc """
-  Contrast two `Pfx` prefixes
-
-  Contrasting two prefixes will yield one of:
-  - `:equal` pfx1 is equal to pfx2
-  - `:more` pfx1 is a more specific version of pfx2
-  - `:less` pfx1 is a less specific version of pfx2
-  - `:left` pfx1 is left-adjacent to pfx2
-  - `:right` pfx1 is right-adjacent to pfx2
-  - `:disjoint` pfx1 has no match with pfx2 whatsoever.
-
-  ## Examples
-
-      iex> contrast("10.10.0.0/16", "10.10.0.0/16")
-      :equal
-
-      iex> contrast("10.10.10.0/24", "10.10.0.0/16")
-      :more
-
-      iex> contrast("10.0.0.0/8", "10.255.255.0/24")
-      :less
-
-      iex> contrast("1.2.3.0/24", "1.2.4.0/24")
-      :left
-
-      iex> contrast("1.2.3.4/30", "1.2.3.0/30")
-      :right
-
-      iex> contrast("10.10.0.0/16", "9.0.0.0/8")
-      :disjoint
-
-      iex> contrast("10.10.0.0/16", %Pfx{bits: <<10,12>>, maxlen: 32})
-      :disjoint
-
-  """
-  @spec contrast(prefix, prefix) :: :equal | :more | :less | :left | :right | :disjoint
-  def contrast(pfx1, pfx2)
-
-  def contrast(x, y) when is_comparable(x, y),
-    do: contrastp(x.bits, y.bits)
-
-  def contrast(x, y) when is_pfx(x) and is_pfx(y),
-    do: raise(arg_error(:nocompare, {x, y}))
-
-  def contrast(x, y) do
-    new(x)
-    |> contrast(new(y))
-  rescue
-    err -> raise err
-  end
-
-  defp contrastp(x, y) when x == y,
-    do: :equal
-
-  defp contrastp(x, y) when bit_size(x) > bit_size(y),
-    do: if(y == truncate(x, bit_size(y)), do: :more, else: :disjoint)
-
-  defp contrastp(x, y) when bit_size(x) < bit_size(y),
-    do: if(x == truncate(y, bit_size(x)), do: :less, else: :disjoint)
-
-  defp contrastp(x, y) do
-    size = bit_size(x)
-    <<n::size(size)>> = x
-    <<m::size(size)>> = y
-
-    case n - m do
-      1 -> :right
-      -1 -> :left
-      _ -> :disjoint
-    end
-  end
-
-  @doc """
-  Returns a list of address prefixes for given `pfx`.
-
-  ## Examples
-
-      iex> hosts("10.10.10.0/30")
-      [
-        "10.10.10.0",
-        "10.10.10.1",
-        "10.10.10.2",
-        "10.10.10.3"
-      ]
-
-      iex> hosts({{10, 10, 10, 0}, 30})
-      [
-        {{10, 10, 10, 0}, 32},
-        {{10, 10, 10, 1}, 32},
-        {{10, 10, 10, 2}, 32},
-        {{10, 10, 10, 3}, 32}
-      ]
-
-      iex> hosts(%Pfx{bits: <<10, 10, 10, 0::6>>, maxlen: 32})
-      [
-        %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32},
-        %Pfx{bits: <<10, 10, 10, 1>>, maxlen: 32},
-        %Pfx{bits: <<10, 10, 10, 2>>, maxlen: 32},
-        %Pfx{bits: <<10, 10, 10, 3>>, maxlen: 32}
-      ]
-
-  """
-  @spec hosts(prefix) :: list(prefix)
-  def hosts(pfx),
-    do: for(ip <- new(pfx), do: marshall(ip, pfx))
-
-  @doc """
-  Return the `nth` host in given `pfx`.
-
-  Note that offset `nth` wraps around. See `Pfx.member/2`.
-
-  ## Examples
-
-      iex> host("10.10.10.0/24", 128)
-      "10.10.10.128"
-
-      iex> host({{10, 10, 10, 0}, 24}, 128)
-      {{10, 10, 10, 128}, 32}
-
-      iex> host(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 128)
-      %Pfx{bits: <<10, 10, 10, 128>>, maxlen: 32}
-
-      # wraps around
-      iex> host("10.10.10.0/24", 256)
-      "10.10.10.0"
-
-  """
-  @spec host(prefix, integer) :: prefix
-  def host(pfx, nth) when is_integer(nth) do
-    new(pfx)
-    |> member(nth)
-    |> marshall(pfx)
-  rescue
-    err -> raise err
-  end
-
-  def host(_pfx, nth),
-    do: raise(arg_error(:noint, nth))
-
-  @doc """
-  Returns the mask for given `pfx`.
-
-  The result is always a full length prefix.
-
-  ## Examples
-
-      iex> mask("10.10.10.0/25")
-      "255.255.255.128"
-
-      iex> mask({10, 10, 10, 0})
-      {255, 255, 255, 255}
-
-      iex> mask({{10, 10, 10, 0}, 25})
-      {{255, 255, 255, 128}, 32}
-
-      iex> mask("acdc:1976::/32")
-      "ffff:ffff:0:0:0:0:0:0"
-
-      # some prefix with some other maxlen
-      iex> mask(%Pfx{bits: <<10, 10, 0::1>>, maxlen: 20})
-      %Pfx{bits: <<255, 255, 8::4>>, maxlen: 20}
-
-  """
-  @spec mask(prefix) :: prefix
-  def mask(pfx) do
-    new(pfx)
-    |> bset(1)
-    |> padr(0)
-    |> marshall(pfx)
-  rescue
-    err -> raise err
-  end
-
-  @doc """
-  Applies a `mask` to given `prefix`.
-
-  Applying a mask may trim off bits from given `prefix` depending on the mask.
-  A mask can never add bits to the `prefix.bits` though.  The representation of
-  the result mirrors that of given `prefix`.  Note that both `prefix` and
-  `mask` must be of the same type (same maxlen).
-
-  ## Examples
-
-      iex> mask("1.1.1.1", "255.255.255.0")
-      "1.1.1.0"
-
-      iex> mask("1.1.1.1", "255.0.0.255")
-      "1.0.0.1"
-
-      iex> mask({1, 1, 1, 1}, {255, 0, 0, 255})
-      {1, 0, 0, 1}
-
-      iex> mask({1, 1, 1, 1}, "255.0.0.255")
-      {1, 0, 0, 1}
-
-      iex> mask("1.1.1.1", "255.255.0.0/16")
-      "1.1.0.0/16"
-
-      iex> mask("1.1.1.0/24", "255.255.0.0/16")
-      "1.1.0.0/16"
-
-      # this mask has no effect
-      iex> mask("1.1.0.0/16", "255.255.255.0/24")
-      "1.1.0.0/16"
-
-  """
-  @spec mask(prefix, prefix) :: prefix
-  def mask(prefix, mask) when is_pfx(mask) do
-    pfx = new(prefix)
-
-    unless is_comparable(pfx, mask),
-      do: raise(arg_error(:nocompare, {"#{pfx}", "#{mask}"}))
-
-    len = min(bit_size(pfx.bits), bit_size(mask.bits))
-
-    mask
-    |> band(pfx)
-    |> keep(len)
-    |> marshall(prefix)
-  rescue
-    err -> raise err
-  end
-
-  def mask(prefix, mask) do
-    mask(prefix, new(mask))
-  rescue
-    err -> raise err
-  end
-
-  @doc """
-  Returns the inverted mask for given `pfx`.
-
-  The result is always a full length prefix.
-
-  ## Examples
-
-      iex> inv_mask("10.10.10.0/25")
-      "0.0.0.127"
-
-      iex> inv_mask({10, 10, 10, 0})
-      {0, 0, 0, 0}
-
-      iex> inv_mask({{10, 10, 10, 0}, 25})
-      {{0, 0, 0, 127}, 32}
-
-      iex> inv_mask(%Pfx{bits: <<10, 10, 10, 0::1>>, maxlen: 32})
-      %Pfx{bits: <<0, 0, 0, 127>>, maxlen: 32}
-
-  """
-  @spec inv_mask(prefix) :: prefix
-  def inv_mask(pfx) do
-    new(pfx)
-    |> bset(0)
-    |> padr(1)
-    |> marshall(pfx)
-  rescue
-    err -> raise err
-  end
-
-  @doc """
-  Returns the neighboring prefix such that both can be combined in a supernet.
-
-  ## Examples
-
-      iex> neighbor("1.1.1.128/25")
-      "1.1.1.0/25"
-
-      iex> neighbor("1.1.1.0/25")
-      "1.1.1.128/25"
-
-      iex> neighbor({1, 1, 1, 1})
-      {1, 1, 1, 0}
-
-      iex> neighbor({{1, 1, 1, 128}, 25})
-      {{1, 1, 1, 0}, 25}
-
-      iex> neighbor(%Pfx{bits: <<1, 1, 1, 1::1>>, maxlen: 32})
-      %Pfx{bits: <<1, 1, 1, 0::1>>, maxlen: 32}
-
-  """
-  @spec neighbor(prefix) :: prefix
-  def neighbor(pfx) do
-    x = new(pfx)
-    size = bit_size(x.bits)
-
-    if size == 0 do
-      # empty prefix doesn't have a neigbor, really.
-      raise arg_error(:noneighbor, pfx)
-    else
-      offset = 1 - 2 * bit(x, bit_size(x.bits) - 1)
-      sibling(x, offset) |> marshall(pfx)
-    end
-  rescue
-    err -> raise err
   end
 
   # IP oriented
@@ -3054,6 +3044,54 @@ defmodule Pfx do
   @spec broadcast(prefix) :: prefix
   def broadcast(pfx) do
     last(pfx)
+  rescue
+    err -> raise err
+  end
+
+  @doc """
+  Return a reverse DNS name (pointer) for given `pfx`.
+
+  The prefix will be padded right with `0`-bits to a multiple of 8 for IPv4 prefixes and
+  to a multiple of 4 for IPv6 prefixes.  Note that this might give unexpected results.
+  So `dns_ptr/1` works best if the prefix given is actually a multiple of 4 or 8.
+
+  ## Examples
+
+      iex> dns_ptr("10.10.0.0/16")
+      "10.10.in-addr.arpa"
+
+      # "1.2.3.0/23" actually encodes as %Pfx{bits: <<1, 2, 1::size(7)>>, maxlen: 32}
+      # and padding right with 0-bits to a /24 yields the 1.2.2.0/24 ...
+      iex> dns_ptr("1.2.3.0/23")
+      "2.2.1.in-addr.arpa"
+
+      iex> dns_ptr("acdc:1976::/32")
+      "6.7.9.1.c.d.c.a.ip6.arpa"
+
+      iex> dns_ptr("acdc:1975::b1ba:2021")
+      "1.2.0.2.a.b.1.b.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.5.7.9.1.c.d.c.a.ip6.arpa"
+
+  """
+  @doc section: :ip
+  @spec dns_ptr(prefix) :: String.t()
+  def dns_ptr(pfx) do
+    x = new(pfx)
+    if bit_size(x.bits) == 0, do: raise(arg_error(:nobits, pfx))
+
+    {width, base, suffix} =
+      case x.maxlen do
+        32 -> {8, 10, "in-addr.arpa"}
+        128 -> {4, 16, "ip6.arpa"}
+        _ -> raise arg_error(:pfx, pfx)
+      end
+
+    n = rem(x.maxlen - bit_size(x.bits), width)
+
+    x
+    |> padr(0, n)
+    |> format(width: width, base: base, padding: false, reverse: true, mask: false)
+    |> String.downcase()
+    |> (&"#{&1}.#{suffix}").()
   rescue
     err -> raise err
   end
@@ -3162,87 +3200,60 @@ defmodule Pfx do
   end
 
   @doc """
-  Returns true if `prefix` is a teredo address, false otherwise
+  Return a map with link-local address components for given `pfx`.
 
-  IPv6 address within the teredo service prefix of `2000:0::/32`
-
-  More details in [rfc4380](https://www.iana.org/go/rfc4380).
-
-  ## Examples
-
-      iex> teredo?("2001:0000:4136:e378:8000:63bf:3fff:fdd2")
-      true
-
-      iex> teredo?("1.1.1.1")
-      false
-
-      iex> teredo?(42)
-      false
-
-  """
-  @doc section: :ip
-  @spec teredo?(prefix) :: boolean
-  def teredo?(pfx) do
-    pfx
-    |> new()
-    |> member?(%Pfx{bits: <<0x2001::16, 0::16>>, maxlen: 128})
-  rescue
-    _ -> false
-  end
-
-  @doc """
-  Returns a map with the teredo address components of `pfx` or nil.
-
-  Returns nil if `pfx` is not a
-  [teredo](https://www.rfc-editor.org/rfc/rfc4380.html#section-4) address.
-
-  Teredo address consist of:
-  1. the teredo service prefix of `2000:0::/32`
-  2. IPv4 address of the teredo server
-  3. flags (16 bits) that document type of address and NAT
-  4. Port (16 bits), the obfuscated "mapped UDP port" at the client
-  5. IPv4 address (obfucated) of the teredo client.
-
-  More details in [rfc4380](https://www.iana.org/go/rfc4380).
+  Returns nil if `pfx` is not link-local as per
+  [rfc3927](https://www.iana.org/go/rfc3927) or
+  [rfc4291](https://www.rfc-editor.org/rfc/rfc4291)
 
   ## Examples
 
-      # example from https://en.wikipedia.org/wiki/Teredo_tunneling#IPv6_addressing
-      iex> teredo_decode("2001:0000:4136:e378:8000:63bf:3fff:fdd2")
-      %{
-        server: "65.54.227.120",
-        client: "192.0.2.45",
-        port: 40000,
-        flags: {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        prefix: "2001:0000:4136:e378:8000:63bf:3fff:fdd2"
+      iex> x = link_local("169.254.128.233")
+      iex> x
+      %{ digits: {169, 254, 128, 233},
+         prefix: "169.254.0.0/16",
+         ifaceID: 33001,
+         address: "169.254.128.233"
       }
+      #
+      iex> host(x.prefix, x.ifaceID)
+      "169.254.128.233"
 
-      iex> teredo_decode({0x2001, 0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2})
-      %{
-        server: {65, 54, 227, 120},
-        client: {192, 0, 2, 45},
-        port: 40000,
-        flags: {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        prefix: {0x2001, 0x0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2}
+      iex> y = link_local("fe80::acdc:1976")
+      iex> y
+      %{ preamble: 1018,
+         prefix: "fe80:0:0:0:0:0:0:0/64",
+         ifaceID: 2900105590,
+         address: "fe80::acdc:1976"
       }
-
-      iex> teredo_decode("1.1.1.1")
-      nil
+      #
+      iex> host(y.prefix, y.ifaceID)
+      "fe80:0:0:0:0:0:acdc:1976"
 
   """
   @doc section: :ip
-  @spec teredo_decode(prefix) :: map | nil
-  def teredo_decode(pfx) do
+  @spec link_local(prefix) :: map | nil
+  def link_local(pfx) do
     x = new(pfx)
 
-    if teredo?(x) do
-      %{
-        server: cut(x, 32, 32) |> marshall(pfx),
-        client: cut(x, 96, 32) |> bnot() |> marshall(pfx),
-        port: cut(x, 80, 16) |> bnot() |> cast(),
-        flags: cut(x, 64, 16) |> digits(1) |> elem(0),
-        prefix: pfx
-      }
+    if link_local?(x) do
+      case x.maxlen do
+        128 ->
+          %{
+            preamble: cut(x, 0, 10) |> cast(),
+            prefix: keep(x, 64) |> marshall(pfx),
+            ifaceID: cut(x, 64, 64) |> cast(),
+            address: pfx
+          }
+
+        32 ->
+          %{
+            digits: digits(x, 8) |> elem(0),
+            prefix: keep(x, 16) |> marshall(pfx),
+            ifaceID: cut(x, 16, 16) |> cast(),
+            address: pfx
+          }
+      end
     else
       nil
     end
@@ -3251,63 +3262,69 @@ defmodule Pfx do
   end
 
   @doc """
-  Encode given `server`, `client`, `port` and `flags` as an IPv6 teredo address.
+  Returns true if `pfx` is a link-local prefix, false otherwise
 
-  The `client` and `server` must be full IPv4 adresses, while both `port` and `flags`
-  are interpreted as 16-bit unsigned integers.
+  Link local prefixes include:
 
-  The result mirrors the representation format of the `client` argument.
+  - `0.0.0.0/8`,          [rfc1122](https://tools.ietf.org/html/rfc1122), 'this-network'
+  - `255.255.255.255/32`, [rfc1f22](https://www.iana.org/go/rfc1122), limited broadcast
+  - `169.254.0.0/16`,     [rfc3927](https://www.iana.org/go/rfc3927), link-local (see examples)
+  - `fe80::/64`,          [rfc4291](https://tools.ietf.org/html/rfc4291), link-local
 
   ## Examples
 
-      iex> flags = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-      iex> teredo_encode("192.0.2.45", "65.54.227.120", 40000, flags)
-      "2001:0:4136:e378:8000:63bf:3fff:fdd2"
+      # first 256 addresses are reserved
+      iex> link_local?("169.254.0.0")
+      false
 
-      iex> flags = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-      iex> teredo_encode({192, 0, 2, 45}, "65.54.227.120", 40000, flags)
-      {0x2001, 0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2}
+      # last 256 addresses are reserved
+      iex> link_local?("169.254.255.0")
+      false
 
-      iex> flags = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-      iex> teredo_encode({{192, 0, 2, 45}, 32}, "65.54.227.120", 40000, flags)
-      {{0x2001, 0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2}, 128}
+      # rest is considered link local
+      iex> link_local?("169.254.1.0")
+      true
 
-      iex> flags = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-      iex> teredo_encode(%Pfx{bits: <<192, 0, 2, 45>>, maxlen: 32}, "65.54.227.120", 40000, flags)
-      %Pfx{bits: <<0x2001::16, 0::16, 0x4136::16, 0xe378::16, 0x8000::16, 0x63bf::16, 0x3fff::16, 0xfdd2::16>>, maxlen: 128}
+      iex> link_local?("169.254.254.255")
+      true
+
+      iex> link_local?("0.0.0.0")
+      true
+
+      iex> link_local?("0.255.255.255")
+      true
+
+      iex> link_local?({0, 255, 255, 255})
+      true
+
+      iex> link_local?("fe80::acdc:1975")
+      true
+
+      iex> link_local?("1.1.1.1")
+      false
+
+      # bad prefix
+      iex> link_local?("10.10.10.256")
+      false
 
   """
   @doc section: :ip
-  @spec teredo_encode(prefix, prefix, integer, tuple) :: prefix
-  def teredo_encode(client, server, port, flags)
-      when is_integer(port) and tuple_size(flags) == 16 do
-    c = bnot(client) |> new()
-    s = new(server)
+  @spec link_local?(prefix) :: boolean
+  def link_local?(pfx) do
+    x = new(pfx)
 
-    if bit_size(c.bits) != 32 or c.maxlen != 32,
-      do: raise(arg_error(:pfx4full, client))
-
-    if bit_size(s.bits) != 32 or s.maxlen != 32,
-      do: raise(arg_error(:pfx4full, server))
-
-    p = <<Bitwise.bnot(port)::16>>
-    f = undigits({flags, 16}, 1)
-
-    x = %Pfx{
-      bits: <<0x20010000::32, s.bits::bits, f.bits::bits, p::bits, c.bits::bits>>,
-      maxlen: 128
-    }
-
-    marshall(x, client)
+    cond do
+      member?(x, %Pfx{bits: <<169, 254, 0>>, maxlen: 32}) -> false
+      member?(x, %Pfx{bits: <<169, 254, 255>>, maxlen: 32}) -> false
+      member?(x, %Pfx{bits: <<169, 254>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<0>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<255, 255, 255, 255>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<0xFE80::16, 0::48>>, maxlen: 128}) -> true
+      true -> false
+    end
   rescue
-    err -> raise err
+    _ -> false
   end
-
-  def teredo_encode(_client, _server, port, flags) when tuple_size(flags) == 16,
-    do: raise(arg_error(:noint, port))
-
-  def teredo_encode(_client, _server, port, flags) when is_integer(port),
-    do: raise(arg_error(:noflags, flags))
 
   @doc """
   Returns true is `pfx` is a multicast prefix, false otherwise
@@ -3514,228 +3531,6 @@ defmodule Pfx do
   end
 
   @doc """
-  Returns the this-network prefix (full address) for given `pfx`.
-
-  Yields the same result as `Pfx.first/1`, included for nostalgia.
-
-  ## Examples
-
-      iex> network("10.10.10.1/24")
-      "10.10.10.0"
-
-      iex> network("acdc:1976::/32")
-      "acdc:1976:0:0:0:0:0:0"
-
-      # a full address is its own this-network
-      iex> network({10, 10, 10, 1})
-      {10, 10, 10, 1}
-
-      iex> network({{10, 10, 10, 1}, 24})
-      {{10, 10, 10, 0}, 32}
-
-      iex> network(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
-      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
-
-      iex> network(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128})
-      %Pfx{bits: <<0xACDC::16, 0x1976::16, 0::96>>, maxlen: 128}
-
-  """
-  @doc section: :ip
-  @spec network(prefix) :: prefix
-  def network(pfx) do
-    first(pfx)
-  rescue
-    err -> raise err
-  end
-
-  @doc """
-  Returns true if `pfx` is a link-local prefix, false otherwise
-
-  Link local prefixes include:
-
-  - `0.0.0.0/8`,          [rfc1122](https://tools.ietf.org/html/rfc1122), 'this-network'
-  - `255.255.255.255/32`, [rfc1f22](https://www.iana.org/go/rfc1122), limited broadcast
-  - `169.254.0.0/16`,     [rfc3927](https://www.iana.org/go/rfc3927), link-local (see examples)
-  - `fe80::/64`,          [rfc4291](https://tools.ietf.org/html/rfc4291), link-local
-
-  ## Examples
-
-      # first 256 addresses are reserved
-      iex> link_local?("169.254.0.0")
-      false
-
-      # last 256 addresses are reserved
-      iex> link_local?("169.254.255.0")
-      false
-
-      # rest is considered link local
-      iex> link_local?("169.254.1.0")
-      true
-
-      iex> link_local?("169.254.254.255")
-      true
-
-      iex> link_local?("0.0.0.0")
-      true
-
-      iex> link_local?("0.255.255.255")
-      true
-
-      iex> link_local?({0, 255, 255, 255})
-      true
-
-      iex> link_local?("fe80::acdc:1975")
-      true
-
-      iex> link_local?("1.1.1.1")
-      false
-
-      # bad prefix
-      iex> link_local?("10.10.10.256")
-      false
-
-  """
-  @doc section: :ip
-  @spec link_local?(prefix) :: boolean
-  def link_local?(pfx) do
-    x = new(pfx)
-
-    cond do
-      member?(x, %Pfx{bits: <<169, 254, 0>>, maxlen: 32}) -> false
-      member?(x, %Pfx{bits: <<169, 254, 255>>, maxlen: 32}) -> false
-      member?(x, %Pfx{bits: <<169, 254>>, maxlen: 32}) -> true
-      member?(x, %Pfx{bits: <<0>>, maxlen: 32}) -> true
-      member?(x, %Pfx{bits: <<255, 255, 255, 255>>, maxlen: 32}) -> true
-      member?(x, %Pfx{bits: <<0xFE80::16, 0::48>>, maxlen: 128}) -> true
-      true -> false
-    end
-  rescue
-    _ -> false
-  end
-
-  @doc """
-  Return a map with link-local address components for given `pfx`.
-
-  Returns nil if `pfx` is not link-local as per
-  [rfc3927](https://www.iana.org/go/rfc3927) or
-  [rfc4291](https://www.rfc-editor.org/rfc/rfc4291)
-
-  ## Examples
-
-      iex> x = link_local("169.254.128.233")
-      iex> x
-      %{ digits: {169, 254, 128, 233},
-         prefix: "169.254.0.0/16",
-         ifaceID: 33001,
-         address: "169.254.128.233"
-      }
-      #
-      iex> host(x.prefix, x.ifaceID)
-      "169.254.128.233"
-
-      iex> y = link_local("fe80::acdc:1976")
-      iex> y
-      %{ preamble: 1018,
-         prefix: "fe80:0:0:0:0:0:0:0/64",
-         ifaceID: 2900105590,
-         address: "fe80::acdc:1976"
-      }
-      #
-      iex> host(y.prefix, y.ifaceID)
-      "fe80:0:0:0:0:0:acdc:1976"
-
-  """
-  @doc section: :ip
-  @spec link_local(prefix) :: map | nil
-  def link_local(pfx) do
-    x = new(pfx)
-
-    if link_local?(x) do
-      case x.maxlen do
-        128 ->
-          %{
-            preamble: cut(x, 0, 10) |> cast(),
-            prefix: keep(x, 64) |> marshall(pfx),
-            ifaceID: cut(x, 64, 64) |> cast(),
-            address: pfx
-          }
-
-        32 ->
-          %{
-            digits: digits(x, 8) |> elem(0),
-            prefix: keep(x, 16) |> marshall(pfx),
-            ifaceID: cut(x, 16, 16) |> cast(),
-            address: pfx
-          }
-      end
-    else
-      nil
-    end
-  rescue
-    err -> raise err
-  end
-
-  @doc """
-  Returns true if `pfx` is designated as "private-use".
-
-  This includes the [rfc1918](https://www.iana.org/go/rfc1918) prefixes:
-  - `10.0.0.0/8`,
-  - `172.16.0.0/12`, and
-  - `192.168.0.0/16`.
-
-  And the [rfc4193](https://www.iana.org/go/rfc4193) prefix
-  - `fc00::/7`.
-
-  ## Examples
-
-      iex> unique_local?("172.31.255.255")
-      true
-
-      iex> unique_local?("10.10.10.10")
-      true
-
-      iex> unique_local?("fc00:acdc::")
-      true
-
-      iex> unique_local?("172.32.0.0")
-      false
-
-      iex> unique_local?("10.255.255.255")
-      true
-
-      iex> unique_local?({{172, 31, 255, 255}, 32})
-      true
-
-      iex> unique_local?({172, 31, 255, 255})
-      true
-
-      iex> unique_local?(%Pfx{bits: <<172, 31, 255, 255>>, maxlen: 32})
-      true
-
-      # bad prefix
-      iex> unique_local?("10.255.255.256")
-      false
-
-  """
-  @doc section: :ip
-  @spec unique_local?(prefix) :: boolean
-  def unique_local?(pfx) do
-    # TODO: what about the well-known nat64 address(es) that are used only
-    # locally?
-    x = new(pfx)
-
-    cond do
-      member?(x, %Pfx{bits: <<10>>, maxlen: 32}) -> true
-      member?(x, %Pfx{bits: <<172, 1::4>>, maxlen: 32}) -> true
-      member?(x, %Pfx{bits: <<192, 168>>, maxlen: 32}) -> true
-      member?(x, %Pfx{bits: <<126::7>>, maxlen: 128}) -> true
-      true -> false
-    end
-  rescue
-    _ -> false
-  end
-
-  @doc """
   Returns true if `pfx` is matched by the Well-Known Prefixes defined in
   [rfc6053](https://www.iana.org/go/rfc6052) and
   [rfc8215](https://www.iana.org/go/rfc8215), false otherwise.
@@ -3908,51 +3703,246 @@ defmodule Pfx do
   end
 
   @doc """
-  Return a reverse DNS name (pointer) for given `pfx`.
+  Returns the this-network prefix (full address) for given `pfx`.
 
-  The prefix will be padded right with `0`-bits to a multiple of 8 for IPv4 prefixes and
-  to a multiple of 4 for IPv6 prefixes.  Note that this might give unexpected results.
-  So `dns_ptr/1` works best if the prefix given is actually a multiple of 4 or 8.
+  Yields the same result as `Pfx.first/1`, included for nostalgia.
 
   ## Examples
 
-      iex> dns_ptr("10.10.0.0/16")
-      "10.10.in-addr.arpa"
+      iex> network("10.10.10.1/24")
+      "10.10.10.0"
 
-      # "1.2.3.0/23" actually encodes as %Pfx{bits: <<1, 2, 1::size(7)>>, maxlen: 32}
-      # and padding right with 0-bits to a /24 yields the 1.2.2.0/24 ...
-      iex> dns_ptr("1.2.3.0/23")
-      "2.2.1.in-addr.arpa"
+      iex> network("acdc:1976::/32")
+      "acdc:1976:0:0:0:0:0:0"
 
-      iex> dns_ptr("acdc:1976::/32")
-      "6.7.9.1.c.d.c.a.ip6.arpa"
+      # a full address is its own this-network
+      iex> network({10, 10, 10, 1})
+      {10, 10, 10, 1}
 
-      iex> dns_ptr("acdc:1975::b1ba:2021")
-      "1.2.0.2.a.b.1.b.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.5.7.9.1.c.d.c.a.ip6.arpa"
+      iex> network({{10, 10, 10, 1}, 24})
+      {{10, 10, 10, 0}, 32}
+
+      iex> network(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
+      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
+
+      iex> network(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128})
+      %Pfx{bits: <<0xACDC::16, 0x1976::16, 0::96>>, maxlen: 128}
 
   """
   @doc section: :ip
-  @spec dns_ptr(prefix) :: String.t()
-  def dns_ptr(pfx) do
-    x = new(pfx)
-    if bit_size(x.bits) == 0, do: raise(arg_error(:nobits, pfx))
-
-    {width, base, suffix} =
-      case x.maxlen do
-        32 -> {8, 10, "in-addr.arpa"}
-        128 -> {4, 16, "ip6.arpa"}
-        _ -> raise arg_error(:pfx, pfx)
-      end
-
-    n = rem(x.maxlen - bit_size(x.bits), width)
-
-    x
-    |> padr(0, n)
-    |> format(width: width, base: base, padding: false, reverse: true, mask: false)
-    |> String.downcase()
-    |> (&"#{&1}.#{suffix}").()
+  @spec network(prefix) :: prefix
+  def network(pfx) do
+    first(pfx)
   rescue
     err -> raise err
+  end
+
+  @doc """
+  Returns true if `prefix` is a teredo address, false otherwise
+
+  IPv6 address within the teredo service prefix of `2000:0::/32`
+
+  More details in [rfc4380](https://www.iana.org/go/rfc4380).
+
+  ## Examples
+
+      iex> teredo?("2001:0000:4136:e378:8000:63bf:3fff:fdd2")
+      true
+
+      iex> teredo?("1.1.1.1")
+      false
+
+      iex> teredo?(42)
+      false
+
+  """
+  @doc section: :ip
+  @spec teredo?(prefix) :: boolean
+  def teredo?(pfx) do
+    pfx
+    |> new()
+    |> member?(%Pfx{bits: <<0x2001::16, 0::16>>, maxlen: 128})
+  rescue
+    _ -> false
+  end
+
+  @doc """
+  Returns a map with the teredo address components of `pfx` or nil.
+
+  Returns nil if `pfx` is not a
+  [teredo](https://www.rfc-editor.org/rfc/rfc4380.html#section-4) address.
+
+  Teredo address consist of:
+  1. the teredo service prefix of `2000:0::/32`
+  2. IPv4 address of the teredo server
+  3. flags (16 bits) that document type of address and NAT
+  4. Port (16 bits), the obfuscated "mapped UDP port" at the client
+  5. IPv4 address (obfucated) of the teredo client.
+
+  More details in [rfc4380](https://www.iana.org/go/rfc4380).
+
+  ## Examples
+
+      # example from https://en.wikipedia.org/wiki/Teredo_tunneling#IPv6_addressing
+      iex> teredo_decode("2001:0000:4136:e378:8000:63bf:3fff:fdd2")
+      %{
+        server: "65.54.227.120",
+        client: "192.0.2.45",
+        port: 40000,
+        flags: {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        prefix: "2001:0000:4136:e378:8000:63bf:3fff:fdd2"
+      }
+
+      iex> teredo_decode({0x2001, 0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2})
+      %{
+        server: {65, 54, 227, 120},
+        client: {192, 0, 2, 45},
+        port: 40000,
+        flags: {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        prefix: {0x2001, 0x0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2}
+      }
+
+      iex> teredo_decode("1.1.1.1")
+      nil
+
+  """
+  @doc section: :ip
+  @spec teredo_decode(prefix) :: map | nil
+  def teredo_decode(pfx) do
+    x = new(pfx)
+
+    if teredo?(x) do
+      %{
+        server: cut(x, 32, 32) |> marshall(pfx),
+        client: cut(x, 96, 32) |> bnot() |> marshall(pfx),
+        port: cut(x, 80, 16) |> bnot() |> cast(),
+        flags: cut(x, 64, 16) |> digits(1) |> elem(0),
+        prefix: pfx
+      }
+    else
+      nil
+    end
+  rescue
+    err -> raise err
+  end
+
+  @doc """
+  Encode given `server`, `client`, `port` and `flags` as an IPv6 teredo address.
+
+  The `client` and `server` must be full IPv4 adresses, while both `port` and `flags`
+  are interpreted as 16-bit unsigned integers.
+
+  The result mirrors the representation format of the `client` argument.
+
+  ## Examples
+
+      iex> flags = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+      iex> teredo_encode("192.0.2.45", "65.54.227.120", 40000, flags)
+      "2001:0:4136:e378:8000:63bf:3fff:fdd2"
+
+      iex> flags = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+      iex> teredo_encode({192, 0, 2, 45}, "65.54.227.120", 40000, flags)
+      {0x2001, 0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2}
+
+      iex> flags = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+      iex> teredo_encode({{192, 0, 2, 45}, 32}, "65.54.227.120", 40000, flags)
+      {{0x2001, 0, 0x4136, 0xe378, 0x8000, 0x63bf, 0x3fff, 0xfdd2}, 128}
+
+      iex> flags = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+      iex> teredo_encode(%Pfx{bits: <<192, 0, 2, 45>>, maxlen: 32}, "65.54.227.120", 40000, flags)
+      %Pfx{bits: <<0x2001::16, 0::16, 0x4136::16, 0xe378::16, 0x8000::16, 0x63bf::16, 0x3fff::16, 0xfdd2::16>>, maxlen: 128}
+
+  """
+  @doc section: :ip
+  @spec teredo_encode(prefix, prefix, integer, tuple) :: prefix
+  def teredo_encode(client, server, port, flags)
+      when is_integer(port) and tuple_size(flags) == 16 do
+    c = bnot(client) |> new()
+    s = new(server)
+
+    if bit_size(c.bits) != 32 or c.maxlen != 32,
+      do: raise(arg_error(:pfx4full, client))
+
+    if bit_size(s.bits) != 32 or s.maxlen != 32,
+      do: raise(arg_error(:pfx4full, server))
+
+    p = <<Bitwise.bnot(port)::16>>
+    f = undigits({flags, 16}, 1)
+
+    x = %Pfx{
+      bits: <<0x20010000::32, s.bits::bits, f.bits::bits, p::bits, c.bits::bits>>,
+      maxlen: 128
+    }
+
+    marshall(x, client)
+  rescue
+    err -> raise err
+  end
+
+  def teredo_encode(_client, _server, port, flags) when tuple_size(flags) == 16,
+    do: raise(arg_error(:noint, port))
+
+  def teredo_encode(_client, _server, port, flags) when is_integer(port),
+    do: raise(arg_error(:noflags, flags))
+
+  @doc """
+  Returns true if `pfx` is designated as "private-use".
+
+  This includes the [rfc1918](https://www.iana.org/go/rfc1918) prefixes:
+  - `10.0.0.0/8`,
+  - `172.16.0.0/12`, and
+  - `192.168.0.0/16`.
+
+  And the [rfc4193](https://www.iana.org/go/rfc4193) prefix
+  - `fc00::/7`.
+
+  ## Examples
+
+      iex> unique_local?("172.31.255.255")
+      true
+
+      iex> unique_local?("10.10.10.10")
+      true
+
+      iex> unique_local?("fc00:acdc::")
+      true
+
+      iex> unique_local?("172.32.0.0")
+      false
+
+      iex> unique_local?("10.255.255.255")
+      true
+
+      iex> unique_local?({{172, 31, 255, 255}, 32})
+      true
+
+      iex> unique_local?({172, 31, 255, 255})
+      true
+
+      iex> unique_local?(%Pfx{bits: <<172, 31, 255, 255>>, maxlen: 32})
+      true
+
+      # bad prefix
+      iex> unique_local?("10.255.255.256")
+      false
+
+  """
+  @doc section: :ip
+  @spec unique_local?(prefix) :: boolean
+  def unique_local?(pfx) do
+    # TODO: what about the well-known nat64 address(es) that are used only
+    # locally?
+    x = new(pfx)
+
+    cond do
+      member?(x, %Pfx{bits: <<10>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<172, 1::4>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<192, 168>>, maxlen: 32}) -> true
+      member?(x, %Pfx{bits: <<126::7>>, maxlen: 128}) -> true
+      true -> false
+    end
+  rescue
+    _ -> false
   end
 end
 
