@@ -487,7 +487,7 @@ defmodule Pfx do
       iex> from_mac({{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}, 24})
       %Pfx{bits: <<0x11, 0x22, 0x33>>, maxlen: 64}
 
-      # Note: from_mac reads nibbles so each address element must be 2 nibbles (!)
+      # note: from_mac reads nibbles so each address element must be 2 nibbles (!)
       iex> from_mac("01:02:03:04:05:06:07:08")
       %Pfx{bits: <<0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8>>, maxlen: 64}
 
@@ -2229,6 +2229,41 @@ defmodule Pfx do
   end
 
   @doc """
+  Trim _all_ trailing `0`'s from given `prefix`.
+
+  ## Examples
+
+      iex> trim("255.255.255.0")
+      "255.255.255.0/24"
+
+      iex> trim("10.10.128.0/30")
+      "10.10.128.0/17"
+
+  """
+  @spec trim(prefix) :: prefix
+  def trim(prefix) do
+    pfx = new(prefix)
+
+    %{pfx | bits: trimp(pfx.bits)}
+    |> marshall(prefix)
+  rescue
+    err -> raise err
+  end
+
+  defp trimp(<<>>),
+    do: <<>>
+
+  defp trimp(bits) do
+    n = bit_size(bits) - 1
+    <<rest::bitstring-size(n), bit::1>> = bits
+
+    case bit do
+      1 -> bits
+      0 -> trimp(rest)
+    end
+  end
+
+  @doc """
   Return the `nth`-member of a given `pfx`.
 
   A prefix represents a range of (possibly longer) prefixes which can be
@@ -2408,7 +2443,8 @@ defmodule Pfx do
   @doc """
   Returns true is prefix `pfx1` is a member of prefix `pfx2`
 
-  If either `prfx1` or `pfx2` is invalid, member? simply returns false
+  If either `prfx1` or `pfx2` is invalid or they are of different types,
+  member? simply returns false.
 
   ## Examples
 
@@ -2762,76 +2798,6 @@ defmodule Pfx do
   end
 
   @doc """
-  Returns the this-network prefix (full address) for given `pfx`.
-
-  Yields the same result as `Pfx.first/1`, included for nostalgia.
-
-  ## Examples
-
-      iex> network("10.10.10.1/24")
-      "10.10.10.0"
-
-      iex> network("acdc:1976::/32")
-      "acdc:1976:0:0:0:0:0:0"
-
-      # a full address is its own this-network
-      iex> network({10, 10, 10, 1})
-      {10, 10, 10, 1}
-
-      iex> network({{10, 10, 10, 1}, 24})
-      {{10, 10, 10, 0}, 32}
-
-      iex> network(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
-      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
-
-      iex> network(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128})
-      %Pfx{bits: <<0xACDC::16, 0x1976::16, 0::96>>, maxlen: 128}
-
-  """
-  @doc section: :ip
-  @spec network(prefix) :: prefix
-  def network(pfx) do
-    first(pfx)
-  rescue
-    err -> raise err
-  end
-
-  @doc """
-  Returns the broadcast prefix (full address) for given `pfx`.
-
-  Yields the same result as `Pfx.last/1`, included for nostalgia.
-
-  ## Examples
-
-      iex> broadcast("10.10.0.0/16")
-      "10.10.255.255"
-
-      # a full address is its own broadcast address
-      iex> broadcast({10, 10, 10, 1})
-      {10, 10, 10, 1}
-
-      iex> broadcast({{10, 10, 10, 1}, 30})
-      {{10, 10, 10, 3}, 32}
-
-      iex> broadcast(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
-      %Pfx{bits: <<10, 10, 10, 255>>, maxlen: 32}
-
-      iex> broadcast(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128})
-      %Pfx{bits: <<0xACDC::16, 0x1976::16, -1::96>>, maxlen: 128}
-
-      iex> broadcast("acdc:1976::/112")
-      "acdc:1976:0:0:0:0:0:ffff"
-
-  """
-  @doc section: :ip
-  @spec broadcast(prefix) :: prefix
-  def broadcast(pfx) do
-    last(pfx)
-  rescue
-    err -> raise err
-  end
-
-  @doc """
   Returns a list of address prefixes for given `pfx`.
 
   ## Examples
@@ -2899,7 +2865,7 @@ defmodule Pfx do
     do: raise(arg_error(:noint, nth))
 
   @doc """
-  Return the mask for given `pfx`.
+  Returns the mask for given `pfx`.
 
   The result is always a full length prefix.
 
@@ -2917,7 +2883,7 @@ defmodule Pfx do
       iex> mask("acdc:1976::/32")
       "ffff:ffff:0:0:0:0:0:0"
 
-      # and now for something completely different:
+      # some prefix with some other maxlen
       iex> mask(%Pfx{bits: <<10, 10, 0::1>>, maxlen: 20})
       %Pfx{bits: <<255, 255, 8::4>>, maxlen: 20}
 
@@ -2928,6 +2894,62 @@ defmodule Pfx do
     |> bset(1)
     |> padr(0)
     |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  @doc """
+  Applies a `mask` to given `prefix`.
+
+  Applying a mask may trim off bits from given `prefix` depending on the mask.
+  A mask can never add bits to the `prefix.bits` though.  The representation of
+  the result mirrors that of given `prefix`.  Note that both `prefix` and
+  `mask` must be of the same type (same maxlen).
+
+  ## Examples
+
+      iex> mask("1.1.1.1", "255.255.255.0")
+      "1.1.1.0"
+
+      iex> mask("1.1.1.1", "255.0.0.255")
+      "1.0.0.1"
+
+      iex> mask({1, 1, 1, 1}, {255, 0, 0, 255})
+      {1, 0, 0, 1}
+
+      iex> mask({1, 1, 1, 1}, "255.0.0.255")
+      {1, 0, 0, 1}
+
+      iex> mask("1.1.1.1", "255.255.0.0/16")
+      "1.1.0.0/16"
+
+      iex> mask("1.1.1.0/24", "255.255.0.0/16")
+      "1.1.0.0/16"
+
+      # this mask has no effect
+      iex> mask("1.1.0.0/16", "255.255.255.0/24")
+      "1.1.0.0/16"
+
+  """
+  @spec mask(prefix, prefix) :: prefix
+  def mask(prefix, mask) when is_pfx(mask) do
+    pfx = new(prefix)
+
+    unless is_comparable(pfx, mask),
+      do: raise(arg_error(:nocompare, {"#{pfx}", "#{mask}"}))
+
+    len = min(bit_size(pfx.bits), bit_size(mask.bits))
+
+    mask
+    |> band(pfx)
+    |> keep(len)
+    |> marshall(prefix)
+  rescue
+    err -> raise err
+  end
+
+  def mask(prefix, mask) do
+    mask(prefix, new(mask))
   rescue
     err -> raise err
   end
@@ -3000,6 +3022,41 @@ defmodule Pfx do
   end
 
   # IP oriented
+
+  @doc """
+  Returns the broadcast prefix (full address) for given `pfx`.
+
+  Yields the same result as `Pfx.last/1`, included for nostalgia.
+
+  ## Examples
+
+      iex> broadcast("10.10.0.0/16")
+      "10.10.255.255"
+
+      # a full address is its own broadcast address
+      iex> broadcast({10, 10, 10, 1})
+      {10, 10, 10, 1}
+
+      iex> broadcast({{10, 10, 10, 1}, 30})
+      {{10, 10, 10, 3}, 32}
+
+      iex> broadcast(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
+      %Pfx{bits: <<10, 10, 10, 255>>, maxlen: 32}
+
+      iex> broadcast(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128})
+      %Pfx{bits: <<0xACDC::16, 0x1976::16, -1::96>>, maxlen: 128}
+
+      iex> broadcast("acdc:1976::/112")
+      "acdc:1976:0:0:0:0:0:ffff"
+
+  """
+  @doc section: :ip
+  @spec broadcast(prefix) :: prefix
+  def broadcast(pfx) do
+    last(pfx)
+  rescue
+    err -> raise err
+  end
 
   @doc """
   Create a modified EUI-64 out of `eui` (an EUI-48 address or an EUI-64).
@@ -3454,6 +3511,41 @@ defmodule Pfx do
       end
 
     Map.put(generic, :rfc, specific)
+  end
+
+  @doc """
+  Returns the this-network prefix (full address) for given `pfx`.
+
+  Yields the same result as `Pfx.first/1`, included for nostalgia.
+
+  ## Examples
+
+      iex> network("10.10.10.1/24")
+      "10.10.10.0"
+
+      iex> network("acdc:1976::/32")
+      "acdc:1976:0:0:0:0:0:0"
+
+      # a full address is its own this-network
+      iex> network({10, 10, 10, 1})
+      {10, 10, 10, 1}
+
+      iex> network({{10, 10, 10, 1}, 24})
+      {{10, 10, 10, 0}, 32}
+
+      iex> network(%Pfx{bits: <<10, 10, 10>>, maxlen: 32})
+      %Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}
+
+      iex> network(%Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128})
+      %Pfx{bits: <<0xACDC::16, 0x1976::16, 0::96>>, maxlen: 128}
+
+  """
+  @doc section: :ip
+  @spec network(prefix) :: prefix
+  def network(pfx) do
+    first(pfx)
+  rescue
+    err -> raise err
   end
 
   @doc """

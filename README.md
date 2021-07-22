@@ -36,8 +36,7 @@ included along with the more generic `Pfx` functions (like `Pfx.cut/3`) in
 order to have one module to rule them all.
 
 Functions generally accept either a `t:Pfx.t/0`, a `t:Pfx.ip_address/0`, a
-`t:Pfx.ip_prefix/0` or a binary from option 4 above and yield their result in
-the same fashion:
+`t:Pfx.ip_prefix/0` or a binary and yield their result in the same fashion:
 
     iex> hosts("10.10.10.0/30")
     ["10.10.10.0", "10.10.10.1", "10.10.10.2", "10.10.10.3"]

@@ -449,6 +449,9 @@ defmodule PfxTest do
     Enum.all?(@ip6_representations, fn x -> assert band(x, x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> band(x, x) end end)
 
+    # needs args to be of same type
+    assert_raise ArgumentError, fn -> band("1.1.1.1", "acdc::") end
+
     # no bits
     assert %Pfx{bits: <<>>, maxlen: 8} ==
              band(%Pfx{bits: <<>>, maxlen: 8}, %Pfx{bits: <<>>, maxlen: 8})
@@ -474,6 +477,9 @@ defmodule PfxTest do
     Enum.all?(@ip6_representations, fn x -> assert bor(x, x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> bor(x, x) end end)
 
+    # needs args to be of same type
+    assert_raise ArgumentError, fn -> bor("1.1.1.1", "acdc::") end
+
     # no bits
     assert %Pfx{bits: <<>>, maxlen: 8} ==
              bor(%Pfx{bits: <<>>, maxlen: 8}, %Pfx{bits: <<>>, maxlen: 8})
@@ -498,6 +504,9 @@ defmodule PfxTest do
     Enum.all?(@ip4_representations, fn x -> assert bxor(x, x) end)
     Enum.all?(@ip6_representations, fn x -> assert bxor(x, x) end)
     Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> bxor(x, x) end end)
+
+    # needs args to be of same type
+    assert_raise ArgumentError, fn -> bxor("1.1.1.1", "acdc::") end
 
     # no bits
     assert %Pfx{bits: <<>>, maxlen: 8} ==
@@ -1030,6 +1039,24 @@ defmodule PfxTest do
     assert {1, 2, 0, 0} == remove({1, 2, 3, 0}, 16, 8)
   end
 
+  # Trim/1
+  test "trim/1 removes all trailing zero's" do
+    Enum.all?(@ip4_representations, fn x -> assert trim(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert trim(x) end)
+
+    Enum.all?(@bad_representations, fn x ->
+      assert_raise ArgumentError, fn -> trim(x) end
+    end)
+
+    assert "1.1.1.0/24" == trim("1.1.1.0")
+
+    # representations
+    assert "1.1.0.0/16" == trim("1.1.0.0/30")
+    assert {{1, 1, 1, 0}, 24} == trim({{1, 1, 1, 0}, 32})
+    assert %Pfx{bits: <<1, 1>>, maxlen: 32} == trim(%Pfx{bits: <<1, 1, 0, 0>>, maxlen: 32})
+    assert {1, 1, 0, 0} == trim({1, 1, 0, 0})
+  end
+
   # Partition/2
 
   test "partition/2" do
@@ -1290,6 +1317,9 @@ defmodule PfxTest do
       assert_raise ArgumentError, fn -> compare(x, x) end
     end)
 
+    # needs args to be of same type
+    assert_raise ArgumentError, fn -> compare("1.1.1.1", "acdc::") end
+
     # full prefixes
     assert :lt == compare("1.1.1.1", "1.1.1.2")
     assert :gt == compare("1.1.1.1", "1.1.1.0")
@@ -1309,6 +1339,9 @@ defmodule PfxTest do
     Enum.all?(@bad_representations, fn x ->
       assert_raise ArgumentError, fn -> contrast(x, x) end
     end)
+
+    # needs args to be of same type
+    assert_raise ArgumentError, fn -> contrast("1.1.1.1", "acdc::") end
 
     assert :equal == contrast(new(<<10, 10>>, 32), new(<<10, 10>>, 32))
     assert :more == contrast(new(<<10, 10, 10>>, 32), new(<<10, 10>>, 32))
@@ -1483,6 +1516,33 @@ defmodule PfxTest do
 
     # some bits
     assert %Pfx{bits: <<255, 0::7>>, maxlen: 15} == mask(%Pfx{bits: <<255>>, maxlen: 15})
+  end
+
+  # Mask/2
+  test "mask/2 applies mask to prefix" do
+    Enum.all?(@ip4_representations, fn x -> assert mask(x, "255.0.0.0/8") end)
+    Enum.all?(@ip6_representations, fn x -> assert mask(x, "ffff::/16") end)
+
+    Enum.all?(@bad_representations, fn x ->
+      assert_raise ArgumentError, fn -> mask(x, "255.255.255.0") end
+    end)
+
+    # mask requires prefix and mask to be of same type
+    assert_raise ArgumentError, fn -> mask("1.2.3.4", "acdc::/16") end
+
+    # mask with full address lengths
+    assert "1.0.0.1" == mask("1.1.1.1", "255.0.0.255")
+    assert "acdc:1976:0:0:0:0:0:0" == mask("acdc:1976:2021::", "acdc:1976::")
+
+    # mask with partial lengths, which masks off trailing bits
+    assert "1.1.1.0/24" == mask("1.1.1.1", "255.255.255.0/24")
+
+    # representations
+    assert {{1, 2, 0, 0}, 16} == mask({{1, 2, 3, 4}, 32}, "255.255.0.0/16")
+    assert {1, 2, 0, 0} == mask({1, 2, 3, 4}, {1, 2, 0, 0})
+
+    assert %Pfx{bits: <<1, 2>>, maxlen: 32} ==
+             mask(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}, %Pfx{bits: <<255, 255>>, maxlen: 32})
   end
 
   # Inv_mask/1
