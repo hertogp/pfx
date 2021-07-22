@@ -3049,7 +3049,7 @@ defmodule Pfx do
   end
 
   @doc """
-  Return a reverse DNS name (pointer) for given `pfx`.
+  Returns a reverse DNS name (pointer) for given `pfx`.
 
   The prefix will be padded right with `0`-bits to a multiple of 8 for IPv4 prefixes and
   to a multiple of 4 for IPv6 prefixes.  Note that this might give unexpected results.
@@ -3097,7 +3097,7 @@ defmodule Pfx do
   end
 
   @doc """
-  Create a modified EUI-64 out of `eui` (an EUI-48 address or an EUI-64).
+  Creates a modified EUI-64 out of `eui` (an EUI-48 address or an EUI-64).
 
   This flips the 7-th bit (U/L - universal/local) and inserts `0xFFFE` in the
   middle.
@@ -3150,7 +3150,7 @@ defmodule Pfx do
   end
 
   @doc """
-  Decode a modified EUI-64 back into the original EUI-48 address.
+  Decodes a modified EUI-64 back into the original EUI-48 address.
 
   This function flips the 7-th bit and removes 16-bits from the middle.
   Those 16-bits should be `0xFFFE`, but this is not checked or enforced.
@@ -3200,7 +3200,7 @@ defmodule Pfx do
   end
 
   @doc """
-  Return a map with link-local address components for given `pfx`.
+  Returns a map with link-local address components for given `pfx`.
 
   Returns nil if `pfx` is not link-local as per
   [rfc3927](https://www.iana.org/go/rfc3927) or
@@ -3638,7 +3638,7 @@ defmodule Pfx do
     do: raise(arg_error(:nat64len, len))
 
   @doc """
-  Return an IPv4 embedded IPv6 address for given `pfx6` and `pfx4`.
+  Returns an IPv4 embedded IPv6 address for given `pfx6` and `pfx4`.
 
   The length of the `pfx6.bits` should be one of [#{Enum.join(@nat64_lengths, ", ")}] as defined
   in [rfc6052](https://www.iana.org/go/rfc6052).  The `pfx4` prefix should be a full address.
@@ -3738,7 +3738,7 @@ defmodule Pfx do
   end
 
   @doc """
-  Returns true if `prefix` is a teredo address, false otherwise
+  Returns true if given `pfx` is a teredo address, false otherwise
 
   IPv6 address within the teredo service prefix of `2000:0::/32`
 
@@ -3827,7 +3827,7 @@ defmodule Pfx do
   end
 
   @doc """
-  Encode given `server`, `client`, `port` and `flags` as an IPv6 teredo address.
+  Encodes given `server`, `client`, `port` and `flags` as an IPv6 teredo address.
 
   The `client` and `server` must be full IPv4 adresses, while both `port` and `flags`
   are interpreted as 16-bit unsigned integers.

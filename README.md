@@ -88,7 +88,8 @@ tuple of four `8`-bit wide numbers or eight `16`-bit wide numbers.
 
 If used as the first element in a `t:Pfx.ip_prefix/0` tuple, the second element
 is interpreted as the mask, used to clip the bitstring when creating the `Pfx`
-struct.  IPv4 masks must be in range `0..32` and IPv6 masks in range `0..128`.
+struct.  For example: `{{1, 1, 1, 0}, 24}` is the same as `1.1.1.0/24`.
+IPv4 masks must be in range `0..32` and IPv6 masks in range `0..128`.
 The resulting `Pfx` will have its `maxlen` set to `32` for IPv4 tuples and
 `128` for IPv6 tuples.
 
