@@ -88,10 +88,10 @@ tuple of four `8`-bit wide numbers or eight `16`-bit wide numbers.
 
 If used as the first element in a `t:Pfx.ip_prefix/0` tuple, the second element
 is interpreted as the mask, used to clip the bitstring when creating the `Pfx`
-struct.  For example: `{{1, 1, 1, 0}, 24}` is the same as `1.1.1.0/24`.
-IPv4 masks must be in range `0..32` and IPv6 masks in range `0..128`.
-The resulting `Pfx` will have its `maxlen` set to `32` for IPv4 tuples and
-`128` for IPv6 tuples.
+struct.  For example: `{{1, 1, 1, 0}, 24}` is the same as `1.1.1.0/24`.  IPv4
+masks must be in range `0..32` and IPv6 masks in range `0..128`.  The resulting
+`Pfx` will have its `maxlen` set to `32` for IPv4 tuples and `128` for IPv6
+tuples.
 
 Last but not least, binaries are interpreted as either an IPv4 in
 CIDR-notation, an IPv6 address/prefix, an EUI-48 or EUI-64 formatted string.
@@ -344,7 +344,7 @@ list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:pfx, "~> 0.5.0"}
+    {:pfx, "~> 0.6.0"}
   ]
 end
 ```
