@@ -255,12 +255,12 @@ defmodule Pfx do
   #   `Pfx` struct and call themselves again with that struct
 
   @doc """
-  Return `pfx` prefix's bit-value at given `position`.
+  Returns the bit-value at given `position` in `pfx`.
 
-  A bit position is a `0`-based index from the left with range `0..maxlen-1`.  
-  A negative bit position is taken relative to `Pfx.maxlen`.  
-  A bit position in the range of `bit_size(pfx.bits) .. pfx.maxlen - 1` always
-  yields `0`.
+  A bit position is a `0`-based index from the left with range `0..maxlen-1`.
+  A negative bit position is taken relative to `Pfx.maxlen`.  Bits that are
+  masked (bit position in the range of `bit_size(pfx.bits) .. pfx.maxlen - 1`)
+  always yield `0`.
 
   ## Examples
 
@@ -320,7 +320,7 @@ defmodule Pfx do
   defp bitp(_, _), do: 0
 
   @doc """
-  Return a series of bits for given `pfx`, for starting `position` & `length`.
+  Returns `length` bits, starting at `position` for given `pfx`.
 
   Negative `position`'s are relative to the end of the `pfx.bits` bitstring,
   while negative `length` will collect bits going left instead of to the
@@ -404,7 +404,7 @@ defmodule Pfx do
   end
 
   @doc """
-  Return the concatenation of 1 or more series of bits of the given `pfx`.
+  Returns the concatenation of 1 or more series of bits of the given `pfx`.
 
   ## Examples
 
@@ -430,12 +430,14 @@ defmodule Pfx do
 
     Enum.map(ranges, fn {pos, len} -> bits(x, pos, len) end)
     |> Enum.reduce(<<>>, &joinbitsp/2)
+  rescue
+    err -> raise err
   end
 
   defp joinbitsp(x, y), do: <<y::bitstring, x::bitstring>>
 
   @doc """
-  A bitwise NOT of the `pfx.bits`.
+  Returns a bitwise NOT of the bits in `pfx`.
 
   Results are returned in the same representation as given `pfx`.
 
@@ -477,10 +479,10 @@ defmodule Pfx do
   end
 
   @doc """
-  A bitwise AND of two `t:prefix/0`'s.
+  Returns a bitwise AND of `pfx1` and `pfx2`.
 
-  Both prefixes must have the same `maxlen`.  The resulting prefix
-  will have the same number of bits as the first argument.
+  Both prefixes must have the same `maxlen`.  The resulting prefix will have
+  the same number of bits as the first argument.
 
   ## Examples
 
@@ -492,7 +494,6 @@ defmodule Pfx do
 
       iex> x = new(<<128, 129, 130, 131>>, 32)
       iex> y = new(<<255, 255>>, 32)
-      iex>
       iex> band(x, y)
       %Pfx{bits: <<128, 129, 0, 0>>, maxlen: 32}
       iex>
@@ -512,6 +513,10 @@ defmodule Pfx do
       # honoring the ancient tradition
       iex> band("1.2.3.4", "255.255")
       "1.0.0.4"
+
+      iex> band("10.10.0.0/16", "255.0.0.0/24")
+      "10.0.0.0/16"
+
   """
   @spec band(prefix, prefix) :: prefix
   def band(pfx1, pfx2) when is_comparable(pfx1, pfx2) do
@@ -534,9 +539,10 @@ defmodule Pfx do
   end
 
   @doc """
-  A bitwise OR of two prefixes.
+  Returns a bitwise OR of `pfx1` and `pfx2`.
 
-  Both prefixes must have the same `maxlen`.
+  Both prefixes must have the same `maxlen`. The result will have the same
+  number of bits as its first argument.
 
   ## Examples
 
@@ -556,8 +562,12 @@ defmodule Pfx do
       %Pfx{bits: <<10, 11, 255, 255>>, maxlen: 32}
 
       # same `maxlen` but differently sized `bits`: missing bits are considered to be `0`
-      iex> bor("10.11.12.13", new(<<255, 255>>, 32)) # "255.255.0.0/16"
+      iex> bor("10.11.12.13", "255.255.0.0/16")
       "255.255.12.13"
+
+      # result has same number of bits as the first prefix
+      iex> bor("10.10.0.0/16", "255.255.255.255")
+      "255.255.0.0/16"
 
   """
   @spec bor(prefix, prefix) :: prefix
@@ -581,9 +591,10 @@ defmodule Pfx do
   end
 
   @doc """
-  A bitwise XOR of two `t:prefix/0`'s.
+  Returns a bitwise XOR of `pfx1` and `pfx2`.
 
-  Both prefixes must have the same `maxlen`.
+  Both prefixes must have the same `maxlen`.  The result has the same number of
+  bits as the first argument.
 
   ## Examples
 
@@ -601,6 +612,9 @@ defmodule Pfx do
       iex> y = new(<<255, 255>>, 32)
       iex> bxor(x, y)
       %Pfx{bits: <<245, 244, 12, 13>>, maxlen: 32}
+
+      iex> bxor("255.255.0.0/16", "10.11.12.13")
+      "245.244.0.0/16"
 
   """
   @spec bxor(prefix, prefix) :: prefix
@@ -624,10 +638,10 @@ defmodule Pfx do
   end
 
   @doc """
-  Rotate the `pfx.bits` by `n` positions.
+  Rotates the bits of `pfx` by `n` positions.
 
-  Positive `n` rotates right, negative rotates left.  
-  Note that the length of the resulting `pfx.bits` stays the same.
+  Positive `n` rotates right, negative rotates left.  The length of the
+  resulting bits stays the same.
 
   ## Examples
 
@@ -685,11 +699,12 @@ defmodule Pfx do
     do: raise(arg_error(:noint, n))
 
   @doc """
-  Set all `pfx.bits` to either `0` or `1`.
+  Sets all bits of `pfx` to either `0` or `1`.
+
+  If `bit` is not provided, it defaults to `0`.
 
   ## Examples
 
-      # defaults to `0`-bit
       iex> bset("1.1.1.0/24")
       "0.0.0.0/24"
 
@@ -727,10 +742,10 @@ defmodule Pfx do
     do: raise(arg_error(:nobit, bit))
 
   @doc """
-  Arithmetic shift left the `pfx.bits` by `n` positions.
+  Performs an arithmetic shift left of the bits in `pfx` by `n` positions.
 
-  A positive `n` shifts to the left, negative `n` shifts to the right.
-  Note that the length of `pfx.bits` stays the same.
+  A positive `n` shifts to the left, negative `n` shifts to the right.  The
+  length of the bits stays the same.
 
   ## Examples
 
@@ -777,10 +792,10 @@ defmodule Pfx do
     do: raise(arg_error(:noint, n))
 
   @doc """
-  Arithmetic shift right the `pfx.bits` by `n` positions.
+  Performs an arithmetic shift right the bits in `pfx` by `n` positions.
 
-  A negative `n` actually shifts to the left.
-  Note that the `pfx.bits` stays stays the same.
+  A negative `n` actually shifts to the left.  The length of the bits stays the
+  same.
 
   ## Examples
 
@@ -825,11 +840,11 @@ defmodule Pfx do
     do: raise(arg_error(:noint, n))
 
   @doc """
-  Cast a `t:prefix/0` to an integer.
+  Casts a `pfx` to an integer.
 
-  After right padding the given `pfx`, the `pfx.bits` are interpreted as a number
-  of `maxlen` bits wide.  Empty prefixes evaluate to `0`, since all 'missing'
-  bits are taken to be zero (even if `maxlen` is `0`).
+  After right padding the given `pfx`, its bits are interpreted as a number of
+  maxlen bits wide.  Empty prefixes evaluate to `0`, since all 'missing' bits
+  are taken to be zero (even if `pfx.maxlen` is `0`).
 
   See `cut/3` for how this capability might be useful.
 
@@ -850,7 +865,7 @@ defmodule Pfx do
       iex> cast(%Pfx{bits: <<255, 255>>, maxlen: 32})
       4294901760
 
-      iex> %Pfx{bits: <<4294901760::32>>, maxlen: 32}
+      iex> new(<<4294901760::32>>, 32)
       %Pfx{bits: <<255, 255, 0, 0>>, maxlen: 32}
 
       # missing bits filled in as `0`s
@@ -880,8 +895,9 @@ defmodule Pfx do
   end
 
   @doc ~S"""
-  Compare function for sorting.
+  Compares `pfx1` to `pfx2` for sorting purposes.
 
+  The result is one of:
   - `:eq` prefix1 is equal to prefix2
   - `:lt` prefix1 has more bits *or* lies to the left of prefix2
   - `:gt` prefix1 has less bits *or* lies to the right of prefix2
@@ -913,7 +929,6 @@ defmodule Pfx do
         "10.10.0.0/16",
         "10.11.0.0/16"
       ]
-      #
       # whereas regular sort does:
       #
       iex> Enum.sort(list)
@@ -968,9 +983,9 @@ defmodule Pfx do
   defp comparep(x, y) when x == y, do: :eq
 
   @doc """
-  Contrast two `Pfx` prefixes
+  Contrasts `pfx1` to `pfx2`.
 
-  Contrasting two prefixes will yield one of:
+  Contrasting two prefixes yields one of:
   - `:equal` pfx1 is equal to pfx2
   - `:more` pfx1 is a more specific version of pfx2
   - `:less` pfx1 is a less specific version of pfx2
@@ -1040,7 +1055,7 @@ defmodule Pfx do
   end
 
   @doc """
-  Cut out a series of bits and turn it into its own `Pfx`.
+  Cuts out a series of bits and turns it into its own `Pfx`.
 
   Extracts the bits and returns a new `t:Pfx.t/0` with `bits` set to the
   bits extracted and `maxlen` set to the length of the `bits`-string.
@@ -1051,20 +1066,15 @@ defmodule Pfx do
       "192.0.2.128"
 
       iex> teredo = new("2001:0:4136:e378:8000:63bf:3fff:fdd2")
-      iex>
       iex> # client
       iex> cut(teredo, 96, 32) |> bnot() |> format()
       "192.0.2.45"
-      iex>
-      iex>
       iex> # udp port
       iex> cut(teredo, 80, 16) |> bnot() |> cast()
       40000
-      iex>
       iex> # teredo server
       iex> cut(teredo, 32, 32) |> format()
       "65.54.227.120"
-      iex>
       iex> # flags
       iex> cut(teredo, 64, 16) |> digits(1) |> elem(0)
       {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
@@ -1111,7 +1121,7 @@ defmodule Pfx do
   end
 
   @doc """
-  Transform a `Pfx` prefix into `{{digit, ..}, length}` format.
+  Returns a `{{digit, ..}, length}` representation of given `pfx`.
 
   The `pfx` is padded to its maximum length using `0`'s and the resulting
   bits are grouped into *digits*, each `width`-bits wide.  The resulting `length`
@@ -1119,7 +1129,7 @@ defmodule Pfx do
 
   Note: works best if the prefix' `maxlen` is a multiple of the `width` used,
   otherwise `maxlen` cannot be inferred from this format by `tuple_size(digits)
-  * width` (e.g. by `Pfx.undigits`)
+  * width` (e.g. by `Pfx.undigits/2`)
 
   ## Examples
 
@@ -1148,18 +1158,16 @@ defmodule Pfx do
   """
   @spec digits(prefix, pos_integer) :: {tuple(), pos_integer}
   def digits(pfx, width) when is_pfx(pfx) and is_pos_integer(width) do
-    try do
-      digits =
-        pfx
-        |> padr()
-        |> fields(width)
-        |> Enum.map(fn {n, _w} -> n end)
-        |> List.to_tuple()
+    digits =
+      pfx
+      |> padr()
+      |> fields(width)
+      |> Enum.map(fn {n, _w} -> n end)
+      |> List.to_tuple()
 
-      {digits, bit_size(pfx.bits)}
-    rescue
-      _ -> raise arg_error(:digits, {pfx, width})
-    end
+    {digits, bit_size(pfx.bits)}
+  rescue
+    _ -> raise arg_error(:digits, {pfx, width})
   end
 
   def digits(pfx, width) when is_pos_integer(width) do
@@ -1173,9 +1181,9 @@ defmodule Pfx do
     do: raise(arg_error(:nowidth, width))
 
   @doc """
-  Drop `count` lsb bits from given `pfx`.
+  Drops `count` lsb bits from given `pfx`.
 
-  If `count` exceeds the actual number of bits in `pfx.bits`, simply drops all
+  If `count` exceeds the actual number of bits in `pfx`, simply drops all
   bits.
 
   ## Examples
@@ -1189,6 +1197,7 @@ defmodule Pfx do
       iex> drop("1.2.3.128/25", 1)
       "1.2.3.0/24"
 
+      # drops all
       iex> drop("1.2.3.0/24", 512)
       "0.0.0.0/0"
 
@@ -1225,7 +1234,7 @@ defmodule Pfx do
     do: raise(arg_error(:nodrop, "expected a non_neg_integer for count, got: #{inspect(count)}"))
 
   @doc """
-  Turn a `prefix` into a list of `{number, width}`-fields.
+  Returns a list of `{number, width}`-fields for given `pfx`.
 
   If `bit_size(pfx.bits)` is not a multiple of `width`, the last
   `{number, width}`-tuple, will have a smaller width.
@@ -1318,14 +1327,13 @@ defmodule Pfx do
   end
 
   @doc """
-  Flip a single bit at `position` in given `pfx.bits`
+  Flips a single bit at `position` in given `pfx`.
 
   A negative `position` is relative to the end of the `pfx.bits` bitstring.
-  It is an error to point to a bit outside the range of available bits. 
+  It is an error to point to a bit outside the range of available bits.
 
   ## Examples
 
-      # flip some bit
       iex> flip("255.255.254.0", 23)
       "255.255.255.0"
 
@@ -1374,7 +1382,7 @@ defmodule Pfx do
     do: raise(arg_error(:bitpos, pos))
 
   @doc ~S"""
-  Generic formatter to turn a `Pfx` into a string, using several options:
+  Formats `pfx` as a string, using several options:
   - `:width`, field width (default 8)
   - `:base`, howto turn a field into a string (default 10, use 16 for hex numbers)
   - `:unit`, how many fields go into 1 section (default 1)
@@ -1488,7 +1496,7 @@ defmodule Pfx do
   end
 
   @doc """
-  Create a `Pfx` struct from a EUI48/64 strings or tuples.
+  Creates a `Pfx` struct from a EUI48/64 strings or tuples.
 
   Parsing strings is somewhat relaxed since punctuation characters are
   interchangeable as long as their positions are correct.
@@ -1498,8 +1506,8 @@ defmodule Pfx do
   8-element tuple is seen as IPv6 address.  Hence, if you really need to parse
   EUI-64 binaries with ":", or have EUI-48/64 tuples, use this function.
 
-  `from_mac/1` also accepts a `Pfx` struct, but only if its maxlen is either `48`
-  or `64`.  If not, an `ArgumentError` is raised.
+  `from_mac/1` also accepts a `Pfx` struct, but only if its maxlen is either
+  `48` or `64`.  If not, an `ArgumentError` is raised.
 
   ## Examples
 
@@ -1600,13 +1608,13 @@ defmodule Pfx do
     do: raise(arg_error(:noeui, arg))
 
   @doc """
-  Create a `t:Pfx.t/0` out of a hexadecimal string.
+  Creates a `Pfx` struct for given hexadecimal `string`.
 
-  This always returns a `Pfx.t` struct.  A list of punctuation characters can
-  be supplied as a second argument and defaults to `[?:, ?-, ?.]`.  Note that
-  '/' should not be used as that separates the mask from the rest of the
-  binary.  Punctuation characeters are simply ignored and there are no
-  positional checks performed.
+  This always returns a `t:Pfx.t/0` struct.  A list of punctuation characters
+  can be supplied as a second argument and defaults to `[?:, ?-, ?.]`.  Note
+  that '/' should not be used as that separates the mask from the rest of the
+  binary.  Punctuation characters are simply ignored and no positional checks
+  are performed.
 
   Contrary to `Pfx.from_mac/1`, this function turns a random hexadecimal into a
   prefix.  Do not use this to create a prefix out of an IPv6 address.
@@ -1687,7 +1695,7 @@ defmodule Pfx do
     do: hex(tail, acc, n + 1)
 
   @doc """
-  Return the `nth` host in given `pfx`.
+  Returns the `nth` full length prefix in given `pfx`.
 
   Note that offset `nth` wraps around. See `Pfx.member/2`.
 
@@ -1754,7 +1762,7 @@ defmodule Pfx do
     do: for(ip <- new(pfx), do: marshall(ip, pfx))
 
   @doc """
-  Insert some `bits` into `pfx`-s bitstring.
+  Inserts `bits` into `pfx`-s bitstring, starting at `position`.
 
   The resulting bitstring is silently clipped to the `pfx.maxlen`.
 
@@ -1857,9 +1865,9 @@ defmodule Pfx do
   end
 
   @doc """
-  Keep `count` msb bits of given `pfx`.
+  Keeps `count` msb bits of given `pfx`.
 
-  If `count` exceeds the actual number of bits in `pfx.bits`, simply keeps all
+  If `count` exceeds the actual number of bits in `pfx.bits`, it keeps all
   bits.
 
   ## Examples
@@ -1947,6 +1955,56 @@ defmodule Pfx do
   end
 
   @doc """
+  Returns a representation of `pfx` (a `t:Pfx.t/0`-struct) in the form of `original`.
+
+  The exact original is not required, the `pfx` is transformed by the shape of
+  the `original` argument: string vs two-element tuple vs tuple.  If none of
+  the three shapes match, the `pfx` is returned unchanged.
+
+  This is used to allow results to be the same shape as their (first) argument
+  that needed to turn into a `t:Pfx.t/0` for some calculation.
+
+  Note that when turning a prefix into a address-tuple, an address-tuple comes out
+  which is the first full length prefix in the set represented by `pfx`.
+
+  ## Examples
+
+      # original is a string
+      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, "any string really")
+      "1.1.1.0/24"
+
+      # original is any two-element tuple
+      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, {0,0})
+      {{1, 1, 1, 0}, 24}
+
+      # original is any other tuple, actually turns prefix into this-network address
+      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, {})
+      {1, 1, 1, 0}
+
+      # original is a Pfx struct
+      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, %Pfx{bits: <<>>, maxlen: 0})
+      %Pfx{bits: <<1, 1, 1>>, maxlen: 32}
+
+      iex> marshall(new("1.1.1.1"), {})
+      {1, 1, 1, 1}
+
+  """
+  @spec marshall(t, prefix) :: prefix
+  def marshall(pfx, original) when is_pfx(pfx) do
+    width = if pfx.maxlen == 128, do: 16, else: 8
+
+    cond do
+      is_binary(original) -> "#{pfx}"
+      is_tuple(original) and tuple_size(original) == 2 -> digits(pfx, width)
+      is_tuple(original) -> digits(pfx, width) |> elem(0)
+      true -> pfx
+    end
+  end
+
+  def marshall(pfx, _),
+    do: pfx
+
+  @doc """
   Returns the mask for given `pfx`.
 
   The result is always a full length prefix.
@@ -1981,7 +2039,7 @@ defmodule Pfx do
   end
 
   @doc """
-  Applies a `mask` to given `prefix`.
+  Applies `mask` to given `prefix`.
 
   Applying a mask may trim off bits from given `prefix` depending on the mask.
   A mask can never add bits to the `prefix.bits` though.  The representation of
@@ -2037,54 +2095,7 @@ defmodule Pfx do
   end
 
   @doc """
-  Given a `t.Pfx.t/0` prefix, try to represent it in its original form.
-
-  The exact original is not required, the `pfx` is transformed by the shape of
-  the `original` argument: string vs two-element tuple vs tuple.  If none of
-  the three shapes match, the `pfx` is returned unchanged.
-
-  This is used to allow results to be the same shape as their (first) argument
-  that needed to turn into a `t:Pfx.t/0` for some calculation.
-
-  Note that when turning a prefix into a address-tuple, the first full length
-  member comes out as an address.
-
-  ## Examples
-
-      # original is a string
-      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, "any string really")
-      "1.1.1.0/24"
-
-      # original is any two-element tuple
-      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, {0,0})
-      {{1, 1, 1, 0}, 24}
-
-      # original is any other tuple, actually turns prefix into this-network address
-      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, {})
-      {1, 1, 1, 0}
-
-      # original is a Pfx struct
-      iex> marshall(%Pfx{bits: <<1, 1, 1>>, maxlen: 32}, %Pfx{bits: <<>>, maxlen: 0})
-      %Pfx{bits: <<1, 1, 1>>, maxlen: 32}
-
-  """
-  @spec marshall(t, prefix) :: prefix
-  def marshall(pfx, original) when is_pfx(pfx) do
-    width = if pfx.maxlen == 128, do: 16, else: 8
-
-    cond do
-      is_binary(original) -> "#{pfx}"
-      is_tuple(original) and tuple_size(original) == 2 -> digits(pfx, width)
-      is_tuple(original) -> digits(pfx, width) |> elem(0)
-      true -> pfx
-    end
-  end
-
-  def marshall(pfx, _),
-    do: pfx
-
-  @doc """
-  Return the `nth`-member of a given `pfx`.
+  Returns the `nth`-member of a given `pfx`.
 
   A prefix represents a range of (possibly longer) prefixes which can be
   seen as *members* of the prefix.  So a prefix of `n`-bits long represents:
@@ -2193,7 +2204,8 @@ defmodule Pfx do
   end
 
   @doc """
-  Returns the neighboring prefix such that both can be combined in a supernet.
+  Returns the neighboring prefix for `pfx`, such that both can be combined in a
+  supernet.
 
   ## Examples
 
@@ -2298,6 +2310,7 @@ defmodule Pfx do
       iex> new("10.10.10.10/16")
       %Pfx{bits: <<10, 10>>, maxlen: 32}
 
+      # ipv6 string
       iex> new("acdc:1976::/32")
       %Pfx{bits: <<0xacdc::16, 0x1976::16>>, maxlen: 128}
 
@@ -2412,125 +2425,7 @@ defmodule Pfx do
     do: raise(arg_error(:create, prefix))
 
   @doc """
-  Right pad the `pfx.bits` to its full length using `0`-bits.
-
-  The result is always a full prefix with `maxlen` bits.
-
-  ## Examples
-
-      # already a full address
-      iex> padr("1.2.3.4")
-      "1.2.3.4"
-
-      # mask applied first, then padded with zero's
-      iex> padr("1.2.3.4/16")
-      "1.2.0.0"
-
-      # mask applied first, than padded with zero's
-      iex> padr({{1, 2, 0, 0}, 16})
-      {{1, 2, 0, 0}, 32}
-
-      iex> padr(%Pfx{bits: <<1, 2>>, maxlen: 32})
-      %Pfx{bits: <<1, 2, 0, 0>>, maxlen: 32}
-
-  """
-  @spec padr(prefix) :: prefix
-  def padr(pfx) when is_pfx(pfx),
-    do: padr(pfx, 0, pfx.maxlen)
-
-  def padr(pfx) do
-    new(pfx)
-    |> padr()
-    |> marshall(pfx)
-  rescue
-    err -> raise err
-  end
-
-  @doc """
-  Right pad the `pfx.bits` to its full length using either `0` or `1`-bits.
-
-  ## Examples
-
-      iex> padr("1.2.0.0/16", 1)
-      "1.2.255.255"
-
-      iex> padr({{1, 2, 0, 0}, 16}, 1)
-      {{1, 2, 255, 255}, 32}
-
-      # nothing to padr, already a full prefix
-      iex> padr("1.2.0.0", 1)
-      "1.2.0.0"
-
-      iex> padr(%Pfx{bits: <<1, 2>>, maxlen: 32}, 1)
-      %Pfx{bits: <<1, 2, 255, 255>>, maxlen: 32}
-
-  """
-  @spec padr(prefix, 0 | 1) :: prefix
-  def padr(pfx, bit) when is_pfx(pfx) and (bit === 0 or bit === 1),
-    do: padr(pfx, bit, pfx.maxlen)
-
-  def padr(pfx, bit) when bit === 0 or bit === 1,
-    do: padr(new(pfx), bit) |> marshall(pfx)
-
-  def padr(_, bit),
-    do: raise(arg_error(:nobit, bit))
-
-  @doc """
-  Right pad the `pfx.bits` with `n` bits of either `0` or `1`'s.
-
-  The result is clipped at `maxlen` bits without warning.
-
-  ## Examples
-
-      # expand a /16 to a /24
-      iex> padr("255.255.0.0/16", 0, 8)
-      "255.255.0.0/24"
-
-      iex> padr("255.255.0.0/16", 1, 8)
-      "255.255.255.0/24"
-
-      iex> padr({{255, 255, 0, 0}, 16}, 1, 8)
-      {{255, 255, 255, 0}, 24}
-
-      # results are clipped to maxlen
-      iex> padr("1.2.0.0/16", 1, 512)
-      "1.2.255.255"
-
-      iex> padr(%Pfx{bits: <<255, 255>>, maxlen: 32}, 0, 8)
-      %Pfx{bits: <<255, 255, 0>>, maxlen: 32}
-
-      iex> padr(%Pfx{bits: <<255, 255>>, maxlen: 32}, 1, 8)
-      %Pfx{bits: <<255, 255, 255>>, maxlen: 32}
-
-  """
-  @spec padr(prefix, 0 | 1, non_neg_integer) :: prefix
-  def padr(pfx, bit, n)
-      when is_pfx(pfx) and is_integer(n) and n >= 0 and (bit === 0 or bit === 1) do
-    bsize = bit_size(pfx.bits)
-    nbits = min(n, pfx.maxlen - bsize)
-    width = bsize + nbits
-    y = if bit == 0, do: 0, else: Bitwise.bsl(1, nbits) - 1
-    x = castp(pfx.bits, width) + y
-
-    %Pfx{pfx | bits: <<x::size(width)>>}
-  end
-
-  def padr(pfx, bit, n) when is_integer(n) and n >= 0 and (bit === 0 or bit === 1) do
-    new(pfx)
-    |> padr(bit, n)
-    |> marshall(pfx)
-  rescue
-    err -> raise err
-  end
-
-  def padr(_, bit, n) when bit === 0 or bit === 1,
-    do: raise(arg_error(:noneg, n))
-
-  def padr(_, bit, _),
-    do: raise(arg_error(:nobit, bit))
-
-  @doc """
-  Left pad the `pfx.bits` to its full length using `0`-bits.
+  Pads the bits in `pfx` on the left to its full length using `0`-bits.
 
   ## Examples
 
@@ -2587,7 +2482,7 @@ defmodule Pfx do
     do: raise(arg_error(:nobit, bit))
 
   @doc """
-  Left pad the `pfx.bits` with `n` bits of either `0` or `1`'s.
+  Pads the bits in `pfx` on the Left with `n` bits of either `0` or `1`'s.
 
   ## Examples
 
@@ -2630,7 +2525,126 @@ defmodule Pfx do
     do: raise(arg_error(:nobit, bit))
 
   @doc """
-  Partition a `Pfx` prefix into a list of new prefixes, each `bitlen` long.
+  Pads the bits in `pfx` on the right to its full length using `0`-bits.
+
+  The result is always a full prefix with `maxlen` bits.
+
+  ## Examples
+
+      # already a full address
+      iex> padr("1.2.3.4")
+      "1.2.3.4"
+
+      # mask applied first, then padded with zero's
+      iex> padr("1.2.3.4/16")
+      "1.2.0.0"
+
+      # mask applied first, than padded with zero's
+      iex> padr({{1, 2, 0, 0}, 16})
+      {{1, 2, 0, 0}, 32}
+
+      iex> padr(%Pfx{bits: <<1, 2>>, maxlen: 32})
+      %Pfx{bits: <<1, 2, 0, 0>>, maxlen: 32}
+
+  """
+  @spec padr(prefix) :: prefix
+  def padr(pfx) when is_pfx(pfx),
+    do: padr(pfx, 0, pfx.maxlen)
+
+  def padr(pfx) do
+    new(pfx)
+    |> padr()
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  @doc """
+  Pads the bits in `pfx` on the right to its full length using either `0` or
+  `1`-bits.
+
+  ## Examples
+
+      iex> padr("1.2.0.0/16", 1)
+      "1.2.255.255"
+
+      iex> padr({{1, 2, 0, 0}, 16}, 1)
+      {{1, 2, 255, 255}, 32}
+
+      # nothing to padr, already a full prefix
+      iex> padr("1.2.0.0", 1)
+      "1.2.0.0"
+
+      iex> padr(%Pfx{bits: <<1, 2>>, maxlen: 32}, 1)
+      %Pfx{bits: <<1, 2, 255, 255>>, maxlen: 32}
+
+  """
+  @spec padr(prefix, 0 | 1) :: prefix
+  def padr(pfx, bit) when is_pfx(pfx) and (bit === 0 or bit === 1),
+    do: padr(pfx, bit, pfx.maxlen)
+
+  def padr(pfx, bit) when bit === 0 or bit === 1,
+    do: padr(new(pfx), bit) |> marshall(pfx)
+
+  def padr(_, bit),
+    do: raise(arg_error(:nobit, bit))
+
+  @doc """
+  Pads the bits in `pfx` on the right with `n` bits of either `0` or `1`'s.
+
+  The result is clipped at `maxlen` bits without warning.
+
+  ## Examples
+
+      # expand a /16 to a /24
+      iex> padr("255.255.0.0/16", 0, 8)
+      "255.255.0.0/24"
+
+      iex> padr("255.255.0.0/16", 1, 8)
+      "255.255.255.0/24"
+
+      iex> padr({{255, 255, 0, 0}, 16}, 1, 8)
+      {{255, 255, 255, 0}, 24}
+
+      # results are clipped to maxlen
+      iex> padr("1.2.0.0/16", 1, 512)
+      "1.2.255.255"
+
+      iex> padr(%Pfx{bits: <<255, 255>>, maxlen: 32}, 0, 8)
+      %Pfx{bits: <<255, 255, 0>>, maxlen: 32}
+
+      iex> padr(%Pfx{bits: <<255, 255>>, maxlen: 32}, 1, 8)
+      %Pfx{bits: <<255, 255, 255>>, maxlen: 32}
+
+  """
+  @spec padr(prefix, 0 | 1, non_neg_integer) :: prefix
+  def padr(pfx, bit, n)
+      when is_pfx(pfx) and is_integer(n) and n >= 0 and (bit === 0 or bit === 1) do
+    bsize = bit_size(pfx.bits)
+    nbits = min(n, pfx.maxlen - bsize)
+    width = bsize + nbits
+    y = if bit == 0, do: 0, else: Bitwise.bsl(1, nbits) - 1
+    x = castp(pfx.bits, width) + y
+
+    %Pfx{pfx | bits: <<x::size(width)>>}
+  end
+
+  def padr(pfx, bit, n) when is_integer(n) and n >= 0 and (bit === 0 or bit === 1) do
+    new(pfx)
+    |> padr(bit, n)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  def padr(_, bit, n) when bit === 0 or bit === 1,
+    do: raise(arg_error(:noneg, n))
+
+  def padr(_, bit, _),
+    do: raise(arg_error(:nobit, bit))
+
+  @doc """
+  Partitions `pfx` into a list of new prefixes, each `bitlen` long.
 
   Note that `bitlen` must be in the range of `bit_size(pfx.bits)..pfx.maxlen-1`.
 
@@ -2685,15 +2699,15 @@ defmodule Pfx do
   end
 
   @doc """
-  Remove `length` bits from given `pfx`-s bitstring, starting at `position`.
+  Removes `length` bits from `pfx`-s bitstring, starting at `position`.
 
   A negative `position` is relative to the end of the `pfx.bits`-string.
   Valid range for `position` is `-bit_size(pfx.bits) .. bit_size(pfx.bits)-1`.
 
   If `length` is positive, bits are removed to the right.  If it is negative
-  bits are removed going to the left. 
+  bits are removed going to the left.
 
-  Note:  
+  Notes:
   - `length` is silently clipped to the maximum number of bits available to remove
   - removing bits from `pfx.bits` does not change its `pfx.maxlen`
 
@@ -2751,10 +2765,10 @@ defmodule Pfx do
     do: raise(arg_error(:range, {start, length}))
 
   @doc """
-  Returns another `Pfx` at distance `offset`.
+  Returns another `Pfx` at distance `offset` from given `pfx`.
 
-  This basically increases or decreases the number represented by the `pfx.bits`
-  while keeping `pfx.maxlen` the same.
+  This basically increases or decreases the number represented by the
+  `pfx.bits` while keeping `pfx.maxlen` the same.
 
   Note that the length of `pfx.bits` will not change and cycling through
   all siblings will eventually wrap around.
@@ -2810,7 +2824,7 @@ defmodule Pfx do
     do: raise(arg_error(:noint, offset))
 
   @doc """
-  Returns the number of full addresses represented by given `pfx`.
+  Returns the number of full addresses as represented by `pfx`.
 
   size(pfx) == 2^(pfx.maxlen - bit_size(pfx.bits))
 
@@ -2842,7 +2856,7 @@ defmodule Pfx do
   end
 
   @doc """
-  Trim _all_ trailing `0`'s from given `prefix`.
+  Trims _all_ trailing `0`'s from given `prefix`.
 
   ## Examples
 
@@ -2877,11 +2891,11 @@ defmodule Pfx do
   end
 
   @doc """
-  Return the `Pfx` prefix represented by the `digits`, actual `length` and a given
+  Returns the prefix represented by the `digits`, actual `length` and a given
   field `width`.
 
   The `pfx.bits` are formed by first concatenating the `digits` expressed as
-  bitstrings of `width`-bits wide and then truncating to the `length`-msb bits.
+  bitstrings of `width`-bits wide and then truncating to `length` bits.
 
   The `pfx.maxlen` is inferred as `tuple_size(digits) * width`.
 
@@ -2910,19 +2924,17 @@ defmodule Pfx do
   @spec undigits({tuple(), pos_integer}, pos_integer) :: t
   def undigits({digits, length}, width)
       when is_pos_integer(width) and is_non_neg_integer(length) do
-    try do
-      bits =
-        digits
-        |> Tuple.to_list()
-        |> Enum.map(fn x -> <<x::size(width)>> end)
-        |> Enum.reduce(fn x, acc -> <<acc::bitstring, x::bitstring>> end)
-        |> truncate(length)
+    bits =
+      digits
+      |> Tuple.to_list()
+      |> Enum.map(fn x -> <<x::size(width)>> end)
+      |> Enum.reduce(fn x, acc -> <<acc::bitstring, x::bitstring>> end)
+      |> truncate(length)
 
-      Pfx.new(bits, tuple_size(digits) * width)
-    rescue
-      # in case digits-tuple contains non-integers
-      _ -> raise arg_error(:noints, digits)
-    end
+    Pfx.new(bits, tuple_size(digits) * width)
+  rescue
+    # in case digits-tuple contains non-integers
+    _ -> raise arg_error(:noints, digits)
   end
 
   def undigits({_digits, length}, width) when is_pos_integer(width),
@@ -2935,7 +2947,7 @@ defmodule Pfx do
     do: raise(arg_error(:noundig, digits))
 
   @doc """
-  Return the `nth` subprefix for a given `pfx`, using `width` bits.
+  Returns the `nth` member in the set represented by `pfx`, using `width` bits.
 
   ## Examples
 
@@ -2948,11 +2960,11 @@ defmodule Pfx do
       iex> member({{10, 10, 10, 0}, 24}, 2, 2)
       {{10, 10, 10, 128}, 26}
 
-      # the first sub-prefix that is 2 bits longer
+      # the first member that is 2 bits longer
       iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 0, 2)
       %Pfx{bits: <<10, 10, 10, 0::2>>, maxlen: 32}
 
-      # the second sub-prefix that is 2 bits longer
+      # the second member that is 2 bits longer
       iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 1, 2)
       %Pfx{bits: <<10, 10, 10, 1::2>>, maxlen: 32}
 
@@ -2979,7 +2991,7 @@ defmodule Pfx do
   end
 
   @doc """
-  Returns boolean indicating whether `pfx` is a valid `t:prefix/0` or not.
+  Returns a boolean indicating whether `pfx` is a valid `t:prefix/0` or not.
 
   ## Examples
 
