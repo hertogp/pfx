@@ -1532,12 +1532,20 @@ defmodule PfxTest do
 
     # mask with full address lengths
     assert "1.0.0.1" == mask("1.1.1.1", "255.0.0.255")
-    assert "acdc:1976:0:0:0:0:0:0" == mask("acdc:1976:2021::", "acdc:1976::")
+    assert "acdc:1976:0:0:0:0:0:0" == mask("acdc:1976:2021::", "acdc:1976::", trim: false)
 
-    # mask with partial lengths, which masks off trailing bits
-    assert "1.1.1.0/24" == mask("1.1.1.1", "255.255.255.0/24")
+    # trim defaults to true
+    assert "1.1.1.0/24" == mask("1.1.1.1", "255.255.255.0")
+    assert "1.1.1.0" == mask("1.1.1.1", "255.255.255.0", trim: false)
+    assert "1.1.1.0" == mask("1.1.1.1", "255.255.255.0/24", trim: false)
+
+    # inverts mask when asked
+    assert "1.1.1.0/24" == mask("1.1.1.1", "0.0.0.255", inv_mask: true)
+    assert "1.1.1.0" == mask("1.1.1.1", "0.0.0.255", inv_mask: true, trim: false)
+    assert "10.16.0.0/14" == mask("10.16.1.1", "0.3.255.255", inv_mask: true)
 
     # representations
+    assert {{1, 2, 0, 0}, 16} == mask({{1, 2, 3, 4}, 32}, "255.255.0.0")
     assert {{1, 2, 0, 0}, 16} == mask({{1, 2, 3, 4}, 32}, "255.255.0.0/16")
     assert {1, 2, 0, 0} == mask({1, 2, 3, 4}, {1, 2, 0, 0})
 

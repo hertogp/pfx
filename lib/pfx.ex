@@ -202,22 +202,50 @@ defmodule Pfx do
     ArgumentError.exception(msg)
   end
 
-  # optionally drops some lsb's
-  defp truncate(bits, max) do
-    if bit_size(bits) > max do
-      <<part::bitstring-size(max), _::bitstring>> = bits
-      part
-    else
-      bits
-    end
-  end
-
   # cast a series of bits to a number, width bits wide.
   # - used for the binary ops on prefixes
   defp castp(bits, width) do
     bsize = bit_size(bits)
     <<x::size(bsize)>> = bits
     Bitwise.bsl(x, width - bsize)
+  end
+
+  # 11:22:33:44:55:66 or 1122.3344.5566 or some weird mix thereof 11-22.33:44.5566
+  defp hex([], acc, n),
+    do: {acc, n}
+
+  defp hex([x | tail], acc, n) when ?0 <= x and x <= ?9,
+    do: hex(tail, <<acc::bits, x - ?0::4>>, n)
+
+  defp hex([x | tail], acc, n) when ?a <= x and x <= ?f,
+    do: hex(tail, <<acc::bits, x - ?a + 10::4>>, n)
+
+  defp hex([x | tail], acc, n) when ?A <= x and x <= ?F,
+    do: hex(tail, <<acc::bits, x - ?A + 10::4>>, n)
+
+  defp hex([?- | tail], acc, n) when bit_size(acc) in [8, 16, 24, 32, 40, 48, 56],
+    do: hex(tail, acc, n + 1)
+
+  defp hex([?: | tail], acc, n) when bit_size(acc) in [8, 16, 24, 32, 40, 48, 56],
+    do: hex(tail, acc, n + 1)
+
+  defp hex([?. | tail], acc, n) when bit_size(acc) in [16, 32, 48],
+    do: hex(tail, acc, n + 1)
+
+  # turn a EUI-48/64 like string into bits
+  @spec hexify(charlist) :: t
+  defp hexify(clist) do
+    {bits, hyphens} = hex(clist, <<>>, 0)
+
+    bsize = bit_size(bits)
+
+    case {bsize, hyphens} do
+      {48, 2} -> new(bits, bsize)
+      {48, 5} -> new(bits, bsize)
+      {64, 3} -> new(bits, bsize)
+      {64, 7} -> new(bits, bsize)
+      _ -> raise ArgumentError
+    end
   end
 
   # split a charlist with length into tuple w/ {'address', length}
@@ -245,13 +273,21 @@ defmodule Pfx do
     end
   end
 
-  # format pfx same as x
-  # - pfx must be a %Pfx{}-struct, x can be 1 of 4 representations
-  # - protocol version only matters for width when using digits or {digits, length}
+  # optionally drops some lsb's
+  defp truncate(bits, max) do
+    if bit_size(bits) > max do
+      <<part::bitstring-size(max), _::bitstring>> = bits
+      part
+    else
+      bits
+    end
+  end
 
   # API
+
+  # Notes:
   # - new/1 and new/2 *MUST* raise an ArgumentError if it fails
-  # - many functions use `new` to translate other representations into a 
+  # - many functions use `new` to translate other representations into a
   #   `Pfx` struct and call themselves again with that struct
 
   @doc """
@@ -1496,6 +1532,55 @@ defmodule Pfx do
   end
 
   @doc """
+  Creates a `Pfx` struct for given hexadecimal `string`.
+
+  This always returns a `t:Pfx.t/0` struct.  A list of punctuation characters
+  can be supplied as a second argument and defaults to `[?:, ?-, ?.]`.  Note
+  that '/' should not be used as that separates the mask from the rest of the
+  binary.  Punctuation characters are simply ignored and no positional checks
+  are performed.
+
+  Contrary to `Pfx.from_mac/1`, this function turns a random hexadecimal into a
+  prefix.  Do not use this to create a prefix out of an IPv6 address.
+
+  ## Examples
+
+      iex> from_hex("1-2:3.4:a-bcdef")
+      %Pfx{bits: <<0x12, 0x34, 0xAB, 0xCD, 0xEF>>, maxlen: 40}
+
+      iex> from_hex("1-2:3.4:a-bcdef/16")
+      %Pfx{bits: <<0x12, 0x34>>, maxlen: 40}
+
+      iex> from_hex("1|2|3|A|B|C|DEF", [?|])
+      %Pfx{bits: <<0x12, 0x3A, 0xBC, 0xDE, 0xF::4>>, maxlen: 36}
+
+      iex> from_hex("ABC")
+      %Pfx{bits: <<0xAB, 0xC::4>>, maxlen: 12}
+
+      # not for IPv6 addresses ..
+      iex> from_hex("2001::1")
+      %Pfx{bits: <<0x20, 0x01, 0x1::4>>, maxlen: 20}
+
+
+  """
+  @spec from_hex(binary) :: t
+  def from_hex(string, punctuation \\ [?:, ?-, ?.])
+      when is_binary(string) and is_list(punctuation) do
+    charlist = String.to_charlist(string)
+
+    {address, mask} = splitp(charlist, [])
+
+    {bits, _} =
+      address
+      |> Enum.filter(fn c -> c not in punctuation end)
+      |> hex(<<>>, 0)
+
+    %Pfx{bits: truncate(bits, mask), maxlen: bit_size(bits)}
+  rescue
+    _ -> raise arg_error(:nohex, string)
+  end
+
+  @doc """
   Creates a `Pfx` struct from a EUI48/64 strings or tuples.
 
   Parsing strings is somewhat relaxed since punctuation characters are
@@ -1606,93 +1691,6 @@ defmodule Pfx do
 
   def from_mac(arg),
     do: raise(arg_error(:noeui, arg))
-
-  @doc """
-  Creates a `Pfx` struct for given hexadecimal `string`.
-
-  This always returns a `t:Pfx.t/0` struct.  A list of punctuation characters
-  can be supplied as a second argument and defaults to `[?:, ?-, ?.]`.  Note
-  that '/' should not be used as that separates the mask from the rest of the
-  binary.  Punctuation characters are simply ignored and no positional checks
-  are performed.
-
-  Contrary to `Pfx.from_mac/1`, this function turns a random hexadecimal into a
-  prefix.  Do not use this to create a prefix out of an IPv6 address.
-
-  ## Examples
-
-      iex> from_hex("1-2:3.4:a-bcdef")
-      %Pfx{bits: <<0x12, 0x34, 0xAB, 0xCD, 0xEF>>, maxlen: 40}
-
-      iex> from_hex("1-2:3.4:a-bcdef/16")
-      %Pfx{bits: <<0x12, 0x34>>, maxlen: 40}
-
-      iex> from_hex("1|2|3|A|B|C|DEF", [?|])
-      %Pfx{bits: <<0x12, 0x3A, 0xBC, 0xDE, 0xF::4>>, maxlen: 36}
-
-      iex> from_hex("ABC")
-      %Pfx{bits: <<0xAB, 0xC::4>>, maxlen: 12}
-
-      # not for IPv6 addresses ..
-      iex> from_hex("2001::1")
-      %Pfx{bits: <<0x20, 0x01, 0x1::4>>, maxlen: 20}
-
-
-  """
-  @spec from_hex(binary) :: t
-  def from_hex(string, punctuation \\ [?:, ?-, ?.])
-      when is_binary(string) and is_list(punctuation) do
-    charlist = String.to_charlist(string)
-
-    {address, mask} = splitp(charlist, [])
-
-    {bits, _} =
-      address
-      |> Enum.filter(fn c -> c not in punctuation end)
-      |> hex(<<>>, 0)
-
-    %Pfx{bits: truncate(bits, mask), maxlen: bit_size(bits)}
-  rescue
-    _ -> raise arg_error(:nohex, string)
-  end
-
-  # turn a EUI-48/64 like string into bits
-  @spec hexify(charlist) :: t
-  defp hexify(clist) do
-    {bits, hyphens} = hex(clist, <<>>, 0)
-
-    bsize = bit_size(bits)
-
-    case {bsize, hyphens} do
-      {48, 2} -> new(bits, bsize)
-      {48, 5} -> new(bits, bsize)
-      {64, 3} -> new(bits, bsize)
-      {64, 7} -> new(bits, bsize)
-      _ -> raise ArgumentError
-    end
-  end
-
-  # 11:22:33:44:55:66 or 1122.3344.5566 or some weird mix thereof 11-22.33:44.5566
-  defp hex([], acc, n),
-    do: {acc, n}
-
-  defp hex([x | tail], acc, n) when ?0 <= x and x <= ?9,
-    do: hex(tail, <<acc::bits, x - ?0::4>>, n)
-
-  defp hex([x | tail], acc, n) when ?a <= x and x <= ?f,
-    do: hex(tail, <<acc::bits, x - ?a + 10::4>>, n)
-
-  defp hex([x | tail], acc, n) when ?A <= x and x <= ?F,
-    do: hex(tail, <<acc::bits, x - ?A + 10::4>>, n)
-
-  defp hex([?- | tail], acc, n) when bit_size(acc) in [8, 16, 24, 32, 40, 48, 56],
-    do: hex(tail, acc, n + 1)
-
-  defp hex([?: | tail], acc, n) when bit_size(acc) in [8, 16, 24, 32, 40, 48, 56],
-    do: hex(tail, acc, n + 1)
-
-  defp hex([?. | tail], acc, n) when bit_size(acc) in [16, 32, 48],
-    do: hex(tail, acc, n + 1)
 
   @doc """
   Returns the `nth` full length prefix in given `pfx`.
@@ -2041,42 +2039,75 @@ defmodule Pfx do
   @doc """
   Applies `mask` to given `prefix`.
 
-  Applying a mask may trim off bits from given `prefix` depending on the mask.
-  A mask can never add bits to the `prefix.bits` though.  The representation of
-  the result mirrors that of given `prefix`.  Note that both `prefix` and
-  `mask` must be of the same type (same maxlen).
+  The `mask` is applied through a bitwise AND after which the result is trimmed
+  to the size of `mask`.  Both `prefix` and `mask` do not need to be full
+  length prefixes.
+
+  Options include:
+  - `inv_mask`, if `true` the `mask` is inverted before applying it (default: `false`)
+  - `trim`, if `false` the result is not trimmed to the size of `mask` (default: `true`)
+
+  Note that both `prefix` and `mask` must be of the same type (same maxlen).
 
   ## Examples
 
+      # trims result by default
       iex> mask("1.1.1.1", "255.255.255.0")
+      "1.1.1.0/24"
+
+      iex> mask("1.1.1.1", "255.255.255.0") |> first()
       "1.1.1.0"
+
+      # same as above
+      iex> mask("1.1.1.1", "255.255.255.0", trim: false)
+      "1.1.1.0"
+
+      # mirror representation
+      iex> mask({{1, 1, 1, 1}, 32}, {255, 255, 255, 0})
+      {{1, 1, 1, 0}, 24}
 
       iex> mask("1.1.1.1", "255.0.0.255")
       "1.0.0.1"
 
-      iex> mask({1, 1, 1, 1}, {255, 0, 0, 255})
-      {1, 0, 0, 1}
-
-      iex> mask({1, 1, 1, 1}, "255.0.0.255")
-      {1, 0, 0, 1}
-
+      # mask need not be full length prefix
       iex> mask("1.1.1.1", "255.255.0.0/16")
       "1.1.0.0/16"
 
+      iex> mask("1.1.1.1", "255.255.0.0/16", trim: false)
+      "1.1.0.0"
+
+      # neither does prefix
       iex> mask("1.1.1.0/24", "255.255.0.0/16")
       "1.1.0.0/16"
 
-      # this mask has no effect
-      iex> mask("1.1.0.0/16", "255.255.255.0/24")
-      "1.1.0.0/16"
+      # no trim, so prefix length stays 24 bits
+      iex> mask("1.1.1.0/24", "255.255.0.0/16", trim: false)
+      "1.1.0.0/24"
+
+      # inverted mask
+      iex> mask("10.16.0.0", "0.3.255.255", inv_mask: true)
+      ...> |> (fn x -> {x, first(x), last(x)} end).()
+      {"10.16.0.0/14", "10.16.0.0", "10.19.255.255"}
 
   """
-  @spec mask(prefix, prefix) :: prefix
-  def mask(prefix, mask) when is_pfx(mask) do
+  @spec mask(prefix, prefix, Keyword.t()) :: prefix
+  def mask(prefix, mask, opts \\ [])
+
+  def mask(prefix, mask, opts) when is_pfx(mask) do
     pfx = new(prefix)
 
     unless is_comparable(pfx, mask),
       do: raise(arg_error(:nocompare, {"#{pfx}", "#{mask}"}))
+
+    mask =
+      if Keyword.get(opts, :inv_mask, false),
+        do: bnot(mask) |> new(),
+        else: mask
+
+    mask =
+      if Keyword.get(opts, :trim, true),
+        do: %{mask | bits: trimp(mask.bits)},
+        else: padr(mask) |> new()
 
     len = min(bit_size(pfx.bits), bit_size(mask.bits))
 
@@ -2088,8 +2119,8 @@ defmodule Pfx do
     err -> raise err
   end
 
-  def mask(prefix, mask) do
-    mask(prefix, new(mask))
+  def mask(prefix, mask, opts) do
+    mask(prefix, new(mask), opts)
   rescue
     err -> raise err
   end
@@ -2694,6 +2725,31 @@ defmodule Pfx do
     new(pfx)
     |> partition(bitlen)
     |> Enum.map(fn x -> marshall(x, pfx) end)
+  rescue
+    err -> raise err
+  end
+
+  @doc """
+  Returns the length of the bitstring for given `prefix`.
+
+  ## Examples
+
+      iex> pfxlen("10.10.10.0/24")
+      24
+
+      iex> pfxlen({{10, 10, 10, 0}, 25})
+      25
+
+      iex> pfxlen(%Pfx{bits: <<10, 10, 10, 0::1>>, maxlen: 32})
+      25
+
+      iex> pfxlen("10.10.10.10")
+      32
+  """
+  @spec pfxlen(prefix) :: non_neg_integer
+  def pfxlen(prefix) do
+    pfx = new(prefix)
+    bit_size(pfx.bits)
   rescue
     err -> raise err
   end
@@ -3942,8 +3998,6 @@ defmodule Pfx do
   @doc section: :ip
   @spec unique_local?(prefix) :: boolean
   def unique_local?(pfx) do
-    # TODO: what about the well-known nat64 address(es) that are used only
-    # locally?
     x = new(pfx)
 
     cond do

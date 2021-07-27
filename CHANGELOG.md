@@ -5,8 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-- Nothing yet.
+## [v0.7.0] - 2021-07-27
+
+### added
+- `Pfx.pfxlen/1` returns the number of bits in the prefix
+
+### changed
+- `Pfx.mask/2` now takes 2 options (inv_mask and trim) and trims result by default
 
 ## [v0.6.0] - 2021-07-22
 
