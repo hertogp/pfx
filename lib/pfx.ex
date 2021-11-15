@@ -33,7 +33,7 @@ defmodule Pfx do
   address,length-tuple or a CIDR string.
 
   """
-  @type prefix :: Pfx.t() | ip_address | ip_prefix | String.t()
+  @type prefix :: t | ip_address | ip_prefix | String.t()
 
   # valid prefix lengths to use for nat64
   @nat64_lengths [96, 64, 56, 48, 40, 32]
@@ -2305,8 +2305,8 @@ defmodule Pfx do
   def new(x, _),
     do: raise(arg_error(:pfx, x))
 
-  @doc """
-  Creates a new prefix from address tuples or binaries.
+  @doc ~S"""
+  Creates a new prefix from address tuples/binaries or raises `ArgumentError`.
 
   Use:
   - a binary in
@@ -2315,6 +2315,9 @@ defmodule Pfx do
   - an {`t:ip_address/0`, `length`}-tuple to truncate the bits to `length`.
   - an ipv4 or ipv6 `t:ip_address/0` tuple directly for a full address, or
   - a `t:Pfx.t/0` struct
+  to create a new PFx struct.
+
+  To avoid a possible `ArgumentError`, use `Pfx.parse/1` or `Pfx.parse/2` instead.
 
   Binaries are processed by `:inet.parse_address/1`, so be aware of IPv4 shorthand
   notations that may yield surprising results, since digits are taken to be:
@@ -2388,6 +2391,13 @@ defmodule Pfx do
       # but note the maxlen here ...
       iex> new("11:22:33:44:55:66:77:88")
       %Pfx{bits: <<0x11::16, 0x22::16, 0x33::16, 0x44::16, 0x55::16, 0x66::16, 0x77::16, 0x88::16>>, maxlen: 128}
+
+      iex> try do
+      ...>   new("1.1.1.256")
+      ...> rescue
+      ...>   x -> Exception.message(x)
+      ...> end
+      "expected a ipv4/ipv6 CIDR or EUI-48/64 string, got \"1.1.1.256\""
 
   """
   @spec new(ip_address | ip_prefix | String.t()) :: t()
@@ -2673,6 +2683,68 @@ defmodule Pfx do
 
   def padr(_, bit, _),
     do: raise(arg_error(:nobit, bit))
+
+  @doc """
+  Parses a `t:prefix/0` and returns `{:ok, Pfx.t}` or `{:error, :einvalid}`
+
+  ## Examples
+
+      iex> parse("1.2.3.4/24")
+      {:ok, %Pfx{bits: <<1, 2, 3>>, maxlen: 32}}
+
+      iex> parse({{1,2,3,4}, 24})
+      {:ok, %Pfx{bits: <<1, 2, 3>>, maxlen: 32}}
+
+      iex> parse({1,2,3,4})
+      {:ok, %Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}}
+
+      iex> parse(%Pfx{bits: <<4, 3, 2, 1>>, maxlen: 32})
+      {:ok, %Pfx{bits: <<4, 3, 2, 1>>, maxlen: 32}}
+
+      iex> parse("1.2.3.4/33")
+      {:error, :einvalid}
+
+      iex> parse("acdc:1976::/32")
+      {:ok, %Pfx{bits: <<0xACDC::16, 0x1976::16>>, maxlen: 128}}
+
+      iex> parse("DEAD:BEER::/32")
+      {:error, :einvalid}
+
+  """
+  @spec parse(prefix) :: {:ok, t} | {:error, :einvalid}
+  def parse(prefix) do
+    {:ok, new(prefix)}
+  rescue
+    _ -> {:error, :einvalid}
+  end
+
+  @doc """
+  Parses a `t:prefix/0` and returns `{:ok, Pfx.t}` or given `default` on error.
+
+  Same as `Pfx.parse/1`, but returns given default on error.
+
+  ## Examples
+
+      iex> parse("0.0.0.0/32", :oops)
+      {:ok, %Pfx{bits: <<0, 0, 0, 0>>, maxlen: 32}}
+
+      iex> parse("0.0.0.0/33", :oops)
+      :oops
+
+      iex> pfx = "0.0.0.256/24"
+      iex> parse(pfx, {:error, pfx})
+      {:error, "0.0.0.256/24"}
+
+      iex> parse("11:22:33:44:55:GG", {:error, :bad_eui48})
+      {:error, :bad_eui48}
+
+  """
+  @spec parse(prefix, any) :: {:ok, t} | any
+  def parse(prefix, default) do
+    {:ok, new(prefix)}
+  rescue
+    _ -> default
+  end
 
   @doc """
   Partitions `pfx` into a list of new prefixes, each `bitlen` long.
