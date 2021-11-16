@@ -14,7 +14,7 @@ defmodule Pfx do
   A prefix struct with fields: `bits` and `maxlen`.
 
   """
-  @type t :: %__MODULE__{bits: bitstring, maxlen: non_neg_integer}
+  @type t() :: %__MODULE__{bits: bitstring, maxlen: non_neg_integer}
 
   @typedoc """
   An :inet IPv4 or IPv6 address (tuple)
@@ -33,7 +33,7 @@ defmodule Pfx do
   address,length-tuple or a CIDR string.
 
   """
-  @type prefix :: t | ip_address | ip_prefix | String.t()
+  @type prefix :: t() | ip_address | ip_prefix | String.t()
 
   # valid prefix lengths to use for nat64
   @nat64_lengths [96, 64, 56, 48, 40, 32]
@@ -233,7 +233,7 @@ defmodule Pfx do
     do: hex(tail, acc, n + 1)
 
   # turn a EUI-48/64 like string into bits
-  @spec hexify(charlist) :: t
+  @spec hexify(charlist) :: t()
   defp hexify(clist) do
     {bits, hyphens} = hex(clist, <<>>, 0)
 
@@ -430,7 +430,7 @@ defmodule Pfx do
     err -> raise err
   end
 
-  @spec bitsp(t, integer, integer) :: bitstring
+  @spec bitsp(t(), integer, integer) :: bitstring
   defp bitsp(pfx, pos, len) when is_pfx(pfx) do
     # despite is_pfx(pfx), new() is required here, otherwise dialyzer
     # chokes on the `pfx.bits` below.  Why?
@@ -1394,7 +1394,7 @@ defmodule Pfx do
       %Pfx{bits: <<1, 2, 3, 0::1>>, maxlen: 32}
 
   """
-  @spec flip(t, non_neg_integer) :: t
+  @spec flip(t(), non_neg_integer) :: t()
   def flip(pfx, position) when is_pfx(pfx) and is_integer(position) do
     pos = if position < 0, do: position + bit_size(pfx.bits), else: position
 
@@ -1563,7 +1563,7 @@ defmodule Pfx do
 
 
   """
-  @spec from_hex(binary) :: t
+  @spec from_hex(binary) :: t()
   def from_hex(string, punctuation \\ [?:, ?-, ?.])
       when is_binary(string) and is_list(punctuation) do
     charlist = String.to_charlist(string)
@@ -1641,7 +1641,7 @@ defmodule Pfx do
       %Pfx{bits: <<0x11, 0x22, 0x33, 0x44, 0x55, 0x66>>, maxlen: 48}
 
   """
-  @spec from_mac(t | binary | tuple) :: t
+  @spec from_mac(t() | binary | tuple) :: t()
   def from_mac(string) when is_binary(string) do
     charlist = String.to_charlist(string)
     {address, mask} = splitp(charlist, [])
@@ -1806,7 +1806,7 @@ defmodule Pfx do
       "1.2.3.255"
 
   """
-  @spec insert(t, bitstring, integer) :: t
+  @spec insert(t(), bitstring, integer) :: t()
   def insert(pfx, bits, position)
       when is_pfx(pfx) and is_bitstring(bits) and is_integer(position) do
     pos = if position < 0, do: position + bit_size(pfx.bits), else: position
@@ -1987,7 +1987,7 @@ defmodule Pfx do
       {1, 1, 1, 1}
 
   """
-  @spec marshall(t, prefix) :: prefix
+  @spec marshall(t(), prefix) :: prefix
   def marshall(pfx, original) when is_pfx(pfx) do
     width = if pfx.maxlen == 128, do: 16, else: 8
 
@@ -2400,7 +2400,7 @@ defmodule Pfx do
       "expected a ipv4/ipv6 CIDR or EUI-48/64 string, got \"1.1.1.256\""
 
   """
-  @spec new(ip_address | ip_prefix | String.t()) :: t()
+  @spec new(prefix) :: t()
   def new(prefix)
 
   # identity
@@ -2711,7 +2711,7 @@ defmodule Pfx do
       {:error, :einvalid}
 
   """
-  @spec parse(prefix) :: {:ok, t} | {:error, :einvalid}
+  @spec parse(prefix) :: {:ok, t()} | {:error, :einvalid}
   def parse(prefix) do
     {:ok, new(prefix)}
   rescue
@@ -2739,7 +2739,7 @@ defmodule Pfx do
       {:error, :bad_eui48}
 
   """
-  @spec parse(prefix, any) :: {:ok, t} | any
+  @spec parse(prefix, any) :: {:ok, t()} | any
   def parse(prefix, default) do
     {:ok, new(prefix)}
   rescue
@@ -2851,7 +2851,7 @@ defmodule Pfx do
       "02-88-88-88-88-88-00-00/48"
 
   """
-  @spec remove(t, non_neg_integer, non_neg_integer) :: t
+  @spec remove(t(), non_neg_integer, non_neg_integer) :: t()
   def remove(pfx, position, length)
 
   def remove(pfx, 0, 0) when is_pfx(pfx),
@@ -3049,7 +3049,7 @@ defmodule Pfx do
       %Pfx{bits: <<0x12, 0x34, 0x56, 0x78>>, maxlen: 128}
 
   """
-  @spec undigits({tuple(), pos_integer}, pos_integer) :: t
+  @spec undigits({tuple(), pos_integer}, pos_integer) :: t()
   def undigits({digits, length}, width)
       when is_pos_integer(width) and is_non_neg_integer(length) do
     bits =
@@ -3097,7 +3097,7 @@ defmodule Pfx do
       %Pfx{bits: <<10, 10, 10, 1::2>>, maxlen: 32}
 
   """
-  @spec member(prefix, integer, pos_integer) :: t
+  @spec member(prefix, integer, pos_integer) :: t()
   def member(pfx, nth, width)
       when is_pfx(pfx) and is_integer(nth) and
              is_inrange(width, 0, pfx.maxlen - bit_size(pfx.bits)),
@@ -3583,7 +3583,7 @@ defmodule Pfx do
     err -> raise err
   end
 
-  @spec multicast_decode_ip6(t, prefix) :: map
+  @spec multicast_decode_ip6(t(), prefix) :: map
   defp multicast_decode_ip6(x, pfx) do
     flags = cut(x, 8, 4) |> digits(1) |> elem(0)
 
@@ -3633,7 +3633,7 @@ defmodule Pfx do
     Map.put(generic, :rfc, specific)
   end
 
-  @spec multicast_decode_ip4(t, prefix) :: map
+  @spec multicast_decode_ip4(t(), prefix) :: map
   defp multicast_decode_ip4(x, pfx) do
     byte0 = cut(x, 0, 8) |> cast()
 
