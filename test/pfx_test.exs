@@ -1896,9 +1896,11 @@ defmodule PfxTest do
   end
 
   test "type/1" do
-    Enum.all?(@ip4_representations, fn x -> assert type(x) end)
-    Enum.all?(@ip6_representations, fn x -> assert type(x) end)
-    Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> type(x) end end)
+    Enum.all?(@ip4_representations, fn x -> assert type(x) == :ip4 end)
+    Enum.all?(@ip6_representations, fn x -> assert type(x) == :ip6 end)
+    Enum.all?(@bad_representations, fn x -> assert type(x) == :einvalid end)
+    # note: cannot test against @eui_representations nor @bad_euis since some
+    # of those are interpreted as valid ipv6 prefixes.
 
     assert :ip4 == type("1.1.1.1")
     assert :ip4 == type({1, 2, 3, 4})

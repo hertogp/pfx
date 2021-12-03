@@ -3060,6 +3060,14 @@ defmodule Pfx do
       iex> trim("10.10.128.0/30")
       "10.10.128.0/17"
 
+      iex> trim({255, 255, 255, 0})
+      {255, 255, 255, 0}
+      iex> trim({{255, 255, 255, 0}, 32})
+      {{255, 255, 255, 0}, 24}
+
+      iex> trim("acdc:1976::ff00/128")
+      "acdc:1976:0:0:0:0:0:ff00/120"
+
   """
   @spec trim(prefix) :: prefix
   def trim(prefix) do
@@ -3090,40 +3098,38 @@ defmodule Pfx do
 
   ## Examples
 
-    iex> type("1.2.3.4")
-    :ip4
-    iex> type("1.2.3.0/24")
-    :ip4
+      iex> type("1.2.3.4")
+      :ip4
+      iex> type("1.2.3.0/24")
+      :ip4
+      iex> type({1, 2, 3, 4})
+      :ip4
+      iex> type({{1, 2, 3, 4}, 24})
+      :ip4
+      iex> type(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32})
+      :ip4
 
-    iex> type({1, 2, 3, 4})
-    :ip4
-    iex> type({{1, 2, 3, 4}, 24})
-    :ip4
+      iex> type("acdc:1976::1")
+      :ip6
+      iex> type({1, 2, 3, 4, 5, 6, 7, 8})
+      :ip6
+      iex> type({{1, 2, 3,4 ,5 ,6, 7, 8}, 64})
+      :ip6
+      iex> type(%Pfx{bits: <<>>, maxlen: 128})
+      :ip6
 
-    iex> type("aa-bb-cc-dd-ee-ff")
-    :eui48
+      iex> type("aa-bb-cc-dd-ee-ff")
+      :eui48
+      iex> type(%Pfx{bits: <<0xaa, 0xbb>>, maxlen: 48})
+      :eui48
 
-    iex> type("aa-bb-cc-ee-ff-00-00-00")
-    :eui64
+      iex> type("aa-bb-cc-ee-ff-00-00-00")
+      :eui64
+      iex> type(%Pfx{bits: <<0xaa, 0xbb, 0xcc>>, maxlen: 64})
+      :eui64
 
-    iex> type("acdc:1976::1")
-    :ip6
-    iex> type({1, 2, 3, 4, 5, 6, 7, 8})
-    :ip6
-    iex> type({{1, 2, 3,4 ,5 ,6, 7, 8}, 64})
-    :ip6
-
-    iex> type(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32})
-    :ip4
-    iex> type(%Pfx{bits: <<>>, maxlen: 128})
-    :ip6
-    iex> type(%Pfx{bits: <<0xaa, 0xbb>>, maxlen: 48})
-    :eui48
-    iex> type(%Pfx{bits: <<0xaa, 0xbb, 0xcc>>, maxlen: 64})
-    :eui64
-
-    iex> type(%Pfx{bits: <<1, 2>>, maxlen: 256})
-    256
+      iex> type(%Pfx{bits: <<1, 2>>, maxlen: 256})
+      256
 
   """
   @spec type(prefix) :: :ip4 | :ip6 | :eui48 | :eui64 | non_neg_integer()
@@ -3136,7 +3142,7 @@ defmodule Pfx do
       n -> n
     end
   rescue
-    err -> raise err
+    _ -> :einvalid
   end
 
   @doc """
