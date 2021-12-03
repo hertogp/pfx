@@ -432,9 +432,8 @@ defmodule Pfx do
 
   @spec bitsp(t(), integer, integer) :: bitstring
   defp bitsp(pfx, pos, len) when is_pfx(pfx) do
-    # despite is_pfx(pfx), new() is required here, otherwise dialyzer
-    # chokes on the `pfx.bits` below.  Why?
-    x = padr(pfx) |> new()
+    # x = padr(pfx) |> new(), the latter no longer required for dialyzer
+    x = padr(pfx)
     <<_::size(pos), part::bitstring-size(len), _::bitstring>> = x.bits
     part
   end
@@ -2101,13 +2100,13 @@ defmodule Pfx do
 
     mask =
       if Keyword.get(opts, :inv_mask, false),
-        do: bnot(mask) |> new(),
+        do: bnot(mask),
         else: mask
 
     mask =
       if Keyword.get(opts, :trim, true),
         do: %{mask | bits: trimp(mask.bits)},
-        else: padr(mask) |> new()
+        else: padr(mask)
 
     len = min(bit_size(pfx.bits), bit_size(mask.bits))
 
@@ -3899,8 +3898,7 @@ defmodule Pfx do
   @doc section: :ip
   @spec teredo?(prefix) :: boolean
   def teredo?(pfx) do
-    pfx
-    |> new()
+    new(pfx)
     |> member?(%Pfx{bits: <<0x2001::16, 0::16>>, maxlen: 128})
   rescue
     _ -> false
