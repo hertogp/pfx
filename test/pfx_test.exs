@@ -86,6 +86,25 @@ defmodule PfxTest do
     "aabbccddeeff"
   ]
 
+  test "address/1" do
+    Enum.all?(@ip4_representations, fn x -> assert address(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert address(x) end)
+    Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> address(x) end end)
+
+    # results mirror the argument
+    assert "1.2.3.4" == address("1.2.3.4/0")
+    assert "1.2.3.4" == address("1.2.3.4/9")
+    assert "1.2.3.4" == address("1.2.3.4/32")
+    assert {{1, 2, 3, 4}, 32} == address({{1, 2, 3, 4}, 16})
+    assert {{1, 2, 3, 4, 5, 6, 7, 8}, 128} == address({{1, 2, 3, 4, 5, 6, 7, 8}, 64})
+
+    # these have no effect
+    assert {1, 2, 3, 4} == address({1, 2, 3, 4})
+    assert {1, 2, 3, 4, 5, 6, 7, 8} == address({1, 2, 3, 4, 5, 6, 7, 8})
+    assert %Pfx{bits: <<1, 2, 3>>, maxlen: 32} == address(%Pfx{bits: <<1, 2, 3>>, maxlen: 32})
+    assert %Pfx{bits: <<>>, maxlen: 128} == address(%Pfx{bits: <<>>, maxlen: 128})
+  end
+
   test "band/2" do
     Enum.all?(@ip4_representations, fn x -> assert band(x, x) end)
     Enum.all?(@ip6_representations, fn x -> assert band(x, x) end)

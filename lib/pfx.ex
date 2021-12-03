@@ -291,6 +291,63 @@ defmodule Pfx do
   #   `Pfx` struct and call themselves again with that struct
 
   @doc """
+  Returns the address portion of given prefix without applying the mask (if
+  any).
+
+  Note that this has no real effect on a `t:Pfx.t/0` or an `t:ip_address/0` since
+  there is no mask to ignore.  Since no mask is applied, this always returns a
+  full prefix without any bits masked off.  Raises `ArgumentError` if given an
+  invalid prefix.
+
+  ## Examples
+
+      iex> address("1.2.3.4/16")
+      "1.2.3.4"
+
+      iex> address({{1, 2, 3, 4}, 16})
+      {{1, 2, 3, 4}, 32}
+
+      iex> address({{0xacdc, 0x1976, 0, 0, 0, 0, 0, 1}, 64})
+      {{0xacdc, 0x1976, 0, 0, 0, 0, 0, 1}, 128}
+
+      iex> pfx = "1.2.3.4/24"
+      iex> new(pfx).bits
+      <<1, 2, 3>>
+      iex> new(address(pfx)).bits
+      <<1, 2, 3, 4>>
+
+      # no real effect
+      iex> address("1.2.3.4")
+      "1.2.3.4"
+
+      iex> address({1, 2, 3, 4})
+      {1, 2, 3, 4}
+
+      iex> address({0xacdc, 0x1976, 0, 0, 0, 0, 0, 1})
+      {0xacdc, 0x1976, 0, 0, 0, 0, 0, 1}
+
+      iex> new("1.2.3.4/16") |> address()
+      %Pfx{bits: <<1, 2>>, maxlen: 32}
+
+  """
+  @spec address(prefix) :: prefix
+  def address(prefix) do
+    # ensure we raise on invalid prefix lengths
+    new(prefix)
+
+    case prefix do
+      x when is_binary(x) -> String.split(x, "/") |> hd()
+      {{a, b, c, d}, _} -> {a, b, c, d}
+      {{a, b, c, d, e, f, g, h}, _} -> {a, b, c, d, e, f, g, h}
+      _ -> prefix
+    end
+    |> new()
+    |> marshall(prefix)
+  rescue
+    err -> raise err
+  end
+
+  @doc """
   Returns the bit-value at given `position` in `pfx`.
 
   A bit position is a `0`-based index from the left with range `0..maxlen-1`.
@@ -2317,6 +2374,7 @@ defmodule Pfx do
   to create a new PFx struct.
 
   To avoid a possible `ArgumentError`, use `Pfx.parse/1` or `Pfx.parse/2` instead.
+  To avoid applying the mask, use `Pfx.address/1` then apply `Pfx.new/1` if needed.
 
   Binaries are processed by `:inet.parse_address/1`, so be aware of IPv4 shorthand
   notations that may yield surprising results, since digits are taken to be:
@@ -2740,9 +2798,10 @@ defmodule Pfx do
   """
   @spec parse(prefix, any) :: {:ok, t()} | any
   def parse(prefix, default) do
-    {:ok, new(prefix)}
-  rescue
-    _ -> default
+    case parse(prefix) do
+      {:ok, prefix} -> {:ok, prefix}
+      {:error, _} -> default
+    end
   end
 
   @doc """

@@ -5,12 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [unreleased]
+## [v0.9.0] - 2021-12-03
 
-### changed
+### added
 
-- Pfx.parse/2 now can optionally ignore mask so parse("1.2.3.4/24") -> "1.2.3.4"
-- Pfx.parse!/2 same thing
+- `Pfx.address/1`, returns the address portion of given prefix without applying a mask.
+
+### fixed
+
+- typespec for Pfx.new now includes Pfx.t as argument as well
+
 
 ## [v0.8.0] - 2021-11-15
 
