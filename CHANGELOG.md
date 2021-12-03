@@ -7,14 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 # [unreleased]
 
-### added
-
-- Pfx.type returns one of :ip4, :ip6, :eui48, eui64, non_neg_integer or :einvalid
-
-### fixed
-
-- some typespecs, again...
-
 ## [v0.9.0] - 2021-12-03
 
 ### added
@@ -25,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### fixed
 
 - typespec for Pfx.new now includes Pfx.t as argument as well
+- typespec for some others too
 
 
 ## [v0.8.0] - 2021-11-15
