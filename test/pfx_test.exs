@@ -1895,6 +1895,32 @@ defmodule PfxTest do
     assert {1, 1, 0, 0} == trim({1, 1, 0, 0})
   end
 
+  test "type/1" do
+    Enum.all?(@ip4_representations, fn x -> assert type(x) end)
+    Enum.all?(@ip6_representations, fn x -> assert type(x) end)
+    Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> type(x) end end)
+
+    assert :ip4 == type("1.1.1.1")
+    assert :ip4 == type({1, 2, 3, 4})
+    assert :ip4 == type({{1, 2, 3, 4}, 0})
+    assert :ip4 == type(%Pfx{bits: <<>>, maxlen: 32})
+
+    assert :ip6 == type("acdc:1976::1")
+    assert :ip6 == type({1, 2, 3, 4, 5, 6, 7, 8})
+    assert :ip6 == type({{1, 2, 3, 4, 5, 6, 7, 8}, 0})
+    assert :ip6 == type(%Pfx{bits: <<>>, maxlen: 128})
+
+    assert :eui48 == type("11-22-33-44-55-66")
+    assert :eui48 == from_mac("11:22:33:44:55:66") |> type()
+    assert :eui48 == type(%Pfx{bits: <<>>, maxlen: 48})
+
+    assert :eui64 == type("11-22-33-44-55-66-77-88")
+    assert :eui64 == type(%Pfx{bits: <<>>, maxlen: 64})
+
+    # otherwise type reverts to prefix's maxlen property
+    assert 65 == type(%Pfx{bits: <<>>, maxlen: 65})
+  end
+
   test "undigits/2" do
     # bad input
     assert_raise ArgumentError, fn -> undigits("1.1.1.1", 8) end

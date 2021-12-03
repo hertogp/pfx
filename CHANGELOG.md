@@ -5,11 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# [unreleased]
+
+### added
+
+- Pfx.type returns one of :ip4, :ip6, :eui48, eui64, non_neg_integer or :einvalid
+
+### fixed
+
+- some typespecs, again...
+
 ## [v0.9.0] - 2021-12-03
 
 ### added
 
 - `Pfx.address/1`, returns the address portion of given prefix without applying a mask.
+- `Pfx.type/1` which returns either :ip4, :ip6, :eui48, eui64 or the prefix.maxlen property
 
 ### fixed
 

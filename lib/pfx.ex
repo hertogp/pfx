@@ -1450,7 +1450,7 @@ defmodule Pfx do
       %Pfx{bits: <<1, 2, 3, 0::1>>, maxlen: 32}
 
   """
-  @spec flip(t(), non_neg_integer) :: t()
+  @spec flip(prefix, non_neg_integer) :: prefix
   def flip(pfx, position) when is_pfx(pfx) and is_integer(position) do
     pos = if position < 0, do: position + bit_size(pfx.bits), else: position
 
@@ -1862,7 +1862,7 @@ defmodule Pfx do
       "1.2.3.255"
 
   """
-  @spec insert(t(), bitstring, integer) :: t()
+  @spec insert(prefix, bitstring, integer) :: prefix
   def insert(pfx, bits, position)
       when is_pfx(pfx) and is_bitstring(bits) and is_integer(position) do
     pos = if position < 0, do: position + bit_size(pfx.bits), else: position
@@ -2899,17 +2899,25 @@ defmodule Pfx do
 
   ## Examples
 
+      # remove 2nd digit (2)
       iex> remove("1.2.3.4", 8, 8)
       "1.3.4.0/24"
 
+      # remove 25th bit
       iex> remove("1.2.3.128/25", -1, 1)
       "1.2.3.0/24"
 
+      # remove the FF.FE part
       iex> remove("0288.88FF.FE88.8888", 24, 16)
       "02-88-88-88-88-88-00-00/48"
 
+
+      # remove 2nd digit (2)
+      iex> remove({{1, 2, 3, 4}, 32}, 8, 8)
+      {{1, 3, 4, 0}, 24}
+
   """
-  @spec remove(t(), non_neg_integer, non_neg_integer) :: t()
+  @spec remove(prefix, non_neg_integer, non_neg_integer) :: prefix
   def remove(pfx, position, length)
 
   def remove(pfx, 0, 0) when is_pfx(pfx),
@@ -3077,6 +3085,61 @@ defmodule Pfx do
   end
 
   @doc """
+  Returns the prefix type, one of `:ip4`, `:ip6`, `:eui48`, `eui64` or simple
+  its maxlen propert.
+
+  ## Examples
+
+    iex> type("1.2.3.4")
+    :ip4
+    iex> type("1.2.3.0/24")
+    :ip4
+
+    iex> type({1, 2, 3, 4})
+    :ip4
+    iex> type({{1, 2, 3, 4}, 24})
+    :ip4
+
+    iex> type("aa-bb-cc-dd-ee-ff")
+    :eui48
+
+    iex> type("aa-bb-cc-ee-ff-00-00-00")
+    :eui64
+
+    iex> type("acdc:1976::1")
+    :ip6
+    iex> type({1, 2, 3, 4, 5, 6, 7, 8})
+    :ip6
+    iex> type({{1, 2, 3,4 ,5 ,6, 7, 8}, 64})
+    :ip6
+
+    iex> type(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32})
+    :ip4
+    iex> type(%Pfx{bits: <<>>, maxlen: 128})
+    :ip6
+    iex> type(%Pfx{bits: <<0xaa, 0xbb>>, maxlen: 48})
+    :eui48
+    iex> type(%Pfx{bits: <<0xaa, 0xbb, 0xcc>>, maxlen: 64})
+    :eui64
+
+    iex> type(%Pfx{bits: <<1, 2>>, maxlen: 256})
+    256
+
+  """
+  @spec type(prefix) :: :ip4 | :ip6 | :eui48 | :eui64 | non_neg_integer()
+  def type(prefix) do
+    case new(prefix).maxlen do
+      32 -> :ip4
+      48 -> :eui48
+      64 -> :eui64
+      128 -> :ip6
+      n -> n
+    end
+  rescue
+    err -> raise err
+  end
+
+  @doc """
   Returns the prefix represented by the `digits`, actual `length` and a given
   field `width`.
 
@@ -3155,7 +3218,7 @@ defmodule Pfx do
       %Pfx{bits: <<10, 10, 10, 1::2>>, maxlen: 32}
 
   """
-  @spec member(prefix, integer, pos_integer) :: t()
+  @spec member(prefix, integer, pos_integer) :: prefix
   def member(pfx, nth, width)
       when is_pfx(pfx) and is_integer(nth) and
              is_inrange(width, 0, pfx.maxlen - bit_size(pfx.bits)),
