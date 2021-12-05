@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### added
 
 - `Pfx.address/1`, returns the address portion of given prefix without applying a mask.
-- `Pfx.type/1` which returns either :ip4, :ip6, :eui48, eui64 or the prefix.maxlen property
+- `Pfx.type/1` which returns either :ip4, :ip6, :eui48, :eui64 or the prefix.maxlen property
 
 ### fixed
 
