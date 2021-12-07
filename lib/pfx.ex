@@ -71,8 +71,7 @@ defmodule Pfx do
   @doc """
   Guard that ensures a given `pfx` is actually valid.
   - it is a `t:Pfx.t/0` struct,
-  - `pfx.maxlen` is a `t:non-neg-integer/0`,
-  - `pfx.maxlen` is >= 0, and
+  - `pfx.maxlen` is a `t:non_neg_integer/0`,
   - `bit_size(pfx.bits) <= pfx.maxlen`
 
   """
