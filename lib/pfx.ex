@@ -3092,8 +3092,8 @@ defmodule Pfx do
   end
 
   @doc """
-  Returns the prefix type, one of `:ip4`, `:ip6`, `:eui48`, `eui64` or simple
-  its maxlen propert.
+  Returns the prefix type, one of `:ip4`, `:ip6`, `:eui48`, `eui64` or simply
+  its maxlen property.
 
   ## Examples
 

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [unreleased]
+
+### added
+
+- [ ] Pfx.from/2 which returns a list of `t:Pfx.t/0`'s from:
+    - a start prefix and a stop prefix, or
+    - a start prefix and a number of hosts
+- [ ] Pfx.special/1 which returns a map with iana's special registry registration
+    - see 
 
 ## [v0.9.0] - 2021-12-03
 
