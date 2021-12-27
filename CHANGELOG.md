@@ -12,8 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [ ] Pfx.from/2 which returns a list of `t:Pfx.t/0`'s from:
     - a start prefix and a stop prefix, or
     - a start prefix and a number of hosts
-- [ ] Pfx.special/1 which returns a map with iana's special registry registration
-    - see 
+- [ ] Pfx.iana_special/1 which returns a map with iana's special registry registration
+    - or Pfx.registry/1 ?
+    - see https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
+    - and https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml
+    - and https://www.iana.org/assignments/ipv6-unicast-address-assignments/ipv6-unicast-address-assignments.xhtml
+
 
 ## [v0.9.0] - 2021-12-03
 
