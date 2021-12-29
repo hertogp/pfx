@@ -2990,7 +2990,7 @@ defmodule Pfx do
       ["10.10.10.16/28", "10.10.10.12/30", "10.10.10.10/31"]
 
   """
-  @spec partition_range(prefix, prefix | non_neg_integer) :: [prefix]
+  @spec partition_range(prefix, prefix | integer) :: [prefix]
   def partition_range(prefix, nhosts) when is_integer(nhosts) do
     addr = address(prefix) |> new()
 

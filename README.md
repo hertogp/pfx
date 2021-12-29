@@ -28,7 +28,7 @@ Use `Pfx.new/1` to create a prefix struct from:
 - a `t:Pfx.ip_prefix/0`, or
 - a `t:binary/0`, a string in IPv4 CIDR, IPv6, EUI-48 or EUI-64 format
 
-This creates a IPv4, IPv6, EUI-48 or an EUI-64 prefix.  Other means to create
+This creates an IPv4, IPv6, EUI-48 or an EUI-64 prefix.  Other means to create
 prefixes include `Pfx.from_mac/1` and `Pfx.from_hex/1`.
 
 Several functions, like `Pfx.unique_local?/1` are more IP oriented, and are
