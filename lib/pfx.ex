@@ -134,6 +134,9 @@ defmodule Pfx do
         :nobitstr ->
           "expected a bitstring, got: #{inspect(data)}"
 
+        :nocapacity ->
+          "prefix's capacity exceeded: #{inspect(data)}"
+
         :nocompare ->
           "prefixes have different maxlen's: #{inspect(data)}"
 
@@ -284,7 +287,7 @@ defmodule Pfx do
 
   # API
 
-  # Notes:
+  # notes:
   # - new/1 and new/2 *MUST* raise an ArgumentError if it fails
   # - many functions use `new` to translate other representations into a
   #   `Pfx` struct and call themselves again with that struct
@@ -2099,8 +2102,8 @@ defmodule Pfx do
   length prefixes.
 
   Options include:
-  - `inv_mask`, if `true` the `mask` is inverted before applying it (default: `false`)
-  - `trim`, if `false` the result is not trimmed to the size of `mask` (default: `true`)
+  - `:inv_mask`, if `true` the `mask` is inverted before applying it (default: `false`)
+  - `:trim`, if `false` the result is not trimmed to the size of `mask` (default: `true`)
 
   Note that both `prefix` and `mask` must be of the same type (same maxlen).
 
@@ -2859,6 +2862,209 @@ defmodule Pfx do
   end
 
   @doc """
+  Returns a list of prefixes that cover the given range of address space.
+
+  The (inclusive) range can be specified either by:
+  - `start`, `stop` prefixes, or
+  - `start`, `nhosts`
+
+  When using the `start`,`stop`-prefixes as a range, both prefixes need to be
+  of the same type, otherwise an argument error is raised.  The second form of
+  `start`, `nhosts` requires that `nhosts` does not exceed the addressable capacity
+  of given `start` prefix's type.
+
+  If `start` lies to the right of `stop`, they are *not* reversed and the build
+  up of the list of prefixes will wrap around the available address space.
+  If `nhosts` is negative, `start` is effectively the last address.
+
+  Note: any mask information for `start` or `stop` prefixes are ignored, if
+  possible.
+
+  ## Examples
+
+      iex> partition_range("10.10.10.0", "10.10.10.130")
+      ["10.10.10.0/25", "10.10.10.128/31", "10.10.10.130"]
+      iex> partition_range("10.10.10.0", 131)
+      ["10.10.10.0/25", "10.10.10.128/31", "10.10.10.130"]
+
+      iex> partition_range("10.10.10.0", 131)
+      ...> |> Enum.map(&size/1) |> Enum.sum()
+      131
+
+      iex(481)> partition_range("acdc::1976", "acdc::2021")
+      ["acdc:0:0:0:0:0:0:1976/127", "acdc:0:0:0:0:0:0:1978/125",
+       "acdc:0:0:0:0:0:0:1980/121", "acdc:0:0:0:0:0:0:1a00/119",
+       "acdc:0:0:0:0:0:0:1c00/118", "acdc:0:0:0:0:0:0:2000/123",
+       "acdc:0:0:0:0:0:0:2020/127"]
+
+  When working with address tuples, the result will be in addres,length-tuples otherwise
+  prefix length information would be lost.
+
+      # 128 hosts, starting with "10.10.10.128"
+      iex> partition_range({10, 10, 10, 128}, 128)
+      [{{10, 10, 10, 128}, 25}]
+
+      # 1 host, starting with "10.10.10.10"
+      iex> partition_range({10, 10, 10, 10}, 1)
+      [{{10, 10, 10, 10}, 32}]
+
+      # 0 hosts always yield an empty list
+      iex> partition_range({10, 10, 10, 10}, 0)
+      []
+      iex> partition_range("10.10.10.10", 0)
+      []
+
+      # binary format may not show the /len, if it is a full prefix
+      iex> partition_range("10.10.10.10", 1)
+      ["10.10.10.10"]
+
+
+  The range is inclusive, so both `start` and `stop` are always included.
+
+      iex> partition_range("10.10.10.10", "10.10.10.10")
+      ["10.10.10.10"]
+
+      iex> partition_range("10.10.10.0", 512)
+      ["10.10.10.0/23"]
+
+      iex> partition_range("10.10.10.0", 131)
+      ["10.10.10.0/25", "10.10.10.128/31", "10.10.10.130"]
+
+      # negative number means start is actually the last address in the range
+      iex> partition_range("10.10.10.130", -131)
+      ["10.10.10.0/25", "10.10.10.128/31", "10.10.10.130"]
+
+  Any mask information, if present, is ignored for both `start` and `stop`.  Note that
+  when using `t:Pfx.t/0` structs, the mask will already have been applied in which case
+  the address will be the first address in the prefix.
+
+      iex> partition_range("10.10.10.8/24", 10)
+      ["10.10.10.8/29", "10.10.10.16/31"]
+
+      iex> partition_range("10.10.10.10/24", "10.10.10.17/24")
+      ["10.10.10.10/31", "10.10.10.12/30", "10.10.10.16/31"]
+
+      # Pfx.new() has already applied the mask
+      iex> start = new("10.10.10.10/24")
+      iex> stop = new("10.10.10.17/24")
+      iex> partition_range(start, stop)
+      [%Pfx{bits: <<10, 10, 10, 0>>, maxlen: 32}]
+
+      # so the above is basically the same as:
+      iex> partition_range("10.10.10.0", "10.10.10.0")
+      ["10.10.10.0"]
+
+  The list of prefixes is built up starting with `start` and prefixes are added
+  until it represents the entire range, wrapping the available address space if
+  needed.  So if `start` actually lies to the right of `stop`, or if `nhosts`
+  is large enough, wrapping may occur.  To avoid wrapping use `Pfx.compare/2`
+  to check whether or not to swap `start` and `stop`.
+
+      # happily wraps around address space boundary (so beware)
+      iex> partition_range("0.0.0.0", -257)
+      ["255.255.255.0/24", "0.0.0.0"]
+
+      iex> partition_range("255.255.255.0", 257)
+      ["255.255.255.0/24", "0.0.0.0"]
+
+      iex> partition_range("255.255.255.255", "0.0.0.255")
+      ["255.255.255.255", "0.0.0.0/24"]
+
+      iex> start = "10.10.255.255"
+      iex> stop = "10.10.0.0"
+      iex> case compare(start, stop) do
+      ...>   :gt -> partition_range(stop, start)
+      ...>   _ -> partition_range(start, stop)
+      ...> end
+      ["10.10.0.0/16"]
+
+  Finally, the list of prefixes will have varying prefix lengths that ramp up
+  and down. So, when building some sort of access control list, sorting on
+  prefix lengths (ascending, so less specifics come first) may be preferable.
+
+      iex> partition_range("10.10.10.10", "10.10.10.31")
+      ["10.10.10.10/31", "10.10.10.12/30", "10.10.10.16/28"]
+
+      iex> partition_range("10.10.10.10", "10.10.10.31")
+      ...> |> Enum.sort(&(pfxlen(&1) <= pfxlen(&2)))
+      ["10.10.10.16/28", "10.10.10.12/30", "10.10.10.10/31"]
+
+  """
+  @spec partition_range(prefix, prefix | non_neg_integer) :: [prefix]
+  def partition_range(prefix, nhosts) when is_integer(nhosts) do
+    addr = address(prefix) |> new()
+
+    {addr, nhosts} =
+      case nhosts < 0 do
+        true ->
+          {sibling(addr, nhosts + 1), -nhosts}
+
+        _ ->
+          {addr, nhosts}
+      end
+
+    unless nhosts <= 2 ** addr.maxlen,
+      do: raise(arg_error(:nocapacity, "#{addr}, nhosts: #{nhosts}"))
+
+    # so prefix length information is not lost (if prefix is address-tuple)
+    format = if is_tuple(prefix), do: {{0, 0, 0, 0}, 0}, else: prefix
+
+    partition_rangep(trim(addr), nhosts, [])
+    |> Enum.map(fn x -> marshall(x, format) end)
+  rescue
+    error -> raise error
+  end
+
+  def partition_range(start, stop) do
+    pfx_start = address(start) |> new()
+    pfx_stop = address(stop) |> new()
+
+    unless is_comparable(pfx_start, pfx_stop),
+      do: raise(arg_error(:nocompare, {pfx_start, pfx_stop}))
+
+    nstart = cast(pfx_start)
+    nstop = cast(pfx_stop)
+
+    nhosts =
+      if nstart > nstop,
+        do: 1 + 2 ** pfx_start.maxlen - nstart + nstop,
+        else: 1 + nstop - nstart
+
+    partition_rangep(trim(pfx_start), nhosts, [])
+    |> Enum.map(fn x -> marshall(x, start) end)
+  rescue
+    error -> raise error
+  end
+
+  @spec partition_rangep(Pfx.t(), non_neg_integer, [Pfx.t()]) :: [Pfx.t()]
+  defp partition_rangep(_pfx, nhosts, acc) when nhosts < 1,
+    do: Enum.reverse(acc)
+
+  defp partition_rangep(pfx, 1, acc) do
+    Enum.reverse([padr(pfx) | acc])
+  end
+
+  defp partition_rangep(pfx, nhosts, acc) do
+    size = size(pfx)
+    maxb = :math.log2(nhosts) |> trunc()
+
+    cond do
+      size == nhosts ->
+        Enum.reverse([pfx | acc])
+
+      size > nhosts ->
+        pfx = padr(pfx, 0, pfx.maxlen - bit_size(pfx.bits) - maxb)
+        size = size(pfx)
+        next = sibling(pfx, 1) |> trim()
+        partition_rangep(next, nhosts - size, [pfx | acc])
+
+      size < nhosts ->
+        nxt = sibling(pfx, 1) |> trim()
+        partition_rangep(nxt, nhosts - size, [pfx | acc])
+    end
+  end
+
+  @doc """
   Returns the length of the bitstring for given `prefix`.
 
   ## Examples
@@ -3056,6 +3262,11 @@ defmodule Pfx do
       iex> trim("255.255.255.0")
       "255.255.255.0/24"
 
+      # perhaps more visible like thi
+      iex> trim("255.255.255.0")
+      ...> |> new()
+      %Pfx{bits: <<255, 255, 255>>, maxlen: 32}
+
       iex> trim("10.10.128.0/30")
       "10.10.128.0/17"
 
@@ -3089,6 +3300,80 @@ defmodule Pfx do
       1 -> bits
       0 -> trimp(rest)
     end
+  end
+
+  @doc """
+  Returns a `prefix` in the form of a tuple, with or without mask.
+
+  The options include:
+  - `:mask` whether to apply and include the mask (i.e. prefix length)
+  - `:width` how many bits in an address part (default depends)
+
+  The `:width` defaults to `8`, except when maxlen is 128, in which case it is `16`.
+  These defaults are a good fit for IPv4, IPv6, EUI48 and EUI64 prefixes and produces
+  a tuple representation that can easily be converted back into a `t:Pfx.t/0` struct
+  if the need arises.
+
+  ## Examples
+
+      iex> to_tuple("1.1.1.0/24")
+      {{1, 1, 1, 0}, 24}
+
+      # mask is applied by default
+      iex> to_tuple("1.1.1.12/24")
+      {{1, 1, 1, 0}, 24}
+
+      # unless :mask option is false
+      iex> to_tuple("1.1.1.12/24", mask: false)
+      {1, 1, 1, 12}
+
+      # converts other formats of IPv4/6 and EUI48/64 as well
+      iex> to_tuple({1, 1, 1, 12})
+      {{1, 1, 1, 12}, 32}
+
+      iex> to_tuple(%Pfx{bits: <<1, 1, 1, 12>>, maxlen: 32})
+      {{1, 1, 1, 12}, 32}
+
+      iex> to_tuple("acdc:1976::/32")
+      {{0xacdc, 0x1976, 0, 0, 0, 0, 0, 0}, 32}
+
+      # convert back
+      iex> to_tuple("acdc:1976::/32")
+      ...> |> new()
+      %Pfx{bits: <<0xacdc::size(16), 0x1976::size(16)>>, maxlen: 128}
+
+  For other types of prefixes, use the `:width` option to override how many bits
+  go into an address part.  If the prefix has a maxlen that is not the number
+  of address digits * their width, maxlen will need to be known when converting
+  the tuple representation back into a `t:Pfx.t/0` struct (since it cannot be
+  deduced).
+
+      # maxlen is 30 bits, not 8*4
+      iex> to_tuple(%Pfx{bits: <<0x12, 0x34, 0x56>>, maxlen: 30}, width: 4)
+      {{1, 2, 3, 4, 5, 6, 0, 0}, 24}
+
+      # conversion back into a Pfx struct requires `width` and `maxlen` to be known
+      iex> pfx = %Pfx{bits: <<0x12, 0x34, 0x56>>, maxlen: 30}
+      iex> {parts, pfxlen} = to_tuple(pfx, width: 4)
+      iex> bits = for x <- Tuple.to_list(parts), into: <<>>, do: <<x::size(4)>>
+      iex> new(bits, 30)
+      ...> |> keep(pfxlen)
+      %Pfx{bits: <<0x12, 0x34, 0x56>>, maxlen: 30}
+
+  """
+  @spec to_tuple(prefix, Keyword.t()) :: tuple
+  def to_tuple(prefix, opts \\ []) do
+    mask = Keyword.get(opts, :mask, true)
+    pfx = if mask, do: new(prefix), else: address(prefix) |> new()
+    width = if pfx.maxlen == 128, do: 16, else: 8
+    width = Keyword.get(opts, :width, width)
+    digits = digits(pfx, width)
+
+    if mask,
+      do: digits,
+      else: elem(digits, 0)
+  rescue
+    error -> raise error
   end
 
   @doc """

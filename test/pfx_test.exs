@@ -1668,6 +1668,54 @@ defmodule PfxTest do
     assert 65536 == partition("acdc::1976/112", 128) |> length()
   end
 
+  test "partition_range/2 with start,nhosts" do
+    # start, nhosts
+    range = fn x -> partition_range(x, 1) end
+    Enum.all?(@ip4_representations, range)
+    Enum.all?(@ip6_representations, range)
+    Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> range.(x) end end)
+
+    # zero hosts
+    assert [] == partition_range("10.10.10.0", 0)
+    # some hosts
+    assert ["10.10.10.0"] == partition_range("10.10.10.0", 1)
+    assert ["10.10.10.0/24"] == partition_range("10.10.10.0", 256)
+    # all hosts
+    assert ["0.0.0.0/0"] == partition_range("0.0.0.0", 2 ** 32)
+    # wraps around
+    assert ["255.255.255.255", "0.0.0.0/24"] = partition_range("255.255.255.255", 257)
+    assert ["255.255.255.255", "0.0.0.0/24"] = partition_range("0.0.0.255", -257)
+    # wraps around but starts at `start`
+    assert ["255.255.255.255", "0.0.0.0"] == partition_range("255.255.255.255", "0.0.0.0")
+
+    assert_raise ArgumentError, fn -> partition_range("0.0.0.0", 2 ** 32 + 1) end
+  end
+
+  test "partition_range/2 with start,stop" do
+    range = fn x -> partition_range(x, x) end
+    Enum.all?(@ip4_representations, range)
+    Enum.all?(@ip6_representations, range)
+    Enum.all?(@bad_representations, fn x -> assert_raise ArgumentError, fn -> range.(x) end end)
+
+    # prefixes must be comparable
+    assert_raise ArgumentError, fn -> partition_range("1.1.1.1", "2001::") end
+    assert_raise ArgumentError, fn -> partition_range("2001::", "1.1.1.1") end
+
+    # range of 1
+    assert ["10.10.10.10"] == partition_range("10.10.10.10", "10.10.10.10")
+    # range of many
+    assert ["10.10.10.0/23"] == partition_range("10.10.10.0", "10.10.11.255")
+    # wraps address space
+    assert ["255.255.255.0/24", "0.0.0.0"] == partition_range("255.255.255.0", "0.0.0.0")
+
+    # normal ranges
+    assert ["10.10.0.0/16"] == partition_range("10.10.0.0", "10.10.255.255")
+    assert ["0.0.0.0/0"] == partition_range("0.0.0.0", "255.255.255.255")
+
+    assert ["0:0:0:0:0:0:0:0/0"] ==
+             partition_range("::", "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
+  end
+
   test "pfxlen/1" do
     for len <- 0..32 do
       assert len == pfxlen("1.2.3.4/#{len}")
@@ -1834,6 +1882,35 @@ defmodule PfxTest do
   end
 
   test "teredo_encode/4 - TODO" do
+  end
+
+  test "to_tuple/2" do
+    Enum.all?(@ip4_representations, fn x -> to_tuple(x) end)
+    Enum.all?(@ip6_representations, fn x -> to_tuple(x) end)
+
+    Enum.all?(@bad_representations, fn x ->
+      assert_raise ArgumentError, fn -> to_tuple(x) end
+    end)
+
+    assert {{0, 0, 0, 0}, 32} == to_tuple("0.0.0.0")
+    assert {{0, 0, 0, 0}, 32} == to_tuple({0, 0, 0, 0})
+    assert {{0, 0, 0, 0}, 32} == to_tuple(%Pfx{bits: <<0, 0, 0, 0>>, maxlen: 32})
+
+    assert {{128, 128, 128, 128}, 32} == to_tuple("128.128.128.128")
+    assert {{128, 128, 128, 128}, 32} == to_tuple({128, 128, 128, 128})
+    assert {{128, 128, 128, 128}, 32} == to_tuple(%Pfx{bits: <<128, 128, 128, 128>>, maxlen: 32})
+
+    assert {{255, 255, 255, 255}, 32} == to_tuple("255.255.255.255")
+    assert {{255, 255, 255, 255}, 32} == to_tuple({255, 255, 255, 255})
+    assert {{255, 255, 255, 255}, 32} == to_tuple(%Pfx{bits: <<255, 255, 255, 255>>, maxlen: 32})
+
+    assert {{0xACDC, 0x1976, 0, 0, 0, 0, 0, 0}, 32} == to_tuple("acdc:1976::/32")
+
+    assert {{0xACDC, 0x1976, 0, 0, 0, 0, 0, 0}, 32} ==
+             to_tuple(%Pfx{bits: <<0xACDC::size(16), 0x1976::size(16)>>, maxlen: 128})
+
+    assert {{0xACDC, 0x1976, 0, 0, 0, 0, 0, 0}, 32} ==
+             to_tuple({{0xACDC, 0x1976, 0, 0, 0, 0, 0, 0}, 32})
   end
 
   test "teredo_decode/1" do

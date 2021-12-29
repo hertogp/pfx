@@ -72,6 +72,10 @@ Functions generally accept either a `t:Pfx.t/0`, a `t:Pfx.ip_address/0`, a
     iex> cut("::1.2.3.4", -1, -32)
     "1.2.3.4"
 
+    # partition a range of address space
+    iex> partition_range("10.10.10.0", "10.10.10.33")
+    ["10.10.10.0/27", "10.10.10.32/31"]
+
 ## Validity
 
 The `Pfx.new/2` function will silently clip the provided `bits`-string to
@@ -344,7 +348,7 @@ list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:pfx, "~> 0.9.0"}
+    {:pfx, "~> 0.10.0"}
   ]
 end
 ```

@@ -5,18 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [unreleased]
+## [v0.10.0] - 2021-12-29
 
 ### added
 
-- [ ] Pfx.from/2 which returns a list of `t:Pfx.t/0`'s from:
+- `Pfx.partition_range/2` which returns a list of prefixes, where range is given by:
     - a start prefix and a stop prefix, or
     - a start prefix and a number of hosts
-- [ ] Pfx.iana_special/1 which returns a map with iana's special registry registration
-    - or Pfx.registry/1 ?
-    - see https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
-    - and https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml
-    - and https://www.iana.org/assignments/ipv6-unicast-address-assignments/ipv6-unicast-address-assignments.xhtml
+- `Pfx.to_tuple/2` to convert (with options) a prefix into an address-tuple
+    - option `:mask`, default true, applies the mask and yields an address,length-tuple
+    - option `:width` default 8 (or 16 in case maxlen is 128)
+    - the width option allows for converting prefixes other than ipv4/6, eui48/64 as well
 
 
 ## [v0.9.0] - 2021-12-03
