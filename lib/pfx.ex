@@ -3003,7 +3003,7 @@ defmodule Pfx do
           {addr, nhosts}
       end
 
-    unless nhosts <= 2 ** addr.maxlen,
+    unless nhosts <= trunc(:math.pow(2, addr.maxlen)),
       do: raise(arg_error(:nocapacity, "#{addr}, nhosts: #{nhosts}"))
 
     # so prefix length information is not lost (if prefix is address-tuple)
@@ -3027,7 +3027,7 @@ defmodule Pfx do
 
     nhosts =
       if nstart > nstop,
-        do: 1 + 2 ** pfx_start.maxlen - nstart + nstop,
+        do: 1 + trunc(:math.pow(2, pfx_start.maxlen)) - nstart + nstop,
         else: 1 + nstop - nstart
 
     partition_rangep(trim(pfx_start), nhosts, [])
