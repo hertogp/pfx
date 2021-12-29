@@ -1681,14 +1681,14 @@ defmodule PfxTest do
     assert ["10.10.10.0"] == partition_range("10.10.10.0", 1)
     assert ["10.10.10.0/24"] == partition_range("10.10.10.0", 256)
     # all hosts
-    assert ["0.0.0.0/0"] == partition_range("0.0.0.0", 2 ** 32)
+    assert ["0.0.0.0/0"] == partition_range("0.0.0.0", trunc(:math.pow(2, 32)))
     # wraps around
     assert ["255.255.255.255", "0.0.0.0/24"] = partition_range("255.255.255.255", 257)
     assert ["255.255.255.255", "0.0.0.0/24"] = partition_range("0.0.0.255", -257)
     # wraps around but starts at `start`
     assert ["255.255.255.255", "0.0.0.0"] == partition_range("255.255.255.255", "0.0.0.0")
 
-    assert_raise ArgumentError, fn -> partition_range("0.0.0.0", 2 ** 32 + 1) end
+    assert_raise ArgumentError, fn -> partition_range("0.0.0.0", 1 + trunc(:math.pow(2, 32))) end
   end
 
   test "partition_range/2 with start,stop" do
