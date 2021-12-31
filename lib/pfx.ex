@@ -2919,7 +2919,9 @@ defmodule Pfx do
       ["10.10.10.10"]
 
 
-  The range is inclusive, so both `start` and `stop` are always included.
+  The range is inclusive, so both `start` and `stop` are always included.  In fact,
+  `start` is the first address of the first prefix in the list and `stop` the last
+  address in the last prefix.
 
       iex> partition_range("10.10.10.10", "10.10.10.10")
       ["10.10.10.10"]
@@ -2987,6 +2989,13 @@ defmodule Pfx do
 
       iex> partition_range("10.10.10.10", "10.10.10.31")
       ...> |> Enum.sort(&(pfxlen(&1) <= pfxlen(&2)))
+      ["10.10.10.16/28", "10.10.10.12/30", "10.10.10.10/31"]
+
+      # the above actually converts between string and `t:Pfx.t/0` twice,
+      # to avoid that do something like this:
+      iex> partition_range(new("10.10.10.10"), new("10.10.10.31"))
+      ...> |> Enum.sort(&(pfxlen(&1) <= pfxlen(&2)))
+      ...> |> Enum.map(&format/1)
       ["10.10.10.16/28", "10.10.10.12/30", "10.10.10.10/31"]
 
   """
@@ -3358,6 +3367,13 @@ defmodule Pfx do
       iex> bits = for x <- Tuple.to_list(parts), into: <<>>, do: <<x::size(4)>>
       iex> new(bits, 30)
       ...> |> keep(pfxlen)
+      %Pfx{bits: <<0x12, 0x34, 0x56>>, maxlen: 30}
+
+      # or less convoluted
+      iex> pfx = %Pfx{bits: <<0x12, 0x34, 0x56>>, maxlen: 30}
+      iex> to_tuple(pfx, width: 4)
+      ...> |> undigits(4)
+      ...> |> new(30)
       %Pfx{bits: <<0x12, 0x34, 0x56>>, maxlen: 30}
 
   """
