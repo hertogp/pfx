@@ -348,7 +348,7 @@ list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:pfx, "~> 0.10.0"}
+    {:pfx, "~> 0.10.1"}
   ]
 end
 ```
