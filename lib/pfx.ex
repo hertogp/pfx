@@ -3139,26 +3139,50 @@ defmodule Pfx do
 
   def remove(pfx, position, 0) when is_pfx(pfx) do
     bsize = bit_size(pfx.bits)
-    pos = if position < 0, do: bsize + position, else: position
-    if pos < 0 or pos >= bsize, do: raise(arg_error(:bitpos, position))
+
+    pos =
+      if position < 0,
+        do: bsize + position,
+        else: position
+
+    if pos < 0 or pos >= bsize,
+      do: raise(arg_error(:bitpos, position))
+
     pfx
   end
 
   def remove(pfx, position, length) when is_pfx(pfx) and is_integer(position * length) do
     bsize = bit_size(pfx.bits)
     # normalize position
-    pos = if position < 0, do: bsize + position, else: position
-    if pos < 0 or pos >= bsize, do: raise(ArgumentError)
-    {pos, len} = if length < 0, do: {pos + 1 + length, -length}, else: {pos, length}
+    pos =
+      if position < 0,
+        do: bsize + position,
+        else: position
+
+    if pos < 0 or pos >= bsize,
+      do: raise(arg_error(:range, {pfx, position, length}))
+
+    {pos, len} =
+      if length < 0,
+        do: {pos + 1 + length, -length},
+        else: {pos, length}
+
     # clip length to max bits available to remove
-    {pos, len} = if pos < 0, do: {0, len + pos}, else: {pos, len}
-    {pos, len} = if pos + len > bsize, do: {pos, bsize - pos}, else: {pos, len}
+    {pos, len} =
+      if pos < 0,
+        do: {0, len + pos},
+        else: {pos, len}
+
+    {pos, len} =
+      if pos + len > bsize,
+        do: {pos, bsize - pos},
+        else: {pos, len}
 
     <<left::bitstring-size(pos), _::bitstring-size(len), right::bitstring>> = pfx.bits
 
     %{pfx | bits: <<left::bitstring, right::bitstring>>}
   rescue
-    _ -> raise arg_error(:range, {pfx, position, length})
+    err -> raise err
   end
 
   def remove(pfx, start, length) when is_integer(start * length) do
@@ -3525,17 +3549,19 @@ defmodule Pfx do
 
   """
   @spec member(prefix, integer, pos_integer) :: prefix
-  def member(pfx, nth, width)
-      when is_pfx(pfx) and is_integer(nth) and
-             is_inrange(width, 0, pfx.maxlen - bit_size(pfx.bits)),
-      do: %{pfx | bits: <<pfx.bits::bits, nth::size(width)>>}
+  def member(pfx, nth, width) when is_pfx(pfx) and is_integer(width * nth) do
+    unless 0 <= width and width <= pfx.maxlen - bit_size(pfx.bits),
+      do: raise(arg_error(:nowidth, width))
+
+    # is_inrange(width, 0, pfx.maxlen - bit_size(pfx.bits)),
+    %{pfx | bits: <<pfx.bits::bits, nth::size(width)>>}
+  end
 
   def member(pfx, nth, width) when is_pfx(pfx) and is_integer(nth),
     do: raise(arg_error(:nowidth, width))
 
-  def member(pfx, nth, width)
-      when is_pfx(pfx) and is_inrange(width, 0, pfx.maxlen - bit_size(pfx.bits)),
-      do: raise(arg_error(:noint, nth))
+  def member(pfx, nth, width) when is_pfx(pfx) and is_integer(width),
+    do: raise(arg_error(:noint, nth))
 
   def member(pfx, nth, width) do
     new(pfx)
@@ -3704,11 +3730,9 @@ defmodule Pfx do
     flip(eui, 6)
   end
 
-  # if eui48 was a prefix, error out before we try new/1 (!)
-  def eui64_encode(pfx) when is_pfx(pfx),
-    do: raise(arg_error(:noeui, pfx))
-
   def eui64_encode(pfx) do
+    # if pfx is a pfx, its not an eui48 nor eui64 and from_mac will raise
+    # an ArgumentError
     from_mac(pfx)
     |> eui64_encode()
     |> marshall(pfx)
@@ -4550,14 +4574,15 @@ defimpl Enumerable, for: Pfx do
 
   def slice(pfx) do
     {:ok, size} = count(pfx)
-    {:ok, size, &slicep(&1, &2)}
+    {:ok, size, fn start, len -> slicep(pfx, start, len) end}
   end
 
-  defp slicep(pfx, n) when n < 1,
-    do: [Pfx.member(pfx, n)]
-
-  defp slicep(pfx, n),
-    do: slicep(pfx, n - 1) ++ [Pfx.member(pfx, n)]
+  @spec slicep(Pfx.t(), non_neg_integer, pos_integer) :: [Pfx.t()]
+  defp slicep(pfx, start, len) do
+    for pos <- start..(start + len - 1) do
+      Pfx.member(pfx, pos)
+    end
+  end
 
   def reduce(pfx, acc, fun),
     do: reduce(pfx, acc, fun, _idx = 0, _max = Pfx.size(pfx))

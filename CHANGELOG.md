@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [unreleased]
+
+### fixed
+
+- [x] `Pfx.member/3`, check `width` argument for validity and raise ArgumentError if invalid
+- [x] fixed the Enumerable.Pfx.slice function, so Enum.take & friends work properly
+
 ## [v0.10.0] - 2021-12-29
 
 ### added

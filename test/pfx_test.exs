@@ -86,12 +86,10 @@ defmodule PfxTest do
     "aabbccddeeff"
   ]
 
-  @tag tst: "guards"
   test "guards" do
     assert is_comparable(new("1.1.1.1"), new("2.2.2.2/24"))
   end
 
-  @tag tst: "address"
   test "address/1" do
     Enum.all?(@ip4_representations, fn x -> assert address(x) end)
     Enum.all?(@ip6_representations, fn x -> assert address(x) end)
@@ -665,6 +663,11 @@ defmodule PfxTest do
     assert_raise ArgumentError, fn -> eui64_decode("1.1.1.1") end
   end
 
+  test "eui64_encode" do
+    assert_raise ArgumentError, fn -> new("1.1.1.1") |> eui64_encode() end
+    assert_raise ArgumentError, fn -> eui64_encode("1.1.1.1") end
+  end
+
   test "fields/2" do
     Enum.all?(@ip4_representations, fn x -> assert fields(x, 1) end)
     Enum.all?(@ip6_representations, fn x -> assert fields(x, 1) end)
@@ -1112,6 +1115,13 @@ defmodule PfxTest do
     end)
   end
 
+  test "marshall/2" do
+    # when x is not a Pfx.t, it is returned unchanged
+    Enum.all?(@ip4_representations, fn x -> assert x == marshall(x, x) end)
+    Enum.all?(@ip6_representations, fn x -> assert x == marshall(x, x) end)
+    Enum.all?(@bad_representations, fn x -> assert x == marshall(x, x) end)
+  end
+
   test "mask/1" do
     Enum.all?(@ip4_representations, fn x -> assert mask(x) end)
     Enum.all?(@ip6_representations, fn x -> assert mask(x) end)
@@ -1186,6 +1196,31 @@ defmodule PfxTest do
     assert "1.2.3.255" == member("1.2.3.0/24", 255)
     assert "1.2.3.255" == member("1.2.0.0/16", 3 * 256 + 255)
     assert "1.1.1.1" == member("1.1.1.0/31", 1)
+
+    # nth must be an integer
+    assert_raise ArgumentError, fn -> member("1.1.1.0/31", 1.0) end
+  end
+
+  @tag tst: "member3"
+  test "member/3" do
+    assert "1.1.1.0/26" == member("1.1.1.0/24", 0, 2)
+    assert "1.1.1.64/26" == member("1.1.1.0/24", 1, 2)
+    assert "1.1.1.128/26" == member("1.1.1.0/24", 2, 2)
+    assert "1.1.1.192/26" == member("1.1.1.0/24", 3, 2)
+
+    # negative nth works too
+    assert "1.1.1.0/26" == member("1.1.1.0/24", -4, 2)
+    assert "1.1.1.64/26" == member("1.1.1.0/24", -3, 2)
+    assert "1.1.1.128/26" == member("1.1.1.0/24", -2, 2)
+    assert "1.1.1.192/26" == member("1.1.1.0/24", -1, 2)
+
+    # nth must be an integer
+    assert_raise ArgumentError, fn -> member(new("1.1.1.0/24"), 0.0, 2) end
+    assert_raise ArgumentError, fn -> member(new("1.1.1.0/24"), 0, 2.0) end
+    assert_raise ArgumentError, fn -> member(new("1.1.1.0/24"), 0, -2) end
+    assert_raise ArgumentError, fn -> member("1.1.1.0/24", 0, -2) end
+    assert_raise ArgumentError, fn -> member("1.1.1.0/44", 1, 2) end
+    assert_raise ArgumentError, fn -> member("1.1.1.300/24", 1, 2) end
   end
 
   test "member?/2" do
@@ -1340,6 +1375,15 @@ defmodule PfxTest do
                rfc: 3306
              },
              scope: 1
+           }
+
+    assert multicast_decode("ff00::") == %{
+             flags: {0, 0, 0, 0},
+             multicast_address: "ff00:0:0:0:0:0:0:0",
+             multicast_prefix: "ff00:0:0:0:0:0:0:0/12",
+             protocol: :ipv6,
+             rfc: %{group_id: 0, rfc: 4291},
+             scope: 0
            }
 
     # mirrors representation
@@ -1847,6 +1891,16 @@ defmodule PfxTest do
     # position must be in range -bsize .. bsize-1
     assert_raise ArgumentError, fn -> remove("1.1.1.1", 32, 0) end
     assert_raise ArgumentError, fn -> remove("1.1.1.1", -33, 0) end
+    assert_raise ArgumentError, fn -> remove(new("1.1.1.1"), -64, 8) end
+
+    # position and length must be integers
+    assert "2.3.0.0/16" == remove("1.2.3.0/24", 0, 8)
+    assert_raise ArgumentError, fn -> remove("1.2.3.0/24", 0.0, 8) end
+    assert_raise ArgumentError, fn -> remove("1.2.3.0/24", 0, 8.0) end
+
+    # remove 0 bits
+    assert "1.2.3.0/24" == remove("1.2.3.0/24", 0, 0)
+    assert "1.2.3.0/24" == remove("1.2.3.0/24", 8, 0)
 
     # from front
     assert "2.3.0.0/16" == remove("1.2.3.0/24", 0, 8)
@@ -1889,6 +1943,10 @@ defmodule PfxTest do
     Enum.all?(@bad_representations, fn x ->
       assert_raise ArgumentError, fn -> sibling(x, 0) end
     end)
+
+    # nth must be an integer
+    assert "1.1.1.1" == sibling("1.1.1.1", 0)
+    assert_raise ArgumentError, fn -> sibling("1.1.1.1", 0.0) end
 
     # a prefix is its own sibling at distance 0
     assert %Pfx{bits: <<1, 2, 3, 4, 5>>, maxlen: 48} ==
@@ -2098,6 +2156,7 @@ defmodule PfxTest do
     assert_raise ArgumentError, fn -> undigits({{1, 1, 1, 1}, 32}, 1.0) end
     assert_raise ArgumentError, fn -> undigits({{1, 1, 1, 1}, 32}, 0) end
     assert_raise ArgumentError, fn -> undigits({{1, 1.0, 1, 1}, 32}, 8) end
+    assert_raise ArgumentError, fn -> undigits({{1, 1, 1, 1}, -32}, 1) end
 
     # no bits
     assert %Pfx{bits: <<>>, maxlen: 32} == undigits({{0, 0, 0, 0}, 0}, 8)
@@ -2125,5 +2184,51 @@ defmodule PfxTest do
 
     assert "acdc:1976:ffff:ffff:ffff:ffff:ffff:ffff" ==
              "#{%Pfx{bits: <<0xACDC::16, 0x1976::16, -1::96>>, maxlen: 128}}"
+  end
+
+  test "Enumerable.Pfx" do
+    assert 256 == Pfx.new("1.1.1.0/24") |> Enum.count()
+    assert 256 == Pfx.new("acdc::/120") |> Enum.count()
+
+    # membership
+    assert true == Enum.member?(new("1.1.1.0/24"), new("1.1.1.1"))
+    assert false == Enum.member?(new("1.1.1.0/24"), "1.1.1.1")
+    assert false == Enum.member?(new("1.1.1.0/24"), new("1.1.0.0/23"))
+    assert true == Enum.member?(new("1.1.1.0/23"), new("1.1.0.0/24"))
+
+    # mapping
+    assert Enum.map(new("1.1.1.0/30"), fn x -> x end) == [
+             %Pfx{bits: <<1, 1, 1, 0>>, maxlen: 32},
+             %Pfx{bits: <<1, 1, 1, 1>>, maxlen: 32},
+             %Pfx{bits: <<1, 1, 1, 2>>, maxlen: 32},
+             %Pfx{bits: <<1, 1, 1, 3>>, maxlen: 32}
+           ]
+
+    # take
+    assert Enum.take(new("1.1.1.0/30"), 2) == [
+             %Pfx{bits: <<1, 1, 1, 0>>, maxlen: 32},
+             %Pfx{bits: <<1, 1, 1, 1>>, maxlen: 32}
+           ]
+
+    assert Enum.take(new("1.1.1.0/30"), -2) == [
+             %Pfx{bits: <<1, 1, 1, 2>>, maxlen: 32},
+             %Pfx{bits: <<1, 1, 1, 3>>, maxlen: 32}
+           ]
+
+    # reduce
+    assert Enum.zip(Pfx.new("1.1.1.0/30"), Pfx.new("2.2.2.0/30")) == [
+             {%Pfx{bits: <<1, 1, 1, 0>>, maxlen: 32}, %Pfx{bits: <<2, 2, 2, 0>>, maxlen: 32}},
+             {%Pfx{bits: <<1, 1, 1, 1>>, maxlen: 32}, %Pfx{bits: <<2, 2, 2, 1>>, maxlen: 32}},
+             {%Pfx{bits: <<1, 1, 1, 2>>, maxlen: 32}, %Pfx{bits: <<2, 2, 2, 2>>, maxlen: 32}},
+             {%Pfx{bits: <<1, 1, 1, 3>>, maxlen: 32}, %Pfx{bits: <<2, 2, 2, 3>>, maxlen: 32}}
+           ]
+
+    assert Enum.zip(Pfx.new("1.1.1.0/30"), Pfx.new("acdc::")) == [
+             {%Pfx{bits: <<1, 1, 1, 0>>, maxlen: 32},
+              %Pfx{
+                bits: <<172, 220, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0>>,
+                maxlen: 128
+              }}
+           ]
   end
 end
