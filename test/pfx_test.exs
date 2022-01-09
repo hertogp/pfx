@@ -86,6 +86,12 @@ defmodule PfxTest do
     "aabbccddeeff"
   ]
 
+  @tag tst: "guards"
+  test "guards" do
+    assert is_comparable(new("1.1.1.1"), new("2.2.2.2/24"))
+  end
+
+  @tag tst: "address"
   test "address/1" do
     Enum.all?(@ip4_representations, fn x -> assert address(x) end)
     Enum.all?(@ip6_representations, fn x -> assert address(x) end)
@@ -105,6 +111,7 @@ defmodule PfxTest do
     assert %Pfx{bits: <<>>, maxlen: 128} == address(%Pfx{bits: <<>>, maxlen: 128})
   end
 
+  @tag tst: "band"
   test "band/2" do
     Enum.all?(@ip4_representations, fn x -> assert band(x, x) end)
     Enum.all?(@ip6_representations, fn x -> assert band(x, x) end)
@@ -141,6 +148,10 @@ defmodule PfxTest do
     assert_raise ArgumentError, fn -> bit(%Pfx{bits: <<255>>, maxlen: 16}, 16) end
     assert_raise ArgumentError, fn -> bit(%Pfx{bits: <<255>>, maxlen: 16}, -17) end
 
+    # pos is not an int
+    assert_raise ArgumentError, fn -> bit(%Pfx{bits: <<255>>, maxlen: 16}, [6]) end
+    assert_raise ArgumentError, fn -> bit(%Pfx{bits: <<255>>, maxlen: 16}, "6") end
+
     # first bit
     assert 1 == bit(%Pfx{bits: <<255, 0>>, maxlen: 16}, 0)
     assert 1 == bit(%Pfx{bits: <<255, 0>>, maxlen: 16}, -16)
@@ -162,6 +173,23 @@ defmodule PfxTest do
     assert 1 == bit({{255, 255, 0, 0}, 32}, 15)
   end
 
+  test "bits/2" do
+    Enum.all?(@ip4_representations, fn x -> assert bits(x, [{0, 0}]) end)
+    Enum.all?(@ip6_representations, fn x -> assert bits(x, [{0, 0}]) end)
+
+    pfx = %Pfx{bits: <<0, 0, 128, 1>>, maxlen: 32}
+    assert <<128>> == bits(pfx, [{16, 8}])
+    assert <<>> == bits(pfx, [])
+
+    # pfx must be understood by new/1
+    assert_raise ArgumentError, fn -> bits("xyz", [{0, 0}]) end
+    # out of range
+    assert_raise ArgumentError, fn -> bits(pfx, [{24, 16}]) end
+
+    # pfx can be any kind of prefix
+    assert <<128>> == bits(new(<<0, 128>>, 16), [{8, 8}])
+  end
+
   test "bits/3" do
     Enum.all?(@ip4_representations, fn x -> assert bits(x, 0, 0) end)
     Enum.all?(@ip6_representations, fn x -> assert bits(x, 0, 0) end)
@@ -176,6 +204,13 @@ defmodule PfxTest do
     assert_raise ArgumentError, fn -> bits(pfx, 0, 33) end
     assert_raise ArgumentError, fn -> bits(pfx, 31, 2) end
     assert_raise ArgumentError, fn -> bits(pfx, 32, 0) end
+
+    # position and length must be integers
+    assert <<128>> == bits(pfx, 16, 8)
+    assert_raise ArgumentError, fn -> bits(pfx, 16.0, 8) end
+    assert_raise ArgumentError, fn -> bits(pfx, 16, 8.0) end
+    assert_raise ArgumentError, fn -> bits(pfx, [16], 8) end
+    assert_raise ArgumentError, fn -> bits(pfx, 16, [8]) end
 
     # no bits
     assert <<>> == bits(pfx, 0, 0)
@@ -312,6 +347,10 @@ defmodule PfxTest do
     # note {{1,2,3,4},24} => {1, 2, 3} => rotate left by 8 bits gives {2, 3, 1}
     assert {{2, 3, 1, 0}, 24} == brot({{1, 2, 3, 4}, 24}, -8)
     assert {{2, 3, 1, 0}, 24} == brot({{1, 2, 3, 4}, 24}, -8)
+
+    # n must be an integer
+    assert "4.1.2.3" == brot("1.2.3.4", 8)
+    assert_raise ArgumentError, fn -> brot("1.2.3.4", 8.0) end
   end
 
   test "bset/2" do
@@ -363,10 +402,14 @@ defmodule PfxTest do
     assert %Pfx{bits: <<0>>, maxlen: 16} == bsl(%Pfx{bits: <<255>>, maxlen: 16}, 88)
 
     # same representation for results
+    assert "1.2.3.4" == bsl("1.2.3.4", 0)
     assert "2.3.4.0" == bsl("1.2.3.4", 8)
     assert "2.3.0.0/24" == bsl("1.2.3.4/24", 8)
     assert {2, 3, 4, 0} == bsl({1, 2, 3, 4}, 8)
     assert {0, 1, 2, 3} == bsl({1, 2, 3, 4}, -8)
+
+    # shift must be an integer
+    assert_raise ArgumentError, fn -> bsl("1.2.3.4", 8.0) end
   end
 
   test "bsr/2" do
@@ -392,6 +435,9 @@ defmodule PfxTest do
     assert "2.3.0.0/24" == bsr("1.2.3.4/24", -8)
     assert {2, 3, 4, 0} == bsr({1, 2, 3, 4}, -8)
     assert {0, 1, 2, 3} == bsr({1, 2, 3, 4}, 8)
+
+    # shift must be an integer
+    assert_raise ArgumentError, fn -> bsr("1.2.3.4", 8.0) end
   end
 
   test "bxor/2" do
@@ -546,6 +592,9 @@ defmodule PfxTest do
     # nibbles
     assert {{0xA, 0xC, 0xD, 0xC, 0x1, 0x9, 0x7, 0x6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
              0, 0, 0, 0, 0, 0, 0, 0, 0}, 128} == digits("acdc:1976::", 4)
+
+    # width must be positive integer
+    assert_raise ArgumentError, fn -> digits("1.2.3.4", 1.0) end
   end
 
   test "dns_ptr/1" do
@@ -611,6 +660,11 @@ defmodule PfxTest do
     assert {{1, 2, 0, 0}, 16} == drop({{1, 2, 3, 4}, 32}, 16)
   end
 
+  test "eui64_decode" do
+    assert_raise ArgumentError, fn -> new("1.1.1.1") |> eui64_decode() end
+    assert_raise ArgumentError, fn -> eui64_decode("1.1.1.1") end
+  end
+
   test "fields/2" do
     Enum.all?(@ip4_representations, fn x -> assert fields(x, 1) end)
     Enum.all?(@ip6_representations, fn x -> assert fields(x, 1) end)
@@ -668,6 +722,10 @@ defmodule PfxTest do
     assert_raise ArgumentError, fn -> flip("0.0.0.0/0", 0) end
     assert_raise ArgumentError, fn -> flip(%Pfx{bits: <<255>>, maxlen: 16}, 16) end
     assert_raise ArgumentError, fn -> flip(%Pfx{bits: <<255>>, maxlen: 16}, -17) end
+
+    # position must be an integer
+    assert "128.0.0.0" == flip("0.0.0.0", 0)
+    assert_raise ArgumentError, fn -> flip("0.0.0.0", 0.0) end
 
     # first bit
     assert "127.0.0.0" == flip("255.0.0.0", 0)
@@ -839,6 +897,9 @@ defmodule PfxTest do
     assert "1.1.1.63" == host("1.1.1.0/25", 63)
     assert {1, 1, 1, 91} == host({1, 1, 1, 91}, 0)
     assert {{1, 1, 1, 255}, 32} == host({{1, 1, 1, 0}, 24}, 255)
+
+    # nth must be an integer
+    assert_raise ArgumentError, fn -> host("1.1.1.0/25", 63.0) end
   end
 
   test "insert/3" do
@@ -852,6 +913,8 @@ defmodule PfxTest do
     # bad positions
     assert_raise ArgumentError, fn -> insert("1.1.1.1", <<>>, 32) end
     assert_raise ArgumentError, fn -> insert("1.1.1.1", <<>>, -33) end
+    assert "1.1.1.1" == insert("1.1.1.1", <<>>, 8)
+    assert_raise ArgumentError, fn -> insert("1.1.1.1", <<>>, 8.0) end
 
     # bad bitstrings
     assert_raise ArgumentError, fn -> insert("1.1.1.1", 42, 0) end
@@ -1308,6 +1371,13 @@ defmodule PfxTest do
     Enum.all?(@bad_representations, fn x ->
       assert_raise ArgumentError, fn -> nat64_decode(x) end
     end)
+
+    # pfx6 should be a full IPv6 address
+    assert_raise ArgumentError, fn -> nat64_decode("acdc::/32") end
+
+    # len should be in [96, 64, 56, 48, 40, 32]
+    assert_raise ArgumentError, fn -> nat64_decode("acdc::", 65) end
+    assert nat64_decode("acdc::", 64) != nil
   end
 
   test "nat64_encode/2" do
@@ -1318,6 +1388,12 @@ defmodule PfxTest do
     Enum.all?(@bad_representations, fn x ->
       assert_raise ArgumentError, fn -> nat64_encode(x, x) end
     end)
+
+    # pfx4 must be an IPv4 address
+    assert_raise ArgumentError, fn -> nat64_encode("acdc::/32", "acdc::") end
+
+    # pfx6 must have specific length
+    assert_raise ArgumentError, fn -> nat64_encode("acdc::", "1.1.1.1") end
   end
 
   test "neighbor/1" do
@@ -1379,6 +1455,10 @@ defmodule PfxTest do
     # bad eui-48's
     assert_raise ArgumentError, fn -> new("aa.bbcc-ddee.ff") end
     assert_raise ArgumentError, fn -> new("aa.bb:cc:dd:ee:ff") end
+    # good pfx, bad maxlen
+    assert_raise ArgumentError, fn -> new("1.1.1.1") |> new(-1) end
+    # good address, bad mask
+    assert_raise ArgumentError, fn -> new("1.1.1.1/0024") end
 
     # identity
     null = %Pfx{bits: <<>>, maxlen: 0}
@@ -1881,36 +1961,18 @@ defmodule PfxTest do
     assert teredo?("2001:0:1:2:3:4:5:6")
   end
 
-  test "teredo_encode/4 - TODO" do
-  end
-
-  test "to_tuple/2" do
-    Enum.all?(@ip4_representations, fn x -> to_tuple(x) end)
-    Enum.all?(@ip6_representations, fn x -> to_tuple(x) end)
-
-    Enum.all?(@bad_representations, fn x ->
-      assert_raise ArgumentError, fn -> to_tuple(x) end
-    end)
-
-    assert {{0, 0, 0, 0}, 32} == to_tuple("0.0.0.0")
-    assert {{0, 0, 0, 0}, 32} == to_tuple({0, 0, 0, 0})
-    assert {{0, 0, 0, 0}, 32} == to_tuple(%Pfx{bits: <<0, 0, 0, 0>>, maxlen: 32})
-
-    assert {{128, 128, 128, 128}, 32} == to_tuple("128.128.128.128")
-    assert {{128, 128, 128, 128}, 32} == to_tuple({128, 128, 128, 128})
-    assert {{128, 128, 128, 128}, 32} == to_tuple(%Pfx{bits: <<128, 128, 128, 128>>, maxlen: 32})
-
-    assert {{255, 255, 255, 255}, 32} == to_tuple("255.255.255.255")
-    assert {{255, 255, 255, 255}, 32} == to_tuple({255, 255, 255, 255})
-    assert {{255, 255, 255, 255}, 32} == to_tuple(%Pfx{bits: <<255, 255, 255, 255>>, maxlen: 32})
-
-    assert {{0xACDC, 0x1976, 0, 0, 0, 0, 0, 0}, 32} == to_tuple("acdc:1976::/32")
-
-    assert {{0xACDC, 0x1976, 0, 0, 0, 0, 0, 0}, 32} ==
-             to_tuple(%Pfx{bits: <<0xACDC::size(16), 0x1976::size(16)>>, maxlen: 128})
-
-    assert {{0xACDC, 0x1976, 0, 0, 0, 0, 0, 0}, 32} ==
-             to_tuple({{0xACDC, 0x1976, 0, 0, 0, 0, 0, 0}, 32})
+  test "teredo_encode/4" do
+    flags = {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+    # port must be an int
+    assert_raise ArgumentError, fn -> teredo_encode("1.1.1.1", "2.2.2.2", "53", flags) end
+    # flags must be 16-element tuple
+    assert_raise ArgumentError, fn -> teredo_encode("1.1.1.1", "2.2.2.2", 53, {1, 1, 0}) end
+    # client/server must be full IPv4 addresses
+    assert_raise ArgumentError, fn -> teredo_encode("1.1.1.0/24", "2.2.2.2", 53, flags) end
+    assert_raise ArgumentError, fn -> teredo_encode("1.1.1.1", "2.2.2.0/24", 53, flags) end
+    # client/server must be parseable for new/1
+    assert_raise ArgumentError, fn -> teredo_encode('1.1.1.1', "2.2.2.2", 53, flags) end
+    assert_raise ArgumentError, fn -> teredo_encode("1.1.1.1", '2.2.2.2', 53, flags) end
   end
 
   test "teredo_decode/1" do
@@ -1953,6 +2015,35 @@ defmodule PfxTest do
     assert map.port == 33000
     assert map.flags == {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
     assert map.prefix == digits(addr, 16)
+  end
+
+  test "to_tuple/2" do
+    Enum.all?(@ip4_representations, fn x -> to_tuple(x) end)
+    Enum.all?(@ip6_representations, fn x -> to_tuple(x) end)
+
+    Enum.all?(@bad_representations, fn x ->
+      assert_raise ArgumentError, fn -> to_tuple(x) end
+    end)
+
+    assert {{0, 0, 0, 0}, 32} == to_tuple("0.0.0.0")
+    assert {{0, 0, 0, 0}, 32} == to_tuple({0, 0, 0, 0})
+    assert {{0, 0, 0, 0}, 32} == to_tuple(%Pfx{bits: <<0, 0, 0, 0>>, maxlen: 32})
+
+    assert {{128, 128, 128, 128}, 32} == to_tuple("128.128.128.128")
+    assert {{128, 128, 128, 128}, 32} == to_tuple({128, 128, 128, 128})
+    assert {{128, 128, 128, 128}, 32} == to_tuple(%Pfx{bits: <<128, 128, 128, 128>>, maxlen: 32})
+
+    assert {{255, 255, 255, 255}, 32} == to_tuple("255.255.255.255")
+    assert {{255, 255, 255, 255}, 32} == to_tuple({255, 255, 255, 255})
+    assert {{255, 255, 255, 255}, 32} == to_tuple(%Pfx{bits: <<255, 255, 255, 255>>, maxlen: 32})
+
+    assert {{0xACDC, 0x1976, 0, 0, 0, 0, 0, 0}, 32} == to_tuple("acdc:1976::/32")
+
+    assert {{0xACDC, 0x1976, 0, 0, 0, 0, 0, 0}, 32} ==
+             to_tuple(%Pfx{bits: <<0xACDC::size(16), 0x1976::size(16)>>, maxlen: 128})
+
+    assert {{0xACDC, 0x1976, 0, 0, 0, 0, 0, 0}, 32} ==
+             to_tuple({{0xACDC, 0x1976, 0, 0, 0, 0, 0, 0}, 32})
   end
 
   test "trim/1 removes all trailing zero's" do

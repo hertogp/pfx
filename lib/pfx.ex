@@ -116,7 +116,7 @@ defmodule Pfx do
         :ip6len ->
           "expected a valid IPv6 prefix length, got #{inspect(data)}"
 
-        :max ->
+        :maxlen ->
           "expected a non_neg_integer for maxlen, got #{inspect(data)}"
 
         :nat64 ->
@@ -167,8 +167,8 @@ defmodule Pfx do
         :nopart ->
           "cannot partition prefixes using #{inspect(data)}"
 
-        :nopfx ->
-          "expected a valid %Pfx{}-struct, got #{inspect(data)}"
+        # :nopfx ->
+        #   "expected a valid %Pfx{}-struct, got #{inspect(data)}"
 
         :nopos ->
           "expected a pos_integer, got #{inspect(data)}"
@@ -254,6 +254,8 @@ defmodule Pfx do
   # notes:
   # - ugly code, but a tad faster than multiple func's w/ signatures
   # - crude length "parser" -> '1.1.1.1/024' => {'1.1.1.1', 24}
+  # - TODO: add when y != ?0 resp. when x != nil to 1st and 3rd clause in case
+  # tail => then masks with leading zero's will yield an error
   defp splitp(charlist, acc) do
     case charlist do
       [?/ | tail] ->
@@ -1260,8 +1262,6 @@ defmodule Pfx do
       |> List.to_tuple()
 
     {digits, bit_size(pfx.bits)}
-  rescue
-    _ -> raise arg_error(:digits, {pfx, width})
   end
 
   def digits(pfx, width) when is_pos_integer(width) do
@@ -1361,7 +1361,7 @@ defmodule Pfx do
   """
   @spec fields(prefix, non_neg_integer) :: list({non_neg_integer, non_neg_integer})
   def fields(pfx, width) when is_pfx(pfx) and is_integer(width) and width > 0,
-    do: fields([], pfx.bits, width)
+    do: fieldsp([], pfx.bits, width)
 
   def fields(pfx, width) when is_integer(width) and width > 0 do
     new(pfx)
@@ -1373,17 +1373,17 @@ defmodule Pfx do
   def fields(_, width),
     do: raise(arg_error(:nowidth, width))
 
-  defp fields(acc, <<>>, _width), do: Enum.reverse(acc)
+  defp fieldsp(acc, <<>>, _width), do: Enum.reverse(acc)
 
-  defp fields(acc, bits, width) when bit_size(bits) >= width do
+  defp fieldsp(acc, bits, width) when bit_size(bits) >= width do
     <<num::size(width), rest::bitstring>> = bits
-    fields([{num, width} | acc], rest, width)
+    fieldsp([{num, width} | acc], rest, width)
   end
 
-  defp fields(acc, bits, width) do
+  defp fieldsp(acc, bits, width) do
     w = bit_size(bits)
     <<num::size(w)>> = bits
-    fields([{num, w} | acc], "", width)
+    fieldsp([{num, w} | acc], "", width)
   end
 
   @doc """
@@ -1452,7 +1452,7 @@ defmodule Pfx do
       %Pfx{bits: <<1, 2, 3, 0::1>>, maxlen: 32}
 
   """
-  @spec flip(prefix, non_neg_integer) :: prefix
+  @spec flip(prefix, integer) :: prefix
   def flip(pfx, position) when is_pfx(pfx) and is_integer(position) do
     pos = if position < 0, do: position + bit_size(pfx.bits), else: position
 
@@ -3746,17 +3746,14 @@ defmodule Pfx do
   @doc section: :ip
   @spec eui64_decode(prefix) :: prefix
   def eui64_decode(pfx) when is_pfx(pfx) do
-    unless bit_size(pfx.bits) == 64, do: raise(arg_error(:noeui64, pfx))
+    unless bit_size(pfx.bits) == 64,
+      do: raise(arg_error(:noeui64, pfx))
 
     pfx
     |> flip(6)
     |> remove(24, 16)
     |> new(48)
   end
-
-  # if pfx was a prefix, error out before we try new/1 (!)
-  def eui64_decode(pfx) when is_pfx(pfx),
-    do: raise(arg_error(:noeui64, pfx))
 
   def eui64_decode(pfx) do
     from_mac(pfx)
@@ -4186,11 +4183,16 @@ defmodule Pfx do
   def nat64_decode(pfx, len \\ 96)
 
   def nat64_decode(pfx, len) when is_pfx(pfx) and len in @nat64_lengths do
-    unless bit_size(pfx.bits) == 128, do: raise(ArgumentError)
+    unless pfx.maxlen == 128,
+      do: raise(arg_error(:pfx6, "#{pfx}"))
+
+    unless bit_size(pfx.bits) == 128,
+      do: raise(arg_error(:pfx6full, "#{pfx}"))
+
     pfx = if len < 96, do: remove(pfx, 64, 8), else: pfx
     %Pfx{bits: bits(pfx, len, 32), maxlen: 32}
   rescue
-    _ -> raise arg_error(:nat64, pfx)
+    err -> raise err
   end
 
   def nat64_decode(pfx, len) when len in @nat64_lengths do
@@ -4249,7 +4251,6 @@ defmodule Pfx do
       do: raise(arg_error(:pfx4, pfx4))
 
     pfx6 = %{pfx6 | bits: pfx6.bits <> ip4.bits}
-    # pfx6 = insert(pfx6, ip4.bits, bit_size(pfx6.bits))
 
     if bit_size(pfx6.bits) < 128 do
       insert(pfx6, <<0>>, 64)
@@ -4338,7 +4339,7 @@ defmodule Pfx do
   Returns nil if `pfx` is not a
   [teredo](https://www.rfc-editor.org/rfc/rfc4380.html#section-4) address.
 
-  Teredo address consist of:
+  A teredo address consists of:
   1. the teredo service prefix of `2000:0::/32`
   2. IPv4 address of the teredo server
   3. flags (16 bits) that document type of address and NAT
@@ -4423,7 +4424,7 @@ defmodule Pfx do
   @spec teredo_encode(prefix, prefix, integer, tuple) :: prefix
   def teredo_encode(client, server, port, flags)
       when is_integer(port) and tuple_size(flags) == 16 do
-    c = bnot(client) |> new()
+    c = new(client) |> bnot()
     s = new(server)
 
     if bit_size(c.bits) != 32 or c.maxlen != 32,
