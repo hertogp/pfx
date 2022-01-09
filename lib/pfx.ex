@@ -3549,7 +3549,8 @@ defmodule Pfx do
 
   """
   @spec member(prefix, integer, pos_integer) :: prefix
-  def member(pfx, nth, width) when is_pfx(pfx) and is_integer(width * nth) do
+  def member(pfx, nth, width)
+      when is_pfx(pfx) and is_integer(nth) and is_non_neg_integer(width) do
     unless 0 <= width and width <= pfx.maxlen - bit_size(pfx.bits),
       do: raise(arg_error(:nowidth, width))
 
