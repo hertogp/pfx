@@ -2249,6 +2249,53 @@ defmodule Pfx do
     do: raise(arg_error(:noint, nth))
 
   @doc """
+  Returns the `nth` member in the set represented by `pfx`, using `width` bits.
+
+  ## Examples
+
+      iex> member("10.10.10.0/24", 1, 2)
+      "10.10.10.64/26"
+
+      iex> member("10.10.10.0/24", 2, 2)
+      "10.10.10.128/26"
+
+      iex> member({{10, 10, 10, 0}, 24}, 2, 2)
+      {{10, 10, 10, 128}, 26}
+
+      # the first member that is 2 bits longer
+      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 0, 2)
+      %Pfx{bits: <<10, 10, 10, 0::2>>, maxlen: 32}
+
+      # the second member that is 2 bits longer
+      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 1, 2)
+      %Pfx{bits: <<10, 10, 10, 1::2>>, maxlen: 32}
+
+  """
+  @spec member(prefix, integer, pos_integer) :: prefix
+  def member(pfx, nth, width)
+      when is_pfx(pfx) and is_integer(nth) and is_integer(width) do
+    unless 0 <= width and width <= pfx.maxlen - bit_size(pfx.bits),
+      do: raise(arg_error(:nowidth, width))
+
+    # is_inrange(width, 0, pfx.maxlen - bit_size(pfx.bits)),
+    %{pfx | bits: <<pfx.bits::bits, nth::size(width)>>}
+  end
+
+  def member(pfx, nth, width) when is_pfx(pfx) and is_integer(nth),
+    do: raise(arg_error(:nowidth, width))
+
+  def member(pfx, nth, width) when is_pfx(pfx) and is_integer(width),
+    do: raise(arg_error(:noint, nth))
+
+  def member(pfx, nth, width) do
+    new(pfx)
+    |> member(nth, width)
+    |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  @doc """
   Returns true is prefix `pfx1` is a member of prefix `pfx2`
 
   If either `prfx1` or `pfx2` is invalid or they are of different types,
@@ -3524,53 +3571,6 @@ defmodule Pfx do
 
   def undigits(digits, _),
     do: raise(arg_error(:noundig, digits))
-
-  @doc """
-  Returns the `nth` member in the set represented by `pfx`, using `width` bits.
-
-  ## Examples
-
-      iex> member("10.10.10.0/24", 1, 2)
-      "10.10.10.64/26"
-
-      iex> member("10.10.10.0/24", 2, 2)
-      "10.10.10.128/26"
-
-      iex> member({{10, 10, 10, 0}, 24}, 2, 2)
-      {{10, 10, 10, 128}, 26}
-
-      # the first member that is 2 bits longer
-      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 0, 2)
-      %Pfx{bits: <<10, 10, 10, 0::2>>, maxlen: 32}
-
-      # the second member that is 2 bits longer
-      iex> member(%Pfx{bits: <<10, 10, 10>>, maxlen: 32}, 1, 2)
-      %Pfx{bits: <<10, 10, 10, 1::2>>, maxlen: 32}
-
-  """
-  @spec member(prefix, integer, pos_integer) :: prefix
-  def member(pfx, nth, width)
-      when is_pfx(pfx) and is_integer(nth) and is_non_neg_integer(width) do
-    unless 0 <= width and width <= pfx.maxlen - bit_size(pfx.bits),
-      do: raise(arg_error(:nowidth, width))
-
-    # is_inrange(width, 0, pfx.maxlen - bit_size(pfx.bits)),
-    %{pfx | bits: <<pfx.bits::bits, nth::size(width)>>}
-  end
-
-  def member(pfx, nth, width) when is_pfx(pfx) and is_integer(nth),
-    do: raise(arg_error(:nowidth, width))
-
-  def member(pfx, nth, width) when is_pfx(pfx) and is_integer(width),
-    do: raise(arg_error(:noint, nth))
-
-  def member(pfx, nth, width) do
-    new(pfx)
-    |> member(nth, width)
-    |> marshall(pfx)
-  rescue
-    err -> raise err
-  end
 
   @doc """
   Returns a boolean indicating whether `pfx` is a valid `t:prefix/0` or not.
