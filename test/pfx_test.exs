@@ -1221,6 +1221,10 @@ defmodule PfxTest do
     assert_raise ArgumentError, fn -> member("1.1.1.0/24", 0, -2) end
     assert_raise ArgumentError, fn -> member("1.1.1.0/44", 1, 2) end
     assert_raise ArgumentError, fn -> member("1.1.1.300/24", 1, 2) end
+
+    # width must be in range
+    assert "1.1.1.0" == member("1.1.1.0/30", 0, 2)
+    assert_raise ArgumentError, fn -> member("1.1.1.0/30", 0, 3) end
   end
 
   test "member?/2" do
