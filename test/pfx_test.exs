@@ -503,15 +503,12 @@ defmodule PfxTest do
   end
 
   test "contrast/2" do
-    Enum.all?(@ip4_representations, fn x -> assert contrast(x, x) end)
-    Enum.all?(@ip6_representations, fn x -> assert contrast(x, x) end)
-
-    Enum.all?(@bad_representations, fn x ->
-      assert_raise ArgumentError, fn -> contrast(x, x) end
-    end)
+    Enum.all?(@ip4_representations, fn x -> assert :equal == contrast(x, x) end)
+    Enum.all?(@ip6_representations, fn x -> assert :equal == contrast(x, x) end)
+    Enum.all?(@bad_representations, fn x -> assert :einvalid == contrast(x, x) end)
 
     # needs args to be of same type
-    assert_raise ArgumentError, fn -> contrast("1.1.1.1", "acdc::") end
+    assert :incompatible == contrast("1.1.1.1", "acdc::")
 
     assert :equal == contrast(new(<<10, 10>>, 32), new(<<10, 10>>, 32))
     assert :more == contrast(new(<<10, 10, 10>>, 32), new(<<10, 10>>, 32))

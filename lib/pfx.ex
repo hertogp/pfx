@@ -1002,6 +1002,10 @@ defmodule Pfx do
   (i.e. a *shorter* prefix is considered *larger*), and second on their
   bitstring value.
 
+  This function enables `Enum.sort/2` to be handed the `Pfx` module to determine
+  how to sort a list of prefixes.  When building some sort of acl, use `{:desc, Pfx}`
+  to sort from less to more specific prefixes.
+
   ## Examples
 
       iex> compare("10.0.0.0/8", "11.0.0.0/8")
@@ -1025,7 +1029,17 @@ defmodule Pfx do
         "10.10.0.0/16",
         "10.11.0.0/16"
       ]
-      # whereas regular sort does:
+      #
+      # sort less to more specific
+      #
+      iex> Enum.sort(list, {:desc, Pfx})
+      [
+        "10.11.0.0/16",
+        "10.10.0.0/16",
+        "10.10.10.0/24"
+      ]
+      #
+      # a regular sort
       #
       iex> Enum.sort(list)
       [
@@ -1083,11 +1097,15 @@ defmodule Pfx do
 
   Contrasting two prefixes yields one of:
   - `:equal` pfx1 is equal to pfx2
-  - `:more` pfx1 is a more specific version of pfx2
-  - `:less` pfx1 is a less specific version of pfx2
-  - `:left` pfx1 is left-adjacent to pfx2
-  - `:right` pfx1 is right-adjacent to pfx2
-  - `:disjoint` pfx1 has no match with pfx2 whatsoever.
+  - `:more` pfx1 is more specific and contained in pfx2
+  - `:less` pfx1 is less specific and contains pfx2
+  - `:left` pfx1 is left-adjacent to pfx2 such that it can be combined with pfx2
+  - `:left_nc` pfx1 is left-adjacent to pfx2, but cannot be combined
+  - `:right` pfx1 is right-adjacent to pfx2 such that is can be combined with pfx2
+  - `:right_nc` pfx1 is right-adjacent to pfx2, but cannot be combined
+  - `:disjoint` pfx1 has no match with pfx2.
+  - `:einvalid` either pfx1 or pfx2 was invalid
+  - `:incompatible` pfx1 and pfx2 donot have the same maxlen
 
   ## Examples
 
@@ -1100,55 +1118,109 @@ defmodule Pfx do
       iex> contrast("10.0.0.0/8", "10.255.255.0/24")
       :less
 
-      iex> contrast("1.2.3.0/24", "1.2.4.0/24")
+      # can be combined as 1.2.0.0/23
+      iex> contrast("1.2.0.0/24", "1.2.1.0/24")
       :left
 
-      iex> contrast("1.2.3.4/30", "1.2.3.0/30")
+      # can be combined as 1.2.0.0/23
+      iex> contrast("1.2.1.0/24", "1.2.0.0/24")
       :right
 
-      iex> contrast("10.10.0.0/16", "9.0.0.0/8")
+      # adjacent, but cannot be combined
+      iex> contrast("1.2.3.0/24", "1.2.4.0/25")
+      :left_nc
+
+      # adjacent, but cannot be combined
+      iex> contrast("1.2.4.0/25", "1.2.3.0/24")
+      :right_nc
+
+      iex> contrast("1.2.3.4/30", "1.2.3.12/30")
       :disjoint
 
       iex> contrast("10.10.0.0/16", %Pfx{bits: <<10,12>>, maxlen: 32})
       :disjoint
 
+      iex> contrast("1.1.1.1", "acdc:1976::1")
+      :incompatible
+
+      iex> contrast("1.1.1.400", "1.1.1.1")
+      :einvalid
+
   """
-  @spec contrast(prefix, prefix) :: :equal | :more | :less | :left | :right | :disjoint
+  @spec contrast(prefix, prefix) ::
+          :equal
+          | :more
+          | :less
+          | :left
+          | :right
+          | :disjoint
+          | :left_nc
+          | :right_nc
+          | :incompatible
+          | :einvalid
   def contrast(pfx1, pfx2)
 
-  def contrast(x, y) when is_comparable(x, y),
-    do: contrastp(x.bits, y.bits)
+  def contrast(x, y) when is_comparable(x, y) do
+    x0 = first(x) |> cast()
+    x1 = x0 + size(x)
+    y0 = first(y) |> cast()
+    y1 = y0 + size(y)
+    contrastp(x0, x1, y0, y1)
+  end
 
   def contrast(x, y) when is_pfx(x) and is_pfx(y),
-    do: raise(arg_error(:nocompare, {x, y}))
+    do: :incompatible
 
   def contrast(x, y) do
     new(x)
     |> contrast(new(y))
   rescue
-    err -> raise err
+    _ -> :einvalid
   end
 
-  defp contrastp(x, y) when x == y,
+  def contrastp(x0, x1, y0, y1) when x0 == y0 and x1 == y1,
     do: :equal
 
-  defp contrastp(x, y) when bit_size(x) > bit_size(y),
-    do: if(y == truncate(x, bit_size(y)), do: :more, else: :disjoint)
+  # x0y0--y1x1
+  def contrastp(x0, x1, y0, y1) when x0 <= y0 and x1 >= y1,
+    do: :less
 
-  defp contrastp(x, y) when bit_size(x) < bit_size(y),
-    do: if(x == truncate(y, bit_size(x)), do: :less, else: :disjoint)
+  # y0x0--x1y1
+  def contrastp(x0, x1, y0, y1) when x0 >= y0 and x1 <= y1,
+    do: :more
 
-  defp contrastp(x, y) do
-    size = bit_size(x)
-    <<n::size(size)>> = x
-    <<m::size(size)>> = y
+  # x0--x1=y0--y1
+  def contrastp(x0, x1, y0, y1) when x1 == y0 do
+    if x1 - x0 == y1 - y0 do
+      bits = trunc(:math.log2(x1 - x0))
+      xb = Bitwise.bsr(x0, bits)
+      yb = Bitwise.bsr(y0, bits)
 
-    case n - m do
-      1 -> :right
-      -1 -> :left
-      _ -> :disjoint
+      if Bitwise.bxor(xb, yb) == 1,
+        do: :left,
+        else: :left_nc
+    else
+      :left_nc
     end
   end
+
+  # y0--y1=x0--x1
+  def contrastp(x0, x1, y0, y1) when x0 == y1 do
+    if x1 - x0 == y1 - y0 do
+      bits = trunc(:math.log2(x1 - x0))
+      xb = Bitwise.bsr(x0, bits)
+      yb = Bitwise.bsr(y0, bits)
+
+      if Bitwise.bxor(xb, yb) == 1,
+        do: :right,
+        else: :right_nc
+    else
+      :right_nc
+    end
+  end
+
+  def contrastp(_x0, _x1, _y0, _y1),
+    do: :disjoint
 
   @doc """
   Cuts out a series of bits and turns it into its own `Pfx`.
@@ -1290,6 +1362,9 @@ defmodule Pfx do
 
       iex> drop("1.2.3.128/25", 1)
       "1.2.3.0/24"
+
+      iex> drop("1.1.1.130/31", 1)
+      "1.1.1.128/30"
 
       # drops all
       iex> drop("1.2.3.0/24", 512)
@@ -2340,6 +2415,83 @@ defmodule Pfx do
   end
 
   @doc """
+  Returns a minimized list of prefixes covering the same address space.
+
+  The list of, possible mixed types of prefixes, is first grouped by their `maxlen` property,
+  then each sublist is minimized by:
+  - removing duplicates
+  - sorting such that, possibly, adjacent prefixes are next to each other
+  - recursively combine neihgboring prefixes into their parent prefix
+
+  ## Examples
+
+      iex> acl = ["1.1.1.1", "1.1.1.2", "1.1.1.3", "1.1.1.4", "1.1.1.4/30"]
+      iex> minimize(acl)
+      ["1.1.1.4/30",  "1.1.1.2/31", "1.1.1.1"]
+
+      iex> hosts = hosts("1.1.1.0/24") |> Enum.filter(fn ip -> ip != "1.1.1.128" end)
+      iex> Enum.member?(hosts, "1.1.1.128")
+      false
+      iex> Enum.count(hosts)
+      255
+      iex> acl = minimize(hosts)
+      iex> Enum.sort(acl, {:desc, Pfx})
+      [
+        "1.1.1.0/25",
+        "1.1.1.192/26",
+        "1.1.1.160/27",
+        "1.1.1.144/28",
+        "1.1.1.136/29",
+        "1.1.1.132/30",
+        "1.1.1.130/31",
+        "1.1.1.129"
+      ]
+      iex> acl_hosts = Enum.map(acl, fn pfx -> hosts(pfx) end) |> List.flatten()
+      iex> Enum.count(acl_hosts)
+      255
+      iex> Enum.member?(acl_hosts, "1.1.1.128")
+      false
+
+  """
+  @spec minimize([prefix]) :: [prefix]
+  def minimize(prefixes) do
+    original = hd(prefixes)
+
+    prefixes
+    |> Enum.map(fn pfx -> new(pfx) end)
+    |> Enum.uniq()
+    |> Enum.group_by(fn pfx -> pfx.maxlen end)
+    |> Enum.flat_map(fn {_, v} -> minimizep(v) end)
+    |> Enum.map(fn pfx -> marshall(pfx, original) end)
+  rescue
+    err -> raise err
+  end
+
+  defp minimizep(prefixes) do
+    # note: these prefixes are expected to have the same maxlen
+    prefixes
+    |> Enum.sort()
+    |> Enum.reduce([], &minimize_by_contrast/2)
+  end
+
+  defp minimize_by_contrast(elm, []),
+    do: [elm]
+
+  defp minimize_by_contrast(elm, [head | tail] = acc) do
+    new =
+      case contrast(elm, head) do
+        :equal -> acc
+        :more -> acc
+        :less -> [elm | tail]
+        :left -> minimize_by_contrast(drop(elm, 1), tail)
+        :right -> minimize_by_contrast(drop(head, 1), tail)
+        _ -> [elm | acc]
+      end
+
+    new
+  end
+
+  @doc """
   Returns the neighboring prefix for `pfx`, such that both can be combined in a
   supernet.
 
@@ -2370,7 +2522,8 @@ defmodule Pfx do
       # empty prefix doesn't have a neigbor, really.
       raise arg_error(:noneighbor, pfx)
     else
-      offset = 1 - 2 * bit(x, bit_size(x.bits) - 1)
+      # offset = 1 - 2 * bit(x, bit_size(x.bits) - 1)
+      offset = 1 - 2 * bit(x, size - 1)
       sibling(x, offset) |> marshall(pfx)
     end
   rescue
