@@ -509,6 +509,9 @@ defmodule PfxTest do
 
     # needs args to be of same type
     assert :incompatible == contrast("1.1.1.1", "acdc::")
+    # need to be valid
+    assert :einvalid == contrast("1.1.1.400", "1.1.1.1")
+    assert :einvalid == contrast("acdc::defg", "acdc::1")
 
     assert :equal == contrast(new(<<10, 10>>, 32), new(<<10, 10>>, 32))
     assert :more == contrast(new(<<10, 10, 10>>, 32), new(<<10, 10>>, 32))
@@ -1169,6 +1172,34 @@ defmodule PfxTest do
 
     assert %Pfx{bits: <<1, 2>>, maxlen: 32} ==
              mask(%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}, %Pfx{bits: <<255, 255>>, maxlen: 32})
+  end
+
+  test "minimize/1" do
+    l = minimize(@ip4_representations)
+    assert length(l) > 0
+
+    # raises on invalid input
+    assert_raise ArgumentError, fn -> minimize(["1.1.1.1", "1.1.1.333"]) end
+    assert_raise ArgumentError, fn -> minimize(["acdc::1", "acdc::gggg"]) end
+    assert_raise ArgumentError, fn -> minimize("1.1.1.0/24") end
+
+    assert [] == minimize([])
+    assert ["1.1.1.0/31"] == minimize(["1.1.1.1", "1.1.1.0"])
+    assert ["1.1.1.0/31"] == minimize(["1.1.1.1", "1.1.1.0", "1.1.1.1", "1.1.1.0"])
+    assert ["1.1.0.0/16"] = minimize(["1.1.0.0/17", "1.1.128.0/17"])
+
+    # output reflects format of first prefix
+    assert [{{1, 2, 3, 0}, 24}] == minimize([{1, 2, 3, 0}, "1.2.3.0/25", "1.2.3.128/25"])
+
+    # with partitioning
+    assert ["1.1.1.0/24"] == partition("1.1.1.0/24", 25) |> minimize()
+    assert ["1.1.1.0/24"] == partition("1.1.1.0/24", 26) |> minimize()
+    assert ["1.1.1.0/24"] == partition("1.1.1.0/24", 27) |> minimize()
+    assert ["1.1.1.0/24"] == partition("1.1.1.0/24", 28) |> minimize()
+    assert ["1.1.1.0/24"] == partition("1.1.1.0/24", 29) |> minimize()
+    assert ["1.1.1.0/24"] == partition("1.1.1.0/24", 30) |> minimize()
+    assert ["1.1.1.0/24"] == partition("1.1.1.0/24", 31) |> minimize()
+    assert ["1.1.1.0/24"] == partition("1.1.1.0/24", 32) |> minimize()
   end
 
   test "member/2" do

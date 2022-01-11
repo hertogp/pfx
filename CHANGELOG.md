@@ -5,14 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## unreleased
+## [0.11.0] - 2022-01-11
 
-## fixed
+### fixed
 
-- [ ] `Pfx.contrast/2` 1.1.1.0/24 is left-adjacent to 1.1.2.0/25, not disjoint!
-      Added left_nei and right_nei => left/right adjacent and combinable (neighors)
-       :left/:right means -> left/right adjacent, cannot be combined
-       :left_nei/:right_nei -> left/right adjacent, can be combined
+- `Pfx.contrast/2` 1.1.1.0/24 is left-adjacent to 1.1.2.0/25, not disjoint!
+    - added `:left_nc` and `:right_nc` => left/right adjacent and but not combinable
+    - added `:incompatible` for when two prefixes have different maxlen's (not raise ArgumentError)
+    - added `:einvalid` if one the prefixes is invalid (not raise ArgumentError)
+
+### added
+
+- `Pfx.minimize/1`, minimizes a list of prefixes while covering the same address range(s).
+    - prefixes are grouped and minimized per maxlen property
+
 
 ## [0.10.1] - 2022-01-09
 

@@ -1103,7 +1103,7 @@ defmodule Pfx do
   - `:left_nc` pfx1 is left-adjacent to pfx2, but cannot be combined
   - `:right` pfx1 is right-adjacent to pfx2 such that is can be combined with pfx2
   - `:right_nc` pfx1 is right-adjacent to pfx2, but cannot be combined
-  - `:disjoint` pfx1 has no match with pfx2.
+  - `:disjoint` pfx1 has no match with pfx2
   - `:einvalid` either pfx1 or pfx2 was invalid
   - `:incompatible` pfx1 and pfx2 donot have the same maxlen
 
@@ -1118,20 +1118,28 @@ defmodule Pfx do
       iex> contrast("10.0.0.0/8", "10.255.255.0/24")
       :less
 
-      # can be combined as 1.2.0.0/23
-      iex> contrast("1.2.0.0/24", "1.2.1.0/24")
+      # can be combined as 1.1.0.0/23
+      iex> contrast("1.1.0.0/24", "1.1.1.0/24")
       :left
 
-      # can be combined as 1.2.0.0/23
-      iex> contrast("1.2.1.0/24", "1.2.0.0/24")
+      # can be combined as 1.1.0.0/23
+      iex> contrast("1.1.1.0/24", "1.1.0.0/24")
       :right
 
       # adjacent, but cannot be combined
-      iex> contrast("1.2.3.0/24", "1.2.4.0/25")
+      iex> contrast("1.1.3.0/24", "1.1.4.0/25")
       :left_nc
 
       # adjacent, but cannot be combined
-      iex> contrast("1.2.4.0/25", "1.2.3.0/24")
+      iex> contrast("1.1.4.0/25", "1.1.3.0/24")
+      :right_nc
+
+      # adjacent again, but cannot be combined
+      iex> contrast("1.1.1.0/24", "1.1.2.0/24")
+      :left_nc
+
+      # adjacent again, but cannot be combined
+      iex> contrast("1.1.2.0/24", "1.1.1.0/24")
       :right_nc
 
       iex> contrast("1.2.3.4/30", "1.2.3.12/30")
@@ -1139,6 +1147,9 @@ defmodule Pfx do
 
       iex> contrast("10.10.0.0/16", %Pfx{bits: <<10,12>>, maxlen: 32})
       :disjoint
+
+      iex> contrast("1.2.3.4", {1, 2, 3, 4})
+      :equal
 
       iex> contrast("1.1.1.1", "acdc:1976::1")
       :incompatible
@@ -1161,11 +1172,12 @@ defmodule Pfx do
   def contrast(pfx1, pfx2)
 
   def contrast(x, y) when is_comparable(x, y) do
-    x0 = first(x) |> cast()
+    x0 = cast(x)
     x1 = x0 + size(x)
-    y0 = first(y) |> cast()
+    y0 = cast(y)
     y1 = y0 + size(y)
-    contrastp(x0, x1, y0, y1)
+    ml = x.maxlen - bit_size(x.bits)
+    contrastp(x0, x1, y0, y1, ml)
   end
 
   def contrast(x, y) when is_pfx(x) and is_pfx(y),
@@ -1178,23 +1190,22 @@ defmodule Pfx do
     _ -> :einvalid
   end
 
-  def contrastp(x0, x1, y0, y1) when x0 == y0 and x1 == y1,
+  defp contrastp(x0, x1, y0, y1, _ml) when x0 == y0 and x1 == y1,
     do: :equal
 
   # x0y0--y1x1
-  def contrastp(x0, x1, y0, y1) when x0 <= y0 and x1 >= y1,
+  defp contrastp(x0, x1, y0, y1, _ml) when x0 <= y0 and x1 >= y1,
     do: :less
 
   # y0x0--x1y1
-  def contrastp(x0, x1, y0, y1) when x0 >= y0 and x1 <= y1,
+  defp contrastp(x0, x1, y0, y1, _ml) when x0 >= y0 and x1 <= y1,
     do: :more
 
   # x0--x1=y0--y1
-  def contrastp(x0, x1, y0, y1) when x1 == y0 do
+  defp contrastp(x0, x1, y0, y1, ml) when x1 == y0 do
     if x1 - x0 == y1 - y0 do
-      bits = trunc(:math.log2(x1 - x0))
-      xb = Bitwise.bsr(x0, bits)
-      yb = Bitwise.bsr(y0, bits)
+      xb = Bitwise.bsr(x0, ml)
+      yb = Bitwise.bsr(y0, ml)
 
       if Bitwise.bxor(xb, yb) == 1,
         do: :left,
@@ -1205,11 +1216,10 @@ defmodule Pfx do
   end
 
   # y0--y1=x0--x1
-  def contrastp(x0, x1, y0, y1) when x0 == y1 do
+  defp contrastp(x0, x1, y0, y1, ml) when x0 == y1 do
     if x1 - x0 == y1 - y0 do
-      bits = trunc(:math.log2(x1 - x0))
-      xb = Bitwise.bsr(x0, bits)
-      yb = Bitwise.bsr(y0, bits)
+      xb = Bitwise.bsr(x0, ml)
+      yb = Bitwise.bsr(y0, ml)
 
       if Bitwise.bxor(xb, yb) == 1,
         do: :right,
@@ -1219,7 +1229,7 @@ defmodule Pfx do
     end
   end
 
-  def contrastp(_x0, _x1, _y0, _y1),
+  defp contrastp(_x0, _x1, _y0, _y1, _ml),
     do: :disjoint
 
   @doc """
@@ -2419,17 +2429,20 @@ defmodule Pfx do
 
   The list of, possible mixed types of prefixes, is first grouped by their `maxlen` property,
   then each sublist is minimized by:
-  - removing duplicates
-  - sorting such that, possibly, adjacent prefixes are next to each other
+  - sorting such that, possibly, adjacent/overlapping prefixes are next to each other
   - recursively combine neihgboring prefixes into their parent prefix
+
+  The prefixes can be any format understood by `Pfx.new/1` or be straight up
+  `t:Pfx.t/0` structs, and the result mimics the format of the first prefix.
 
   ## Examples
 
       iex> acl = ["1.1.1.1", "1.1.1.2", "1.1.1.3", "1.1.1.4", "1.1.1.4/30"]
-      iex> minimize(acl)
+      iex> minimize(acl) |> Enum.sort({:desc, Pfx})
       ["1.1.1.4/30",  "1.1.1.2/31", "1.1.1.1"]
 
-      iex> hosts = hosts("1.1.1.0/24") |> Enum.filter(fn ip -> ip != "1.1.1.128" end)
+      # list of 255 hosts
+      iex> hosts = for ip <- hosts("1.1.1.0/24"), ip != "1.1.1.128", do: ip
       iex> Enum.member?(hosts, "1.1.1.128")
       false
       iex> Enum.count(hosts)
@@ -2446,20 +2459,41 @@ defmodule Pfx do
         "1.1.1.130/31",
         "1.1.1.129"
       ]
-      iex> acl_hosts = Enum.map(acl, fn pfx -> hosts(pfx) end) |> List.flatten()
+      #
+      # reverse back to list of hosts
+      #
+      iex> acl_hosts = (for pfx <- acl, do: hosts(pfx)) |> List.flatten()
       iex> Enum.count(acl_hosts)
       255
       iex> Enum.member?(acl_hosts, "1.1.1.128")
       false
 
+      # minimize list of different types of prefixes
+      iex> list = ["1.1.0.0/24", "1.1.1.0/24", "acdc:0::/17", "acdc:8000::/17"]
+      iex> minimize(list)
+      ["1.1.0.0/23", "acdc:0:0:0:0:0:0:0/16"]
+
+      # mimic format of first prefix in the list
+      iex> minimize([{1, 2, 3, 4}, {{1, 2, 3, 0}, 25}, "1.2.3.128/26", "1.2.3.192/26"])
+      [{{1, 2, 3, 0}, 24}]
+
   """
   @spec minimize([prefix]) :: [prefix]
+  def minimize(prefixes)
+
+  def minimize([]),
+    do: []
+
   def minimize(prefixes) do
     original = hd(prefixes)
 
+    original =
+      if is_binary(original),
+        do: original,
+        else: to_tuple(original)
+
     prefixes
     |> Enum.map(fn pfx -> new(pfx) end)
-    |> Enum.uniq()
     |> Enum.group_by(fn pfx -> pfx.maxlen end)
     |> Enum.flat_map(fn {_, v} -> minimizep(v) end)
     |> Enum.map(fn pfx -> marshall(pfx, original) end)
@@ -2468,23 +2502,30 @@ defmodule Pfx do
   end
 
   defp minimizep(prefixes) do
-    # note: these prefixes are expected to have the same maxlen
+    # notes:
+    # - these prefixes are expected to have the same maxlen
+    # - sort is :desc, so less to more specific, which reduces the
+    #   need to replace head with elm in mimimize_by_contrastp.
     prefixes
-    |> Enum.sort()
-    |> Enum.reduce([], &minimize_by_contrast/2)
+    |> Enum.sort({:desc, Pfx})
+    |> Enum.reduce([], &minimize_by_contrastp/2)
   end
 
-  defp minimize_by_contrast(elm, []),
+  defp minimize_by_contrastp(elm, []),
     do: [elm]
 
-  defp minimize_by_contrast(elm, [head | tail] = acc) do
+  defp minimize_by_contrastp(elm, [head | tail] = acc) do
+    # notes:
+    # - due to sorting, elm will never be :left to head
+    # - if elm/head are combined, recurse to see if the new parent can itself
+    #   be combined.
     new =
       case contrast(elm, head) do
         :equal -> acc
         :more -> acc
         :less -> [elm | tail]
-        :left -> minimize_by_contrast(drop(elm, 1), tail)
-        :right -> minimize_by_contrast(drop(head, 1), tail)
+        :left -> minimize_by_contrastp(drop(elm, 1), tail)
+        :right -> minimize_by_contrastp(drop(head, 1), tail)
         _ -> [elm | acc]
       end
 
