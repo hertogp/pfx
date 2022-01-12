@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Pfx.contrast/2` 1.1.1.0/24 is left-adjacent to 1.1.2.0/25, not disjoint!
     - added `:left_nc` and `:right_nc` => left/right adjacent and but not combinable
     - added `:incompatible` for when two prefixes have different maxlen's (not raise ArgumentError)
-    - added `:einvalid` if one the prefixes is invalid (not raise ArgumentError)
+    - added `:einvalid` if one of the prefixes is invalid (not raise ArgumentError)
 
 ### added
 
