@@ -2517,9 +2517,9 @@ defmodule Pfx do
 
   defp minimize_by_contrastp(elm, [head | tail] = acc) do
     # notes:
-    # - due to sorting, elm will never be :left to head
-    # - if elm/head are combined, recurse to see if the new parent can itself
-    #   be combined.
+    # - due to sorting, elm will never be :less than head
+    # - if elm/head are combined, recurse on tail to see if the new parent can
+    #   itself be combined.
     new =
       case contrast(elm, head) do
         :equal -> acc
