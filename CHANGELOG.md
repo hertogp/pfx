@@ -9,14 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### added
 
-- [x] ~p sigil, so ~p"1.1.1.0/24" yields the same as `Pfx.new/1`, i.e. %Pfx{bits: <<1, 1, 1>>, maxlen: 32}
-      pfx = "1.1.1.0/24", ~p"#{pfx}" -> %Pfx{bits: <<1, 1, 1>>, maxlen: 32}
+- [x] `Pfx.sigil_p/2`, so ~p"1.1.1.0/24" yields %Pfx{bits: <<1, 1, 1>>, maxlen: 32}
+    - modifiers to get address, mask, first, last, neighbor, parent or trimmed result instead
+    - additional modifiers to invert the result or turn it into a string or tuple format.
+- [x] `Pfx.sigil_p/3`, which allows for piping into `~p()`
 - [ ] Pfx.iana_reg/1, returns a map with properties based on iana's special IPv4/6 registries.
 - [ ] benchmark different implementations, ala Bitwise_ip
 
 ### changed
 
-- [ ] `Pfx.address/` now properly returns a full address  prefix, always without mask
+- [x] `Pfx.address/1` now properly returns a full address  prefix, always without mask
     - example: address({{1, 1, 1, 1}, 24}) -> {1, 1, 1, 1}
 
 

@@ -23,7 +23,8 @@ defmodule Pfx.MixProject do
       deps: deps(),
       docs: docs(),
       package: package(),
-      aliases: aliases()
+      aliases: aliases(),
+      preferred_cli_env: [ci: :test]
     ]
   end
 
@@ -62,7 +63,15 @@ defmodule Pfx.MixProject do
   end
 
   defp aliases() do
-    [docs: ["docs", &gen_images/1]]
+    [
+      docs: ["docs", &gen_images/1],
+      ci: [
+        "format --check-formatted",
+        "deps.unlock --check-unused",
+        "test --cover",
+        "dialyzer"
+      ]
+    ]
   end
 
   defp deps do

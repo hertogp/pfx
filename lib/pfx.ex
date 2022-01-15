@@ -3636,12 +3636,13 @@ defmodule Pfx do
   If `mask` is an empty string, both `prefix` and `modifiers` are simply handed off
   to `Pfx.sigil_p/2`.
 
-  However, if `mask` is not an empty string, then it is used to mask
-  the address portion of `prefix1` before handing the result to `Pfx.sigil_p/2`
-  along with the `modifiers`. This basically allows piping into `~p()` with an
-  optional masking twist and using any prefix representation for `prefix`.
+  However, if `mask` is not an empty string, then it is used to mask the
+  address portion of `prefix1` before handing the result to `Pfx.sigil_p/2`
+  along with the `modifiers`.  Note that, if given, `mask` must be the same
+  type of prefix as `prefix`.
 
-  Note that, if given, `mask` must be the same type of prefix as `prefix`.
+  This basically allows for piping any prefix representation into `~p()` with an
+  optional masking twist.
 
   ## Examples
 
@@ -3650,13 +3651,13 @@ defmodule Pfx do
       ...> |> address()
       {1, 1, 1, 1}
 
-      # get a string representation
+      # so, to get a string representation
       iex> {{1, 1, 1, 1}, 30}
       ...> |> address()
       ...> |> format()
       "1.1.1.1"
 
-      # both in one
+      # or do both in one
       iex> {{1, 1, 1, 1}, 30}
       ...> |> ~p()aS
       "1.1.1.1"
@@ -3679,12 +3680,15 @@ defmodule Pfx do
       iex> Enum.reduce(l, %{}, fn x, acc -> Map.update(acc, slash24.(x), 1, incr) end)
       %{"1.1.1.0/24" => 4}
 
+      # apply mask, get Pfx struct
       iex> "acdc::1" |> ~p(ffff::)
       %Pfx{bits: <<172, 220>>, maxlen: 128}
 
+      # apply mask, get string representation
       iex> "acdc::1" |> ~p(ffff::)S
       "acdc:0:0:0:0:0:0:0/16"
 
+      # apply mask to an EUI48 address
       iex> "aa:bb:cc:dd:ee:ff" |> ~p(ff:ff:ff:ff:ff:00)S
       "AA-BB-CC-DD-EE-00/40"
 
@@ -3703,10 +3707,6 @@ defmodule Pfx do
   rescue
     err -> raise err
   end
-
-  # ~p(1.1.1.1)S |> ~p(255.255.255.0)x -> sigil_p("1.1.1.1", "255.255.255.0", 'x'
-  # def sigil_p(a, b, c),
-  #   do: IO.inspect({a, b, c})
 
   @doc """
   Returns the number of full addresses as represented by `pfx`.
