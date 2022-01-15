@@ -24,13 +24,21 @@ defmodule Pfx.MixProject do
       docs: docs(),
       package: package(),
       aliases: aliases(),
-      preferred_cli_env: [ci: :test]
+      preferred_cli_env: [ci: :test],
+      elixirc_paths: elixirc_paths(Mix.env()),
+      extra_applications: [:inets]
     ]
   end
 
   def application do
     []
   end
+
+  defp elixirc_paths(:dev),
+    do: ["lib", "dev"]
+
+  defp elixirc_paths(_),
+    do: ["lib"]
 
   defp docs() do
     [
@@ -78,7 +86,8 @@ defmodule Pfx.MixProject do
     [
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, "~> 1.0", only: :dev, runtime: false},
-      {:benchee, "~> 1.0", only: :dev}
+      {:benchee, "~> 1.0", only: :dev},
+      {:sweet_xml, "~> 0.7.1", only: :dev, runtime: false}
     ]
   end
 

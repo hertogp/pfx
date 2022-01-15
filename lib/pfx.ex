@@ -1,11 +1,17 @@
 defmodule Pfx do
   alias Bitwise
 
+  @specials_file "priv/specials"
+
   @external_resource "README.md"
+  @external_resource @specials_file
 
   @moduledoc File.read!("README.md")
              |> String.split("<!-- @MODULEDOC -->")
              |> Enum.fetch!(1)
+
+  @specials File.read!(@specials_file)
+            |> :erlang.binary_to_term()
 
   @enforce_keys [:bits, :maxlen]
   defstruct bits: <<>>, maxlen: 0
@@ -1902,6 +1908,101 @@ defmodule Pfx do
   @spec hosts(prefix) :: list(prefix)
   def hosts(pfx),
     do: for(ip <- new(pfx), do: marshall(ip, pfx))
+
+  @doc ~S"""
+  Returns the properties (or property) as per Iana's special purpose address
+  registry for given `prefix`.
+
+  If the property argument is omitted, it defaults to `nil` and either an empty
+  map (no entry for given `prefix` in the registries) or the full map of all
+  properties is returned.
+
+  Otherwise, an individual property value is returned and `property` can be one of:
+
+  - `:prefix`, a string: the owner prefix
+  - `:source`, a semi-boolean: whether or not `prefix` is a valid source address
+  - `:destination`, a semi-boolean: whether or not `prefix` is a valid destination address
+  - `:forward`, a semi-boolean: whether or not `prefix` can be forwarded (by a router)
+  - `:global`, a semi-boolean: whether or not `prefix` is reachable on the Internet
+  - `:reserved`, a semi-boolean: whether or not ...
+  - `:name`: a string: the description of the entry in the special purpose address registry
+  - `spec`: a list of strings: naming the rfc's related to given `prefix`
+  - `allocatoin`: a string denoting `yyyy-mm` of the registry's entry
+
+  A semi-boolean, for lack of a better word, can have 3 values:
+  - `true`,
+  - `false`, or
+  - `na`, which somehow means not-applicable in the eyes of [iana](https://iana.org)
+
+  To insulate against human error and/or preferences, the string values are
+  somewhat normalized by:
+
+  1. downcasing
+  2. filtering, so they contain only (lowercase) letters, numbers or a space, and
+  3. replacing all (multiple) spaces with a single "-"
+
+  ## Examples
+
+      iex> iana_special("10.10.10.10")
+      %{
+        allocation: "1996-02",
+        destination: true,
+        forward: true,
+        global: false,
+        name: "Private-Use",
+        prefix: "10.0.0.0/8",
+        reserved: false,
+        source: true,
+        spec: ["rfc1918"]
+      }
+
+      iex> iana_special("10.11.12.13", :global)
+      false
+
+      iex> iana_special("10.11.12.13", :name)
+      "Private-Use"
+
+      iex> iana_special("fc00::/7", :global)
+      false
+
+      iex> iana_special("fc00::/7", :name)
+      "Unique-Local"
+
+      iex> iana_special("2001::/32", :global)
+      :na
+
+      iex> iana_special("2001::/32", :name)
+      "TEREDO"
+
+      iex> iana_special("2001::/23", :name)
+      "IETF Protocol Assignments"
+
+  """
+  @spec iana_special(prefix, atom | nil) :: nil | map | term
+  def iana_special(prefix, property \\ nil)
+
+  def iana_special(pfx, property) when is_pfx(pfx) do
+    list =
+      case type(pfx) do
+        :ip4 -> @specials[:ip4]
+        :ip6 -> @specials[:ip6]
+        _ -> []
+      end
+
+    {_, props} = Enum.find(list, {nil, %{}}, fn {special, _props} -> member?(pfx, special) end)
+
+    if property,
+      do: Map.get(props, property),
+      else: props
+  end
+
+  def iana_special(pfx, property) do
+    pfx
+    |> new()
+    |> iana_special(property)
+  rescue
+    err -> raise err
+  end
 
   @doc """
   Inserts `bits` into `pfx`-s bitstring, starting at `position`.
