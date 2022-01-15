@@ -99,8 +99,8 @@ defmodule PfxTest do
     assert "1.2.3.4" == address("1.2.3.4/0")
     assert "1.2.3.4" == address("1.2.3.4/9")
     assert "1.2.3.4" == address("1.2.3.4/32")
-    assert {{1, 2, 3, 4}, 32} == address({{1, 2, 3, 4}, 16})
-    assert {{1, 2, 3, 4, 5, 6, 7, 8}, 128} == address({{1, 2, 3, 4, 5, 6, 7, 8}, 64})
+    assert {1, 2, 3, 4} == address({{1, 2, 3, 4}, 16})
+    assert {1, 2, 3, 4, 5, 6, 7, 8} == address({{1, 2, 3, 4, 5, 6, 7, 8}, 64})
 
     # these have no effect
     assert {1, 2, 3, 4} == address({1, 2, 3, 4})
@@ -1995,6 +1995,76 @@ defmodule PfxTest do
 
     assert "1.1.1.0/24" == sibling("1.1.1.0/24", 0)
     assert "1.1.2.0/24" == sibling("1.1.1.0/24", 1)
+  end
+
+  test "sigil_p/2" do
+    for d <- 0..255 do
+      assert ~p(1.1.#{d}.#{d}) == Pfx.new("1.1.#{d}.#{d}")
+    end
+
+    # address
+    assert ~p"1.1.1.1/24"a == address("1.1.1.1/24") |> new()
+    assert ~p"1.1.1.1/24"aS == "1.1.1.1"
+    assert ~p"1.1.1.1/24"aT == {1, 1, 1, 1}
+
+    # mask
+    assert ~p"192.168.1.9/23"m == new("255.255.254.0")
+    assert ~p"192.168.1.9/23"mS == "255.255.254.0"
+    assert ~p"192.168.1.9/23"mT == {255, 255, 254, 0}
+    assert ~p"192.168.1.9/23"mT == to_tuple("255.255.254.0", mask: false)
+
+    # first
+    assert ~p"1.1.1.134/24"f == new("1.1.1.0")
+    assert ~p"1.1.1.134/24"fS == "1.1.1.0"
+    assert ~p"1.1.1.134/24"fT == {1, 1, 1, 0}
+
+    # last
+    assert ~p"1.1.1.134/24"l == new("1.1.1.255")
+    assert ~p"1.1.1.134/24"lS == "1.1.1.255"
+    assert ~p"1.1.1.134/24"lT == {1, 1, 1, 255}
+
+    # neighbor
+    assert ~p"1.1.1.1"n == new("1.1.1.0")
+    assert ~p"1.1.1.0"nS == "1.1.1.1"
+    assert ~p"1.1.1.0"nT == {{1, 1, 1, 1}, 32}
+
+    # parent
+    assert ~p"1.1.1.1"p == new("1.1.1.0/31")
+    assert ~p"1.1.1.1"pS == "1.1.1.0/31"
+    assert ~p"1.1.1.1"pT == {{1, 1, 1, 0}, 31}
+  end
+
+  test "sigil_p/3" do
+    # must be comparable
+    assert_raise ArgumentError, fn -> "1.1.1.1" |> ~p(acdc::1) end
+    assert_raise ArgumentError, fn -> [1, 1, 1, 1] |> ~p()a end
+
+    # wraps sigil_p
+    pfx = "1.1.1.1/24"
+    assert pfx |> ~p() == ~p(#{pfx})
+
+    assert pfx |> ~p()a == ~p(#{pfx})a
+    assert pfx |> ~p()f == ~p(#{pfx})f
+    assert pfx |> ~p()l == ~p(#{pfx})l
+    assert pfx |> ~p()n == ~p(#{pfx})n
+    assert pfx |> ~p()p == ~p(#{pfx})p
+
+    assert pfx |> ~p()aS == ~p(#{pfx})aS
+    assert pfx |> ~p()fS == ~p(#{pfx})fS
+    assert pfx |> ~p()lS == ~p(#{pfx})lS
+    assert pfx |> ~p()nS == ~p(#{pfx})nS
+    assert pfx |> ~p()pS == ~p(#{pfx})pS
+
+    assert pfx |> ~p()aT == ~p(#{pfx})aT
+    assert pfx |> ~p()fT == ~p(#{pfx})fT
+    assert pfx |> ~p()lT == ~p(#{pfx})lT
+    assert pfx |> ~p()nT == ~p(#{pfx})nT
+    assert pfx |> ~p()pT == ~p(#{pfx})pT
+
+    # allows all prefix representations
+    assert {{1, 1, 1, 1}, 24} |> ~p() == ~p(1.1.1.1/24)
+    assert new("1.1.1.1/24") |> ~p() == ~p(1.1.1.1/24)
+    assert {1, 1, 1, 1} |> ~p() == ~p(1.1.1.1)
   end
 
   test "size/1" do

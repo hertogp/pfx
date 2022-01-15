@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [unreleased]
+
+### added
+
+- [x] ~p sigil, so ~p"1.1.1.0/24" yields the same as `Pfx.new/1`, i.e. %Pfx{bits: <<1, 1, 1>>, maxlen: 32}
+      pfx = "1.1.1.0/24", ~p"#{pfx}" -> %Pfx{bits: <<1, 1, 1>>, maxlen: 32}
+- [ ] Pfx.iana_reg/1, returns a map with properties based on iana's special IPv4/6 registries.
+- [ ] benchmark different implementations, ala Bitwise_ip
+
+### changed
+
+- [ ] `Pfx.address/` now properly returns a full address  prefix, always without mask
+    - example: address({{1, 1, 1, 1}, 24}) -> {1, 1, 1, 1}
+
+
 ## [0.11.0] - 2022-01-11
 
 ### fixed

@@ -295,7 +295,7 @@ defmodule Pfx do
   #   `Pfx` struct and call themselves again with that struct
 
   @doc """
-  Returns the address portion of given prefix without applying the mask (if
+  Returns the address portion of given `prefix` without applying the mask (if
   any).
 
   Note that this has no real effect on a `t:Pfx.t/0` or an `t:ip_address/0` since
@@ -309,10 +309,10 @@ defmodule Pfx do
       "1.2.3.4"
 
       iex> address({{1, 2, 3, 4}, 16})
-      {{1, 2, 3, 4}, 32}
+      {1, 2, 3, 4}
 
       iex> address({{0xacdc, 0x1976, 0, 0, 0, 0, 0, 1}, 64})
-      {{0xacdc, 0x1976, 0, 0, 0, 0, 0, 1}, 128}
+      {0xacdc, 0x1976, 0, 0, 0, 0, 0, 1}
 
       iex> pfx = "1.2.3.4/24"
       iex> new(pfx).bits
@@ -345,8 +345,9 @@ defmodule Pfx do
       {{a, b, c, d, e, f, g, h}, _} -> {a, b, c, d, e, f, g, h}
       _ -> prefix
     end
-    |> new()
-    |> marshall(prefix)
+
+    # |> new()
+    # |> marshall(prefix)
   rescue
     err -> raise err
   end
@@ -2560,7 +2561,7 @@ defmodule Pfx do
     size = bit_size(x.bits)
 
     if size == 0 do
-      # empty prefix doesn't have a neigbor, really.
+      # empty prefix doesn't have a neighbor, really.
       raise arg_error(:noneighbor, pfx)
     else
       # offset = 1 - 2 * bit(x, bit_size(x.bits) - 1)
@@ -3187,7 +3188,7 @@ defmodule Pfx do
       iex> partition_range("10.10.10.10/24", "10.10.10.17/24")
       ["10.10.10.10/31", "10.10.10.12/30", "10.10.10.16/31"]
 
-      # Pfx.new() has already applied the mask
+      # new() has already applied the mask
       iex> start = new("10.10.10.10/24")
       iex> stop = new("10.10.10.17/24")
       iex> partition_range(start, stop)
@@ -3496,6 +3497,217 @@ defmodule Pfx do
   def sibling(_, offset),
     do: raise(arg_error(:noint, offset))
 
+  @doc ~S"""
+  Returns either a Pfx struct, a binary or a tuple for the given binary `prefix`.
+
+  When Pfx is imported, use the sigil `~p`.
+
+  This normally returns the same result as `Pfx.new/1`, unless modifiers are
+  used.  The following modifiers are supported:
+
+  - `a` returns the address without applying the mask, if any
+  - `m` returns the mask for given `prefix`
+  - `f` returns the first full address for `prefix`
+  - `l` returns the last full address for `prefix`
+  - `n` returns the neighbor for `prefix`
+  - `p` returns the direct parent for `prefix` (i.e. drops 1 lsb bit)
+  - `t` returns the trimmed result for `prefix` (i.e. drops all trailing zero's)
+
+  The modifiers are checked in the order listed and the first one seen gets
+  applied. The modifiers above can be used in conjunction with the `i`
+  modifier, which inverts the result after the regular modifier (if any) has
+  been applied.
+
+  The result's representation can also be modified by:
+  - `S` returns the result as a string
+  - `T` returns the result as an address,length- or just an address-tuple.
+
+  For modifiers that produce a full length prefix (like address, mask, first and last)
+  the `T` modifier returns an address-tuple, otherwise it will be an
+  address,length-tuple.
+
+  When used as a sigil `~p(pfx)`, pfx is given as a string to `Pfx.sigil_p/2` and can be:
+  - an IPv4 prefix string in CIDR notation
+  - an IPv6 prefix string
+  - an EUI48 prefix string
+  - an EUI64 prefix string
+
+  ## Examples
+
+  Most examples use the `S` modifier for readability.
+
+      iex> ~p(1.1.1.1)
+      %Pfx{bits: <<1, 1, 1, 1>>, maxlen: 32}
+
+      # address,length-tuple format
+      iex> ~p(1.1.1.1)T
+      {{1, 1, 1, 1}, 32}
+
+      iex> ~p(aa-bb-cc-dd-ee-ff)
+      %Pfx{bits: <<170, 187, 204, 221, 238, 255>>, maxlen: 48}
+
+      # address
+      iex> ~p(1.1.1.1/24)aS
+      "1.1.1.1"
+
+      # address-tuple format
+      iex> ~p(1.1.1.1/24)aT
+      {1, 1, 1, 1}
+
+      # first address
+      iex> ~p(1.1.1.1/24)fS
+      "1.1.1.0"
+
+      # last address
+      iex> ~p(1.1.1.1/24)lS
+      "1.1.1.255"
+
+      # mask
+      iex> ~p(1.1.1.1/24)mS
+      "255.255.255.0"
+
+      # inverse mask
+      iex> ~p(1.1.1.1/24)imS
+      "0.0.0.255"
+
+      # just the inverse
+      iex> ~p(255.255.255.0)iS
+      "0.0.0.255"
+
+      # neighbor (such that it can be combined in a supernet)
+      iex> ~p(1.1.1.1)nS
+      "1.1.1.0"
+
+      # parent (the supernet containing the prefix given and its neighbor)
+      iex> ~p(1.1.1.1)pS
+      "1.1.1.0/31"
+
+      # trim an address to get a fitting prefix
+      iex> ~p(1.1.0.0)tS
+      "1.1.0.0/16"
+
+      # tuple format
+      iex> ~p(acdc:1976::b1ba/64)T
+      {{44252, 6518, 0, 0, 0, 0, 0, 0}, 64}
+
+      # address-tuple format
+      iex> ~p(acdc:1976::b1ba/64)aT
+      {44252, 6518, 0, 0, 0, 0, 0, 45498}
+
+      # enumerate a Pfx.t struct
+      iex> for x <- ~p(1.1.1.0/30), do: "#{x}"
+      ["1.1.1.0", "1.1.1.1", "1.1.1.2", "1.1.1.3"]
+
+      iex> ~p"1.1.1.128" in ~p"1.1.1.0/24"
+      true
+
+  """
+  @spec sigil_p(prefix, [integer]) :: t() | binary | tuple
+  def sigil_p(prefix, opts) do
+    {mask, pfx} =
+      cond do
+        ?a in opts -> {false, address(prefix) |> new()}
+        ?m in opts -> {false, new(prefix) |> mask()}
+        ?f in opts -> {false, new(prefix) |> first()}
+        ?l in opts -> {false, new(prefix) |> last()}
+        ?n in opts -> {true, new(prefix) |> neighbor()}
+        ?p in opts -> {true, new(prefix) |> drop(1)}
+        ?t in opts -> {true, new(prefix) |> trim()}
+        true -> {true, new(prefix)}
+      end
+
+    pfx =
+      if ?i in opts,
+        do: bnot(pfx),
+        else: pfx
+
+    cond do
+      ?T in opts -> to_tuple(pfx, mask: mask)
+      ?S in opts -> format(pfx)
+      true -> pfx
+    end
+  rescue
+    err -> raise err
+  end
+
+  @doc ~S"""
+  Returns either a Pfx struct, a binary or a tuple for given binary `prefixes`.
+
+  If `mask` is an empty string, both `prefix` and `modifiers` are simply handed off
+  to `Pfx.sigil_p/2`.
+
+  However, if `mask` is not an empty string, then it is used to mask
+  the address portion of `prefix1` before handing the result to `Pfx.sigil_p/2`
+  along with the `modifiers`. This basically allows piping into `~p()` with an
+  optional masking twist and using any prefix representation for `prefix`.
+
+  Note that, if given, `mask` must be the same type of prefix as `prefix`.
+
+  ## Examples
+
+      # address mimics its input format
+      iex> {{1, 1, 1, 1}, 30}
+      ...> |> address()
+      {1, 1, 1, 1}
+
+      # get a string representation
+      iex> {{1, 1, 1, 1}, 30}
+      ...> |> address()
+      ...> |> format()
+      "1.1.1.1"
+
+      # both in one
+      iex> {{1, 1, 1, 1}, 30}
+      ...> |> ~p()aS
+      "1.1.1.1"
+
+      # same when modifying the mask
+      iex> {{1, 1, 1, 1}, 30}
+      ...> |> mask("255.255.255.0")
+      ...> |> format()
+      "1.1.1.0/24"
+
+      # same thing
+      iex> {{1, 1, 1, 1}, 30}
+      ...> |> ~p(255.255.255.0)S
+      "1.1.1.0/24"
+
+      # count IP's at /24 level
+      iex> l = ["1.1.1.1", {1, 1, 1, 2}, {{1, 1, 1, 3}, 32}, new("1.1.1.4")]
+      iex> slash24 = fn x -> x |> ~p(255.255.255.0)S end
+      iex> incr = fn v -> v + 1 end
+      iex> Enum.reduce(l, %{}, fn x, acc -> Map.update(acc, slash24.(x), 1, incr) end)
+      %{"1.1.1.0/24" => 4}
+
+      iex> "acdc::1" |> ~p(ffff::)
+      %Pfx{bits: <<172, 220>>, maxlen: 128}
+
+      iex> "acdc::1" |> ~p(ffff::)S
+      "acdc:0:0:0:0:0:0:0/16"
+
+      iex> "aa:bb:cc:dd:ee:ff" |> ~p(ff:ff:ff:ff:ff:00)S
+      "AA-BB-CC-DD-EE-00/40"
+
+  """
+  @spec sigil_p(prefix, prefix, [integer]) :: t() | binary | tuple
+  def sigil_p(prefix, "", opts),
+    do: sigil_p(prefix, opts)
+
+  def sigil_p(prefix, mask, opts) do
+    pfx = address(prefix) |> new()
+    mask = new(mask)
+
+    pfx
+    |> mask(mask)
+    |> sigil_p(opts)
+  rescue
+    err -> raise err
+  end
+
+  # ~p(1.1.1.1)S |> ~p(255.255.255.0)x -> sigil_p("1.1.1.1", "255.255.255.0", 'x'
+  # def sigil_p(a, b, c),
+  #   do: IO.inspect({a, b, c})
+
   @doc """
   Returns the number of full addresses as represented by `pfx`.
 
@@ -3536,7 +3748,7 @@ defmodule Pfx do
       iex> trim("255.255.255.0")
       "255.255.255.0/24"
 
-      # perhaps more visible like thi
+      # perhaps more visible like this
       iex> trim("255.255.255.0")
       ...> |> new()
       %Pfx{bits: <<255, 255, 255>>, maxlen: 32}
