@@ -4240,7 +4240,7 @@ defmodule Pfx do
   - `false`, or
   - `:na`, which somehow means not-applicable in the eyes of [iana](https://iana.org)
 
-  The `:na` case appears only for the `:global` property of:
+  The `:na` case currently appears only for the `:global` property of:
   - `2001::/32` (teredo), and
   - `2002::/16` (6to4)
 
@@ -4405,7 +4405,7 @@ defmodule Pfx do
   Link local prefixes include:
 
   - `0.0.0.0/8`,          [rfc1122](https://tools.ietf.org/html/rfc1122), 'this-network'
-  - `255.255.255.255/32`, [rfc1f22](https://www.iana.org/go/rfc1122), limited broadcast
+  - `255.255.255.255/32`, [rfc1122](https://www.iana.org/go/rfc1122), limited broadcast
   - `169.254.0.0/16`,     [rfc3927](https://www.iana.org/go/rfc3927), link-local (see examples)
   - `fe80::/64`,          [rfc4291](https://tools.ietf.org/html/rfc4291), link-local
 
