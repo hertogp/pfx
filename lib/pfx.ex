@@ -23,7 +23,7 @@ defmodule Pfx do
   @type t() :: %__MODULE__{bits: bitstring, maxlen: non_neg_integer}
 
   @typedoc """
-  An :inet IPv4 or IPv6 address (tuple)
+  An :inet IPv4 or IPv6 address tuple
 
   """
   @type ip_address :: :inet.ip4_address() | :inet.ip6_address()
@@ -89,7 +89,7 @@ defmodule Pfx do
                   bit_size(pfx.bits) <= pfx.maxlen
 
   @doc """
-  Guard that ensures both prefixes are valid and comparable (same maxlen).
+  Guard that ensures both prefixes are valid Pfx structs and have the same maxlen.
 
   """
   @doc section: :guard

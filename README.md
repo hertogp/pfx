@@ -17,29 +17,59 @@ and IPv6).
 like an IPv4/6 address or network, a MAC address, a MAC OUI range or something
 completely different.
 
-A `Pfx` struct can be created with `Pfx.new/2` using:
-- a `t:bitstring/0` and a `t:non_neg_integer/0` for the maximum length,
-- a `t:Pfx.t/0` and a `t:non_neg_integer/0` for a (new) maximum length.
+A `Pfx` struct can be created with:
+- `Pfx.new/1`, which creates an IPv4, IPv6, EUI48 or an EUI64 prefix
+- `~p()`, which also creates an IPv4, IPv6, EUI48 or an EUI64 prefix
+- `Pfx.new/2`, which can create any type of prefix
+- `Pfx.from_mac/1`, which creates only EUI48 or EUI64 prefixes
+- `Pfx.from_hex/2`, which creates any kind of prefix from a hexadecimal string
 
-This allows for the creation of any sort of prefix.
+For example:
 
-Use `Pfx.new/1` to create a prefix struct from:
-- a `t:Pfx.ip_address/0`,
-- a `t:Pfx.ip_prefix/0`, or
-- a `t:binary/0`, a string in IPv4 CIDR, IPv6, EUI-48 or EUI-64 format
+     # IPv4
+     iex> new("1.1.1.1/24")
+     %Pfx{bits: <<1, 1, 1>>, maxlen: 32}
 
-This creates an IPv4, IPv6, EUI-48 or an EUI-64 prefix.  Other means to create
-prefixes include `Pfx.from_mac/1` and `Pfx.from_hex/1`.
+     # IPv6
+     iex> ~p"acdc::/16"
+     %Pfx{bits: <<172, 220>>, maxlen: 128}
 
-Several functions, like `Pfx.unique_local?/1` are more IP oriented, and are
-included along with the more generic `Pfx` functions (like `Pfx.cut/3`) in
-order to have one module to rule them all.
+     # EUI48
+     iex> new("aa-bb-cc-dd-ee-ff/40")
+     %Pfx{bits: <<0xaa, 0xbb, 0xcc, 0xdd, 0xee>>, maxlen: 48}
 
-Functions generally accept either a `t:Pfx.t/0`, a `t:Pfx.ip_address/0`, a
-`t:Pfx.ip_prefix/0` or a binary and yield their result in the same fashion:
+     # EUI64
+     iex> ~p"11-22-33-44-55-66-77-88/24"
+     %Pfx{bits: <<0x11, 0x22, 0x33>>, maxlen: 64}
+
+     # EUI64, not IPv6
+     iex> from_mac("11:22:33:44:55:66:77:88/24")
+     %Pfx{bits: <<0x11, 0x22, 0x33>>, maxlen: 64}
+
+     # Other
+     iex> new(<<1, 1>>, 16)
+     %Pfx{bits: <<1, 1>>, maxlen: 16}
+
+A prefix can generally be expressed as:
+- a `t:Pfx.t/0`, e.g. `%Pfx{bits: <<1, 1, 1>>, maxlen: 24}`
+- a `t:Pfx.ip_address/0`, e.g. `{1, 1, 1, 1}`
+- a `t:Pfx.ip_prefix/0`, e.g. `{{1, 2, 3, 4, 5, 6, 7, 0}, 120}`
+- a `t:binary/0` (either an IPv4 CIDR, IPv6, EUI48 or EUI64 string) e.g. "1.1.1.0/24"
+
+Functions generally accept these representations and yield their result in
+the same fashion. Pfx has several [IP functions](#ip-functions), like
+`Pfx.unique_local?/1` which are IP oriented. They are included along with the
+more [generic functions](#functions) (like `Pfx.cut/3`) in order to have one
+module to rule them all.
+
+    iex> iana_special("192.168.0.128", :global)
+    false
 
     iex> hosts("10.10.10.0/30")
     ["10.10.10.0", "10.10.10.1", "10.10.10.2", "10.10.10.3"]
+
+    iex> minimize(["10.10.10.0", "10.10.10.1", "10.10.10.2", "10.10.10.3"])
+    ["10.10.10.0/30"]
 
     iex> hosts({{10, 10, 10, 0}, 30})
     [
@@ -98,7 +128,7 @@ masks must be in range `0..32` and IPv6 masks in range `0..128`.  The resulting
 tuples.
 
 Last but not least, binaries are interpreted as either an IPv4 in
-CIDR-notation, an IPv6 address/prefix, an EUI-48 or EUI-64 formatted string.
+CIDR-notation, an IPv6 address/prefix, an EUI-48 or an EUI-64 formatted string.
 
     # IPv4
     iex> new("1.2.3.4")
@@ -213,9 +243,9 @@ A `t:Pfx.t/0` implements the `Enumerable` protocol:
 
 `t:Pfx.t/0` implements the `String.Chars` protocol with some defaults for
 prefixes that formats prefixes with:
-- `maxlen: 32` as an IPv4 CIDR string,
-- `maxlen: 48` as a EUI-48 address string and
-- `maxlen: 64` as a EUI-64 address string
+- `maxlen:  32` as an IPv4 CIDR string,
+- `maxlen:  48` as a EUI-48 address string,
+- `maxlen:  64` as a EUI-64 address string, and
 - `maxlen: 128` as an IPv6 string
 
 Other `maxlen`'s will simply come out as a series of 8-bit numbers joined by "."
@@ -238,7 +268,7 @@ some options that help shape the string representation for a `Pfx` struct.
     "01-02-03-04-05-00-00-00/40"
 
     # the enumeration example earlier, could also read:
-    iex> for ip <- new("1.2.3.0/30"), do: "#{ip}"
+    iex> for ip <- ~p"1.2.3.0/30", do: "#{ip}"
     [
       "1.2.3.0",
       "1.2.3.1",
@@ -247,7 +277,7 @@ some options that help shape the string representation for a `Pfx` struct.
     ]
 
     # or
-    iex> for ip <- new("1.2.3.0/30"), do: digits(ip, 8) |> elem(0)
+    iex> for ip <- ~p"1.2.3.0/30", do: to_tuple(ip, mask: false)
     [
       {1, 2, 3, 0},
       {1, 2, 3, 1},
@@ -276,6 +306,20 @@ Anyway, enough downplay, here are some more examples.
 
 ## Examples
 
+    # An entry from IANA's IPv6 Special-Purpose Address Registry
+    iex> iana_special("fc00::")
+    %{
+      allocation: "2005-10",
+      destination: true,
+      forward: true,
+      global: false,
+      name: "unique-local",
+      prefix: "fc00::/7",
+      reserved: false,
+      source: true,
+      spec: ["rfc4193", "rfc8190"]
+    }
+
     # IANA's OUI range 00-00-5e-xx-xx-xx
     iex> new("00-00-5e-00-00-00/24")
     %Pfx{bits: <<0, 0, 94>>, maxlen: 48}
@@ -284,12 +328,12 @@ Anyway, enough downplay, here are some more examples.
     iex> vrrp_mac_range = new("00-00-5e-00-01-00/40")
     %Pfx{bits: <<0, 0, 94, 0, 1>>, maxlen: 48}
     iex>
-    iex> vrrp_mac = new("00-00-5e-00-01-0f")
+    iex> mac = new("00-00-5e-00-01-0f")
     %Pfx{bits: <<0, 0, 94, 0, 1, 15>>, maxlen: 48}
     iex>
-    iex> member?(vrrp_mac, vrrp_mac_range)
+    iex> mac in vrrp_mac_range
     true
-    iex> cut(vrrp_mac, -1, -8) |> cast()
+    iex> cut(mac, -1, -8) |> cast()
     15
 
     iex> new("10.10.10.0/24")
@@ -315,10 +359,6 @@ Anyway, enough downplay, here are some more examples.
 
     iex> eui64_encode("0288.8888.8888")
     "00-88-88-FF-FE-88-88-88"
-
-Some functions have IP related names (like `Pfx.teredo_decode/1`, but most of
-the times functions have generic names, since they apply to all sorts of
-prefixes, e.g.
 
     iex> partition("10.10.10.0/24", 26)
     [ "10.10.10.0/26",
@@ -348,7 +388,7 @@ list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:pfx, "~> 0.11.0"}
+    {:pfx, "~> 0.12.0"}
   ]
 end
 ```
