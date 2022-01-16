@@ -909,8 +909,8 @@ defmodule PfxTest do
     assert_raise ArgumentError, fn -> iana_special("1.1.1.400") end
 
     # not registered, means empty property map
-    assert %{} == iana_special("1.1.1.1")
-    assert %{} == iana_special("aa-bb-cc-dd-ee-ff")
+    assert nil == iana_special("1.1.1.1")
+    assert nil == iana_special("aa-bb-cc-dd-ee-ff")
 
     # registered, return property map
     assert iana_special("192.168.0.0/16") == %{
@@ -918,7 +918,7 @@ defmodule PfxTest do
              destination: true,
              forward: true,
              global: false,
-             name: "Private-Use",
+             name: "private-use",
              prefix: "192.168.0.0/16",
              reserved: false,
              source: true,
@@ -930,8 +930,8 @@ defmodule PfxTest do
              destination: true,
              forward: true,
              global: :na,
-             name: "TEREDO",
-             prefix: "2001:0:0:0:0:0:0:0/32",
+             name: "teredo",
+             prefix: "2001::/32",
              reserved: false,
              source: true,
              spec: ["rfc4380", "rfc8190"]
@@ -946,7 +946,11 @@ defmodule PfxTest do
     assert "1996-02" == iana_special("10.10.10.10", :allocation)
     assert ["rfc1918"] == iana_special("10.10.10.10", :spec)
     assert "10.0.0.0/8" == iana_special("10.10.10.10", :prefix)
-    assert "Private-Use" == iana_special("10.10.10.10", :name)
+    assert "private-use" == iana_special("10.10.10.10", :name)
+
+    # multiple prefixes are split into their own entries
+    assert "192.0.0.170/32" == iana_special("192.0.0.170", :prefix)
+    assert "192.0.0.171/32" == iana_special("192.0.0.171", :prefix)
   end
 
   test "insert/3" do

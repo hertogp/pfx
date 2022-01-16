@@ -9,7 +9,7 @@ defmodule Mix.Tasks.Iana.Specials do
   @ip4_priv_spar "priv/iana-ipv4-special-registry.xml"
   @ip6_iana_spar "#{@iana_url}/iana-ipv6-special-registry/iana-ipv6-special-registry.xml"
   @ip6_priv_spar "priv/iana-ipv6-special-registry.xml"
-  @pfx_spar "priv/specials"
+  @pfx_priv_spar "priv/specials"
 
   @impl Mix.Task
   def run(args) do
@@ -27,9 +27,8 @@ defmodule Mix.Tasks.Iana.Specials do
       ip4: xml2list(@ip4_priv_spar),
       ip6: xml2list(@ip6_priv_spar)
     }
-    |> IO.inspect(label: :result)
     |> :erlang.term_to_binary()
-    |> save_term(@pfx_spar)
+    |> save_term(@pfx_priv_spar)
   end
 
   defp fetch(url, priv) do
@@ -39,12 +38,12 @@ defmodule Mix.Tasks.Iana.Specials do
       body =
         List.to_string(body)
         |> String.split("\n")
+        |> Enum.map(&String.trim/1)
         |> Enum.filter(fn line -> not String.starts_with?(line, "<?xml-model href") end)
         |> Enum.join("\n")
 
       File.write!(priv, body)
-      IO.puts("got: #{url}")
-      IO.puts(" to: #{priv}")
+      IO.puts("donwloaded #{url} -> #{priv} (#{String.length(body)} bytes)")
     else
       metadata ->
         IO.puts("Error: #{url}")
@@ -58,22 +57,26 @@ defmodule Mix.Tasks.Iana.Specials do
   defp xml2list(file) do
     {:ok, xml} = File.read(file)
 
-    xml
-    |> xpath(
-      ~x"//record"l,
-      prefix: ~x"./address/text()"s,
-      name: ~x"./name/text()"s,
-      source: ~x"./source/text()"s,
-      destination: ~x"./destination/text()"s,
-      forward: ~x"./forwardable/text()"s,
-      global: ~x"./global/text()"s,
-      reserved: ~x"./reserved/text()"s,
-      allocation: ~x"./allocation/text()"s,
-      spec: ~x"./spec/xref/@data"l
-    )
-    |> Enum.map(fn elm -> normalize(elm) end)
-    |> List.flatten()
-    |> Enum.sort(fn x, y -> bit_size(elem(x, 0).bits) >= bit_size(elem(y, 0).bits) end)
+    records =
+      xml
+      |> xpath(
+        ~x"//record"l,
+        prefix: ~x"./address/text()"s,
+        name: ~x"./name/text()"s,
+        source: ~x"./source/text()"s,
+        destination: ~x"./destination/text()"s,
+        forward: ~x"./forwardable/text()"s,
+        global: ~x"./global/text()"s,
+        reserved: ~x"./reserved/text()"s,
+        allocation: ~x"./allocation/text()"s,
+        spec: ~x"./spec/xref/@data"l
+      )
+      |> Enum.map(fn elm -> normalize(elm) end)
+      |> List.flatten()
+      |> Enum.sort(fn x, y -> bit_size(elem(x, 0).bits) >= bit_size(elem(y, 0).bits) end)
+
+    IO.puts("extract: #{file} -> #{length(records)} records")
+    records
   end
 
   defp normalize(elm) do
@@ -87,23 +90,25 @@ defmodule Mix.Tasks.Iana.Specials do
     elm = Map.put(elm, :reserved, to_booleanp(elm.reserved))
     elm = Map.put(elm, :allocation, to_stringp(elm.allocation))
     elm = Map.put(elm, :spec, Enum.map(elm.spec, fn x -> to_stringp(x) end))
-    for pfx <- pfxs, do: {pfx, Map.put(elm, :prefix, "#{pfx}")}
+    for pfx <- pfxs, do: {Pfx.new(pfx), Map.put(elm, :prefix, pfx)}
   end
 
   defp to_stringp(str) do
+    keep = Enum.to_list(?a..?z) ++ Enum.to_list(?0..?9) ++ [?\s, ?-, ?/]
+
     str
     |> to_string()
     |> String.downcase()
+    |> String.to_charlist()
+    |> Enum.filter(fn c -> c in keep end)
+    |> List.to_string()
     |> String.replace(~r/\s+/, "-")
-    |> String.replace(~r/^"/, "")
-    |> String.replace(~r/"$/, "")
   end
 
   defp to_prefixp(str) do
     str
     |> String.split(",")
     |> Enum.map(&String.trim/1)
-    |> Enum.map(&Pfx.new/1)
   end
 
   defp to_booleanp(str) do

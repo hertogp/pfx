@@ -1909,101 +1909,6 @@ defmodule Pfx do
   def hosts(pfx),
     do: for(ip <- new(pfx), do: marshall(ip, pfx))
 
-  @doc ~S"""
-  Returns the properties (or property) as per Iana's special purpose address
-  registry for given `prefix`.
-
-  If the property argument is omitted, it defaults to `nil` and either an empty
-  map (no entry for given `prefix` in the registries) or the full map of all
-  properties is returned.
-
-  Otherwise, an individual property value is returned and `property` can be one of:
-
-  - `:prefix`, a string: the owner prefix
-  - `:source`, a semi-boolean: whether or not `prefix` is a valid source address
-  - `:destination`, a semi-boolean: whether or not `prefix` is a valid destination address
-  - `:forward`, a semi-boolean: whether or not `prefix` can be forwarded (by a router)
-  - `:global`, a semi-boolean: whether or not `prefix` is reachable on the Internet
-  - `:reserved`, a semi-boolean: whether or not ...
-  - `:name`: a string: the description of the entry in the special purpose address registry
-  - `spec`: a list of strings: naming the rfc's related to given `prefix`
-  - `allocatoin`: a string denoting `yyyy-mm` of the registry's entry
-
-  A semi-boolean, for lack of a better word, can have 3 values:
-  - `true`,
-  - `false`, or
-  - `na`, which somehow means not-applicable in the eyes of [iana](https://iana.org)
-
-  To insulate against human error and/or preferences, the string values are
-  somewhat normalized by:
-
-  1. downcasing
-  2. filtering, so they contain only (lowercase) letters, numbers or a space, and
-  3. replacing all (multiple) spaces with a single "-"
-
-  ## Examples
-
-      iex> iana_special("10.10.10.10")
-      %{
-        allocation: "1996-02",
-        destination: true,
-        forward: true,
-        global: false,
-        name: "Private-Use",
-        prefix: "10.0.0.0/8",
-        reserved: false,
-        source: true,
-        spec: ["rfc1918"]
-      }
-
-      iex> iana_special("10.11.12.13", :global)
-      false
-
-      iex> iana_special("10.11.12.13", :name)
-      "Private-Use"
-
-      iex> iana_special("fc00::/7", :global)
-      false
-
-      iex> iana_special("fc00::/7", :name)
-      "Unique-Local"
-
-      iex> iana_special("2001::/32", :global)
-      :na
-
-      iex> iana_special("2001::/32", :name)
-      "TEREDO"
-
-      iex> iana_special("2001::/23", :name)
-      "IETF Protocol Assignments"
-
-  """
-  @spec iana_special(prefix, atom | nil) :: nil | map | term
-  def iana_special(prefix, property \\ nil)
-
-  def iana_special(pfx, property) when is_pfx(pfx) do
-    list =
-      case type(pfx) do
-        :ip4 -> @specials[:ip4]
-        :ip6 -> @specials[:ip6]
-        _ -> []
-      end
-
-    {_, props} = Enum.find(list, {nil, %{}}, fn {special, _props} -> member?(pfx, special) end)
-
-    if property,
-      do: Map.get(props, property),
-      else: props
-  end
-
-  def iana_special(pfx, property) do
-    pfx
-    |> new()
-    |> iana_special(property)
-  rescue
-    err -> raise err
-  end
-
   @doc """
   Inserts `bits` into `pfx`-s bitstring, starting at `position`.
 
@@ -3637,66 +3542,66 @@ defmodule Pfx do
 
   Most examples use the `S` modifier for readability.
 
-      iex> ~p(1.1.1.1)
+      iex> ~p"1.1.1.1"
       %Pfx{bits: <<1, 1, 1, 1>>, maxlen: 32}
 
       # address,length-tuple format
-      iex> ~p(1.1.1.1)T
+      iex> ~p"1.1.1.1"T
       {{1, 1, 1, 1}, 32}
 
-      iex> ~p(aa-bb-cc-dd-ee-ff)
+      iex> ~p"aa-bb-cc-dd-ee-ff"
       %Pfx{bits: <<170, 187, 204, 221, 238, 255>>, maxlen: 48}
 
       # address
-      iex> ~p(1.1.1.1/24)aS
+      iex> ~p"1.1.1.1/24"aS
       "1.1.1.1"
 
       # address-tuple format
-      iex> ~p(1.1.1.1/24)aT
+      iex> ~p"1.1.1.1/24"aT
       {1, 1, 1, 1}
 
       # first address
-      iex> ~p(1.1.1.1/24)fS
+      iex> ~p"1.1.1.1/24"fS
       "1.1.1.0"
 
       # last address
-      iex> ~p(1.1.1.1/24)lS
+      iex> ~p"1.1.1.1/24"lS
       "1.1.1.255"
 
       # mask
-      iex> ~p(1.1.1.1/24)mS
+      iex> ~p"1.1.1.1/24"mS
       "255.255.255.0"
 
       # inverse mask
-      iex> ~p(1.1.1.1/24)imS
+      iex> ~p"1.1.1.1/24"imS
       "0.0.0.255"
 
       # just the inverse
-      iex> ~p(255.255.255.0)iS
+      iex> ~p"255.255.255.0"iS
       "0.0.0.255"
 
       # neighbor (such that it can be combined in a supernet)
-      iex> ~p(1.1.1.1)nS
+      iex> ~p"1.1.1.1"nS
       "1.1.1.0"
 
       # parent (the supernet containing the prefix given and its neighbor)
-      iex> ~p(1.1.1.1)pS
+      iex> ~p"1.1.1.1"pS
       "1.1.1.0/31"
 
       # trim an address to get a fitting prefix
-      iex> ~p(1.1.0.0)tS
+      iex> ~p"1.1.0.0"tS
       "1.1.0.0/16"
 
       # tuple format
-      iex> ~p(acdc:1976::b1ba/64)T
+      iex> ~p"acdc:1976::b1ba/64"T
       {{44252, 6518, 0, 0, 0, 0, 0, 0}, 64}
 
       # address-tuple format
-      iex> ~p(acdc:1976::b1ba/64)aT
+      iex> ~p"acdc:1976::b1ba/64"aT
       {44252, 6518, 0, 0, 0, 0, 0, 45498}
 
       # enumerate a Pfx.t struct
-      iex> for x <- ~p(1.1.1.0/30), do: "#{x}"
+      iex> for x <- ~p"1.1.1.0/30", do: "#{x}"
       ["1.1.1.0", "1.1.1.1", "1.1.1.2", "1.1.1.3"]
 
       iex> ~p"1.1.1.128" in ~p"1.1.1.0/24"
@@ -4291,6 +4196,129 @@ defmodule Pfx do
     from_mac(pfx)
     |> eui64_decode()
     |> marshall(pfx)
+  rescue
+    err -> raise err
+  end
+
+  @doc section: :ip
+  @doc ~S"""
+  Returns one or all the properties as per Iana's special purpose address
+  registry for given `prefix`.
+
+  See:
+  - [IANA IPv4 Special-Purpose Address Registry](https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml)
+  - [IANA IPv6 Special-Purpose Address Registry](https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml)
+
+  If given either `:ip4` or `:ip6` as the first argument, the `property`
+  argument is ignored and the associated list of prefixes and their properties
+  is returned. The list contains two-element tuples, the first element is a
+  `t:Pfx.t/0` struct and the second element a map with the properties
+  associated with the prefix. The list is ordered on the first tuple element,
+  more to less specific.
+
+  Otherwise, `prefix` taken to be a `t:prefix/0` and can be a full address.
+  If there is no match with any of the prefixes in the associated special purpose
+  address registry, `nil` is returned.
+
+  If the property argument is omitted, it defaults to `nil` and in case of a match
+  the property map is returned.  If there is no match, nil is returned.
+
+  Otherwise, an individual property value is returned and `property` can be one of:
+
+  - `:prefix`, a string: the owner prefix
+  - `:source`, a semi-boolean: whether or not `prefix` is a valid source address
+  - `:destination`, a semi-boolean: whether or not `prefix` is a valid destination address
+  - `:forward`, a semi-boolean: whether or not `prefix` can be forwarded (by a router)
+  - `:global`, a semi-boolean: whether or not `prefix` is reachable on the Internet
+  - `:reserved`, a semi-boolean: whether or not `prefix` is reserved-by-protocol
+  - `:name`: a string: the description of the entry in the special purpose address registry
+  - `spec`: a list of strings: naming the rfc's and errata related to given `prefix`
+  - `allocation`: a string denoting `yyyy-mm` of the registry's entry
+
+  A semi-boolean, for lack of a better word, can have 3 values:
+  - `true`,
+  - `false`, or
+  - `:na`, which somehow means not-applicable in the eyes of [iana](https://iana.org)
+
+  The `:na` case appears only for the `:global` property of:
+  - `2001::/32` (teredo), and
+  - `2002::/16` (6to4)
+
+  The `:name` property value is somewhat normalized, but will be tricky to rely
+  on in code since that may change at the whim of the RFC editors.
+
+  ## Examples
+
+      iex> iana_special(:ip4) |> length()
+      25
+      iex> iana_special(:ip6) |> length()
+      20
+
+      iex> iana_special("10.10.10.10")
+      %{
+        allocation: "1996-02",
+        destination: true,
+        forward: true,
+        global: false,
+        name: "private-use",
+        prefix: "10.0.0.0/8",
+        reserved: false,
+        source: true,
+        spec: ["rfc1918"]
+      }
+
+      iex> iana_special("10.11.12.13", :global)
+      false
+
+      iex> iana_special("10.11.12.13", :name)
+      "private-use"
+
+      iex> iana_special("fc00::/7", :global)
+      false
+
+      iex> iana_special("fc00::/7", :name)
+      "unique-local"
+
+      iex> iana_special("2001::/32", :global)
+      :na
+
+      iex> iana_special("2001::/32", :name)
+      "teredo"
+
+      iex> iana_special("2001::/23", :name)
+      "ietf-protocol-assignments"
+
+  """
+  @spec iana_special(:ip4 | :ip6 | prefix, atom | nil) :: nil | map | term
+  def iana_special(prefix, property \\ nil)
+
+  def iana_special(:ip4, _property),
+    do: @specials[:ip4]
+
+  def iana_special(:ip6, _property),
+    do: @specials[:ip6]
+
+  def iana_special(pfx, property) when is_pfx(pfx) do
+    list =
+      case type(pfx) do
+        :ip4 -> @specials[:ip4]
+        :ip6 -> @specials[:ip6]
+        _ -> []
+      end
+
+    {pfx, props} = Enum.find(list, {nil, %{}}, fn {special, _props} -> member?(pfx, special) end)
+
+    cond do
+      pfx == nil -> nil
+      property == nil -> props
+      true -> Map.get(props, property)
+    end
+  end
+
+  def iana_special(pfx, property) do
+    pfx
+    |> new()
+    |> iana_special(property)
   rescue
     err -> raise err
   end
