@@ -4216,7 +4216,7 @@ defmodule Pfx do
   associated with the prefix. The list is ordered on the first tuple element,
   more to less specific.
 
-  Otherwise, `prefix` taken to be a `t:prefix/0` and can be a full address.
+  Otherwise, `prefix` is taken to be a `t:prefix/0` and can be a full address.
   If there is no match with any of the prefixes in the associated special purpose
   address registry, `nil` is returned.
 
@@ -4248,6 +4248,20 @@ defmodule Pfx do
   on in code since that may change at the whim of the RFC editors.
 
   ## Examples
+
+      iex> iana_special(:ip4) |> hd()
+      {%Pfx{bits: <<0, 0, 0, 0>>, maxlen: 32},
+       %{
+         allocation: "1981-09",
+         destination: false,
+         forward: false,
+         global: false,
+         name: "this-host-on-this-network",
+         prefix: "0.0.0.0/32",
+         reserved: true,
+         source: true,
+         spec: ["rfc1122"]
+       }}
 
       iex> iana_special(:ip4) |> length()
       25

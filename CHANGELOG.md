@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### added
 
-- `Pfx.sigil_p/2`, so ~p"1.1.1.0/24" yields %Pfx{bits: <<1, 1, 1>>, maxlen: 32}
+- `Pfx.sigil_p/2`, so `~p"1.1.1.0/24"` yields `%Pfx{bits: <<1, 1, 1>>, maxlen: 32}`
     - modifiers to get address, mask, first, last, neighbor, parent or trimmed result instead
-    - additional modifiers to invert the result or turn it into a string or tuple format.
+    - additional modifiers to invert the result and/or turn it into a string or tuple format.
 - `Pfx.sigil_p/3`, which allows for piping into `~p()`
 - `Pfx.iana_special/2`, returns properties for a prefix, based on iana's special IPv4/6 registries.
 
