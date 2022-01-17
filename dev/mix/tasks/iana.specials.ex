@@ -8,11 +8,14 @@ defmodule Mix.Tasks.Iana.Specials do
   Usage:
 
   ```
-  mix iana.specials [force]
+  mix iana.specials [force] [dryrun]
   ```
 
   The `force` will force the download, even though the xml files are already
   present in the `priv` subdir.
+
+  The `dryrun` will read and convert the downloaded xml files, convert them
+  to a map and show the map without writing to disk.
 
   After download, the xml files are:
   - parsed into a list [{Pfx.t, %{property: value}] per registry
@@ -39,6 +42,7 @@ defmodule Mix.Tasks.Iana.Specials do
   @impl Mix.Task
   def run(args) do
     force = "force" in args
+    dryrun = "dryrun" in args
 
     if force or not File.exists?(@ip4_priv_spar),
       do: fetch(@ip4_iana_spar, @ip4_priv_spar),
@@ -48,12 +52,21 @@ defmodule Mix.Tasks.Iana.Specials do
       do: fetch(@ip6_iana_spar, @ip6_priv_spar),
       else: IO.puts("#{@ip6_priv_spar} exists, skipping download")
 
-    %{
+    map = %{
       ip4: xml2list(@ip4_priv_spar),
       ip6: xml2list(@ip6_priv_spar)
     }
-    |> :erlang.term_to_binary()
-    |> save_term(@pfx_priv_spar)
+
+    if dryrun do
+      Mix.shell().info("IANA IPv4 Special-Purpose Address Registry")
+      IO.inspect(map.ip4)
+      Mix.shell().info("\nIANA IPv6 Special-Purpose Address Registry")
+      IO.inspect(map.ip6)
+    else
+      map
+      |> :erlang.term_to_binary()
+      |> save_term(@pfx_priv_spar)
+    end
 
     Mix.shell().info("Done.")
   end
@@ -82,6 +95,7 @@ defmodule Mix.Tasks.Iana.Specials do
     do: File.write!(path, term)
 
   defp xml2list(file) do
+    # note: sort list on prefix: more to less specific
     {:ok, xml} = File.read(file)
 
     records =

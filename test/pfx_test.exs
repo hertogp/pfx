@@ -1017,6 +1017,12 @@ defmodule PfxTest do
     assert {0, 0, 0, 0} == inv_mask({1, 2, 3, 4})
   end
 
+  test "invert/1" do
+    # this function simply calls bnot
+    assert "0.0.255.255" == invert("255.255.0.0")
+    assert_raise ArgumentError, fn -> invert("1.1.1.329") end
+  end
+
   test "is_pfx/1" do
     # handle zero bits
     assert is_pfx(%Pfx{bits: <<>>, maxlen: 0})

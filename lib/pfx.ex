@@ -2013,6 +2013,21 @@ defmodule Pfx do
   end
 
   @doc """
+  Invert a prefix, same as `Pfx.bnot`.
+
+  This function inverts all bits in the prefix by simply calling `Pfx.bnot`,
+  whose name is somewhat more obscure.  See `Pfx.bnot/1` for documentation.
+
+  Note: using `bnot` directly, actually saves a function call.
+
+  """
+  def invert(pfx) do
+    bnot(pfx)
+  rescue
+    err -> raise err
+  end
+
+  @doc """
   Keeps `count` msb bits of given `pfx`.
 
   If `count` exceeds the actual number of bits in `pfx.bits`, it keeps all

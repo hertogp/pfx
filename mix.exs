@@ -26,20 +26,18 @@ defmodule Pfx.MixProject do
       aliases: aliases(),
       preferred_cli_env: [ci: :test],
       elixirc_paths: elixirc_paths(Mix.env()),
-      dialyzer: [plt_add_apps: [:mix]]
+      dialyzer: [plt_add_apps: [:sweet_xml, :mix, :inets]]
     ]
   end
 
   def application,
     do: applications(Mix.env())
 
-  # do: [applications: [:inets]]
-
-  def applications(:prod),
+  defp applications(:prod),
     do: []
 
-  def applications(_),
-    do: [applications: [:sweet_xml, :inets]]
+  defp applications(_),
+    do: [extra_applications: [:inets]]
 
   defp elixirc_paths(:dev),
     do: ["lib", "dev"]
