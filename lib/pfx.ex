@@ -2013,10 +2013,10 @@ defmodule Pfx do
   end
 
   @doc """
-  Invert a prefix, same as `Pfx.bnot`.
+  Inverts a prefix, bit by bit, same as `Pfx.bnot`.
 
   This function inverts all bits in the prefix by simply calling `Pfx.bnot`,
-  whose name is somewhat more obscure.  See `Pfx.bnot/1` for documentation.
+  whose name is somewhat obscure.  See `Pfx.bnot/1` for documentation.
 
   Note: using `bnot` directly, actually saves a function call.
 

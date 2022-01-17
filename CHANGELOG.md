@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [unreleased]
 
+### added
+
+- `Pfx.invert/1` as a more logical name for `Pfx.bnot/1`
+    - with a note that using `bnot` directly simply saves a function call.
+
 ### fixed
 
 - [x] `Pfx.minimize/1` requires a different sort then `Pfx.compare/2` provides:
