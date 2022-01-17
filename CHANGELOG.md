@@ -9,15 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### fixed
 
-- [x] fix or remove README's link to #functions/#ip-functions for IP/generic functions
-    - they work locally, but not on hex.pm
-    - trying [IP functions](Pfx.html#ip-functions) instead of just #ip-functions
+- [x] README's link to #functions/#ip-functions for IP/generic functions
+    - `[IP functions}(#ip-functions)` works locally, but not on hex.pm
+    - trying `[IP functions](Pfx.html#ip-functions)` instead of just #ip-functions
 - [x] `Pfx.minimize/1` requires a different sort then `Pfx.compare/2` provides:
     - `Pfx.compare/2` sorts on bit-size first, then bit-values, good for acl's
     - `Pfx.minimize/1` needs a sort on 'this-network' first, and bit-size second
     - now: ["0.0.0.0", "0.0.0.0/8", "255.255.255.255", "240.0.0.0/4" -> is
       correctly minimized to ["240.0.0.0/4", "0.0.0.0/8"]
     - to use that minimal list as an acl, use Enum.sort(acl, {:desc, Pfx})
+
 
 ## [0.12.0] - 2022-01-16
 

@@ -1,6 +1,31 @@
 defmodule Mix.Tasks.Iana.Specials do
   use Mix.Task
   alias Mix
+
+  @moduledoc """
+  Download and convert IANA's IPv4/6 Special-Purpose Address Registries
+
+  Usage:
+
+  ```
+  mix iana.specials [force]
+  ```
+
+  The `force` will force the download, even though the xml files are already
+  present in the `priv` subdir.
+
+  After download, the xml files are:
+  - parsed into a list [{Pfx.t, %{property: value}] per registry
+  - list are then combined a map %{ip4: [..], ip6: [..]}
+  - that map is then saved as `priv/specials` in erlang external term format
+
+  Pfx uses that file as an external resource for a module attribute that allows
+  looking up IANA attributes for a given prefix via `Pfx.iana_special/2`.
+
+  """
+
+  @shortdoc "Takes a snapshot of IANA's IPv4/6 Special-Purpose Address Registries"
+
   import SweetXml
 
   @user_agent {'User-agent', 'Elixir Pfx'}
@@ -29,6 +54,8 @@ defmodule Mix.Tasks.Iana.Specials do
     }
     |> :erlang.term_to_binary()
     |> save_term(@pfx_priv_spar)
+
+    Mix.shell().info("Done.")
   end
 
   defp fetch(url, priv) do
