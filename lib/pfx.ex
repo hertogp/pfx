@@ -2511,10 +2511,10 @@ defmodule Pfx do
   defp minimizep(prefixes) do
     # notes:
     # - these prefixes are expected to have the same maxlen
-    # - sort is :desc, so less to more specific, which reduces the
-    #   need to replace head with elm in mimimize_by_contrastp.
+    # - minimize_sortp is descending and specific to minimization
+    # - meaning head is, if possible, less specific than elm
     prefixes
-    |> Enum.sort({:desc, Pfx})
+    |> Enum.sort(&minimize_sortp/2)
     |> Enum.reduce([], &minimize_by_contrastp/2)
   end
 
@@ -2523,20 +2523,38 @@ defmodule Pfx do
 
   defp minimize_by_contrastp(elm, [head | tail] = acc) do
     # notes:
-    # - due to sorting, elm will never be :less than head
-    # - if elm/head are combined, recurse on tail to see if the new parent can
-    #   itself be combined.
+    # - due to sorting, elm can never be less specific than head
+    # - due to sorting, elm can never be :left adjacent to head
+    # - if elm is :right adjacent, combine & recurse on tail and new parent-elm
     new =
       case contrast(elm, head) do
-        :equal -> acc
         :more -> acc
+        :equal -> acc
+        :right -> minimize_by_contrastp(drop(head, 1), tail)
         :less -> [elm | tail]
         :left -> minimize_by_contrastp(drop(elm, 1), tail)
-        :right -> minimize_by_contrastp(drop(head, 1), tail)
         _ -> [elm | acc]
       end
 
     new
+  end
+
+  defp minimize_sortp(x, y) do
+    # sort order to minimize prefixes efficiently:
+    # - prefixes sorted on 'this-network' first
+    # - then on number of bits available
+    xn = padr(x)
+    xs = bit_size(x.bits)
+    yn = padr(y)
+    ys = bit_size(y.bits)
+
+    cond do
+      xn > yn -> false
+      xn < yn -> true
+      xs > ys -> false
+      xs < ys -> true
+      true -> true
+    end
   end
 
   @doc """

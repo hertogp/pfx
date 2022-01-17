@@ -1248,6 +1248,13 @@ defmodule PfxTest do
     assert ["1.1.1.0/24"] == partition("1.1.1.0/24", 30) |> minimize()
     assert ["1.1.1.0/24"] == partition("1.1.1.0/24", 31) |> minimize()
     assert ["1.1.1.0/24"] == partition("1.1.1.0/24", 32) |> minimize()
+
+    acl = ["0.0.0.0/8", "255.255.255.255", "0.0.0.0", "240.0.0.0/4"]
+    min = minimize(acl)
+    assert Enum.sort(["0.0.0.0/8", "240.0.0.0/4"]) == Enum.sort(min)
+
+    acl = ["1.1.1.0/25", "1.1.1.128/26", "1.1.1.192/26"]
+    assert ["1.1.1.0/24"] == minimize(acl)
   end
 
   test "member/2" do
