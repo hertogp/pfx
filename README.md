@@ -57,19 +57,23 @@ A prefix can generally be expressed as:
 - a `t:binary/0` (either an IPv4 CIDR, IPv6, EUI48 or EUI64 string) e.g. "1.1.1.0/24"
 
 Functions generally accept these representations and yield their result in
-the same fashion. Pfx has several [IP functions](#ip-functions), like
+the same fashion. Pfx has several [IP functions](Pfx.html#ip-functions), like
 `Pfx.unique_local?/1` which are IP oriented. They are included along with the
-more [generic functions](#functions) (like `Pfx.cut/3`) in order to have one
+more [generic functions](Pfx.html#functions) (like `Pfx.cut/3`) in order to have one
 module to rule them all.
 
+    # check an IANA special-purpose address registry for globally routed property
     iex> iana_special("192.168.0.128", :global)
     false
 
-    iex> hosts("10.10.10.0/30")
-    ["10.10.10.0", "10.10.10.1", "10.10.10.2", "10.10.10.3"]
+    iex> iana_special("192.168.0.128", :spec)
+    ["rfc1918"]
 
     iex> minimize(["10.10.10.0", "10.10.10.1", "10.10.10.2", "10.10.10.3"])
     ["10.10.10.0/30"]
+
+    iex> hosts("10.10.10.0/30")
+    ["10.10.10.0", "10.10.10.1", "10.10.10.2", "10.10.10.3"]
 
     iex> hosts({{10, 10, 10, 0}, 30})
     [

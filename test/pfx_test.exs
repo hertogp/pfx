@@ -1229,6 +1229,7 @@ defmodule PfxTest do
     # raises on invalid input
     assert_raise ArgumentError, fn -> minimize(["1.1.1.1", "1.1.1.333"]) end
     assert_raise ArgumentError, fn -> minimize(["acdc::1", "acdc::gggg"]) end
+    assert_raise ArgumentError, fn -> minimize(["1.1.1.1", "acdc::gggg"]) end
     assert_raise ArgumentError, fn -> minimize("1.1.1.0/24") end
 
     assert [] == minimize([])

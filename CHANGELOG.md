@@ -9,8 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### fixed
 
-- [ ] fix or remove README's link to #functions/#ip-functions for IP/generic functions
+- [x] fix or remove README's link to #functions/#ip-functions for IP/generic functions
     - they work locally, but not on hex.pm
+    - trying [IP functions](Pfx.html#ip-functions) instead of just #ip-functions
 - [x] `Pfx.minimize/1` requires a different sort then `Pfx.compare/2` provides:
     - `Pfx.compare/2` sorts on bit-size first, then bit-values, good for acl's
     - `Pfx.minimize/1` needs a sort on 'this-network' first, and bit-size second
