@@ -2013,12 +2013,12 @@ defmodule Pfx do
   end
 
   @doc """
-  Inverts a prefix, bit by bit, same as `Pfx.bnot`.
+  Inverts a prefix, bit by bit, same as `Pfx.bnot/1`.
 
-  This function inverts all bits in the prefix by simply calling `Pfx.bnot`,
+  This function inverts all bits in the prefix by simply calling `Pfx.bnot/1`,
   whose name is somewhat obscure.  See `Pfx.bnot/1` for documentation.
 
-  Note: using `bnot` directly, actually saves a function call.
+  Note: using `Pfx.bnot/1` directly, actually saves a function call.
 
   """
   def invert(pfx) do
