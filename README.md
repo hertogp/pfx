@@ -50,7 +50,7 @@ For example:
      iex> new(<<1, 1>>, 16)
      %Pfx{bits: <<1, 1>>, maxlen: 16}
 
-A prefix can generally be expressed as:
+A prefix can be expressed as:
 - a `t:Pfx.t/0`, e.g. `%Pfx{bits: <<1, 1, 1>>, maxlen: 24}`
 - a `t:Pfx.ip_address/0`, e.g. `{1, 1, 1, 1}`
 - a `t:Pfx.ip_prefix/0`, e.g. `{{1, 2, 3, 4, 5, 6, 7, 0}, 120}`
@@ -235,8 +235,8 @@ The Pfx module carries a snapshot of the
 [IPv4](https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml)
 and
 [IPv6](https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml)
-special purpose address registries.  This allows checking a prefix' properties
-as set in those registers (if at all) using `Pfx.iana_special/2`.
+special-purpose address registries.  This allows checking a prefix' properties
+as set in those registries (if at all) using `Pfx.iana_special/2`.
 
     # get all properties
     iex> iana_special("10.10.10.10")
@@ -266,8 +266,8 @@ as set in those registers (if at all) using `Pfx.iana_special/2`.
      "192.168.0.0/16", "198.18.0.0/15", "172.16.0.0/12", "100.64.0.0/10",
      "0.0.0.0/8", "10.0.0.0/8", "127.0.0.0/8", "240.0.0.0/4"]
 
-The way the registries are set up, means the booleans actually can have 3
-values: `true`, `false` and `:na`.  Hence the `props.global != true`.
+Unfortunately, the way the registries are set up, boolean values actually can
+have 3 values: `true`, `false` and `:na`.  Hence the `props.global != true`.
 
 
 ## Enumeration

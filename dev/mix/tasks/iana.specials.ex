@@ -3,7 +3,9 @@ defmodule Mix.Tasks.Iana.Specials do
   alias Mix
 
   @moduledoc """
-  Download and convert IANA's IPv4/6 Special-Purpose Address Registries
+  Download and convert IANA's IPv4/6 Special-Purpose Address Registries.
+
+  Used during development and not available when `Pfx` is used as a dependency.
 
   Usage:
 
@@ -35,10 +37,11 @@ defmodule Mix.Tasks.Iana.Specials do
   @iana_url "http://www.iana.org/assignments"
   @iana_ip4_spar "#{@iana_url}/iana-ipv4-special-registry/iana-ipv4-special-registry.xml"
   @iana_ip6_spar "#{@iana_url}/iana-ipv6-special-registry/iana-ipv6-special-registry.xml"
+
+  @user_agent {'User-agent', 'Elixir Pfx'}
   @priv_ip4_spar "priv/iana-ipv4-special-registry.xml"
   @priv_ip6_spar "priv/iana-ipv6-special-registry.xml"
   @priv_specials "priv/specials"
-  @user_agent {'User-agent', 'Elixir Pfx'}
 
   @impl Mix.Task
   def run(args) do
