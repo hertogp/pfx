@@ -10,13 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### added
 
 - `Pfx.invert/1`, as a proxy for `Pfx.bnot/1`, whose name is somewhat more obscure
-    - has a note that using `bnot` directly actually save a function call
+    - has a note that using `bnot` directly actually saves a function call
+
+### changed
+
+- `Pfx.compare/2`, now compares prefixes of mixed types as well (using the maxlen property)
 
 ### fixed
 
-- [x] `Pfx.minimize/1`
+- `Pfx.minimize/1`
     - yields results in the same fashion as the first prefix in the list
-    - uses internal sort in order to achieve a really  minimal list
+    - needed an pre-sort based on 'first-address' and then on `bit_size` in
+      order to achieve a really minimal list
 
 
 ## [0.12.0] - 2022-01-16

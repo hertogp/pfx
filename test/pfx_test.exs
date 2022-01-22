@@ -488,9 +488,6 @@ defmodule PfxTest do
       assert_raise ArgumentError, fn -> compare(x, x) end
     end)
 
-    # needs args to be of same type
-    assert_raise ArgumentError, fn -> compare("1.1.1.1", "acdc::") end
-
     # full prefixes
     assert :lt == compare("1.1.1.1", "1.1.1.2")
     assert :gt == compare("1.1.1.1", "1.1.1.0")
@@ -500,6 +497,9 @@ defmodule PfxTest do
     assert :lt == compare("10.11.12.0/24", "10.11.0.0/16")
     assert :gt == compare("10.11.0.0/16", "10.11.12.0/24")
     assert :eq == compare("10.11.0.0/16", "10.11.0.0/16")
+
+    # mixed types are ok too
+    assert :lt == compare("1.1.1.1", "acdc::")
   end
 
   test "contrast/2" do

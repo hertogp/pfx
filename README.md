@@ -229,6 +229,46 @@ punctuation, use `Pfx.from_mac/1`, which also supports the tuple formats.  Like
     iex> from_mac({{0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8}, 24})
     %Pfx{bits: <<0x1, 0x2, 0x3>>, maxlen: 64}
 
+## Iana Special-Purpose Address Registry
+
+The Pfx module carries a snapshot of the
+[IPv4](https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml)
+and
+[IPv6](https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml)
+special purpose address registries.  This allows checking a prefix' properties
+as set in those registers (if at all) using `Pfx.iana_special/2`.
+
+    # get all properties
+    iex> iana_special("10.10.10.10")
+    %{
+      allocation: "1996-02",
+      destination: true,
+      forward: true,
+      global: false,
+      name: "private-use",
+      prefix: "10.0.0.0/8",
+      reserved: false,
+      source: true,
+      spec: ["rfc1918"]
+    }
+
+    # or just one
+    iex> iana_special("10.10.10.10", :global)
+    false
+
+    # get all not globally routed IPv4 prefixes
+    iex> iana_special(:ip4)
+    ...> |> Enum.filter(fn {_, props} -> props.global != true end)
+    ...> |> Enum.map(fn {_, props} -> props.prefix end)
+    ["0.0.0.0/32", "192.0.0.8/32", "192.0.0.170/32", "192.0.0.171/32",
+     "255.255.255.255/32", "192.0.0.0/29", "192.0.0.0/24", "192.0.2.0/24",
+     "192.88.99.0/24", "198.51.100.0/24", "203.0.113.0/24", "169.254.0.0/16",
+     "192.168.0.0/16", "198.18.0.0/15", "172.16.0.0/12", "100.64.0.0/10",
+     "0.0.0.0/8", "10.0.0.0/8", "127.0.0.0/8", "240.0.0.0/4"]
+
+The way the registries are set up, means the booleans actually can have 3
+values: `true`, `false` and `:na`.  Hence the `props.global != true`.
+
 
 ## Enumeration
 

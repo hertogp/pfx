@@ -998,16 +998,15 @@ defmodule Pfx do
   end
 
   @doc ~S"""
-  Compares `pfx1` to `pfx2` for sorting purposes.
+  Compares `prefix1` to `prefix2` for sorting purposes.
 
   The result is one of:
   - `:eq` prefix1 is equal to prefix2
-  - `:lt` prefix1 has more bits *or* lies to the left of prefix2
-  - `:gt` prefix1 has less bits *or* lies to the right of prefix2
+  - `:lt` prefix1 has a smaller `maxlen`, more bits or is left of prefix2
+  - `:gt` prefix1 has a larger `maxlen`, less bits or is right of prefix2
 
-  The prefixes must have the same *maxlen* and are first compared by size
-  (i.e. a *shorter* prefix is considered *larger*), and second on their
-  bitstring value.
+  Note that if prefixes are not of the same type, they are compared solely on their
+  `maxlen` property.
 
   This function enables `Enum.sort/2` to be handed the `Pfx` module to determine
   how to sort a list of prefixes.  When building some sort of acl, use `{:desc, Pfx}`
@@ -1027,64 +1026,70 @@ defmodule Pfx do
       iex> compare(new(<<10>>, 32), new(<<11>>, 32))
       :lt
 
-      # sort on prefixes, first on bit_size than bits-values
+      iex> compare("10.10.10.10", "acdc::1")
+      :lt
 
-      iex> list = ["10.11.0.0/16", "10.10.10.0/24", "10.10.0.0/16"]
-      iex> Enum.sort(list, Pfx)
+      # sort prefixes, ascending (more to less specific)
+      iex> ["10.11.0.0/16", "10.10.10.0/24", "10.10.0.0/16"]
+      ...> |> Enum.sort(Pfx)
       [
         "10.10.10.0/24",
         "10.10.0.0/16",
         "10.11.0.0/16"
       ]
-      #
-      # sort less to more specific
-      #
-      iex> Enum.sort(list, {:desc, Pfx})
+
+      # sort prefixes, descending (less to more specific)
+      iex> ["10.11.0.0/16", "10.10.10.0/24", "10.10.0.0/16"]
+      ...> |> Enum.sort({:desc, Pfx})
       [
         "10.11.0.0/16",
         "10.10.0.0/16",
         "10.10.10.0/24"
       ]
-      #
-      # a regular sort
-      #
-      iex> Enum.sort(list)
+
+      # regular sort
+      iex> ["10.11.0.0/16", "10.10.10.0/24", "10.10.0.0/16"]
+      ...> |> Enum.sort()
       [
         "10.10.0.0/16",
         "10.10.10.0/24",
         "10.11.0.0/16"
       ]
 
-      iex> list = [new(<<10, 11>>, 32), new(<<10,10,10>>, 32), new(<<10,10>>, 32)]
-      iex> Enum.sort(list, Pfx)
+      iex> [new(<<10, 11>>, 32), new(<<10,10,10>>, 32), new(<<10,10>>, 32)]
+      ...> |> Enum.sort(Pfx)
       [
         %Pfx{bits: <<10, 10, 10>>, maxlen: 32},
         %Pfx{bits: <<10, 10>>, maxlen: 32},
         %Pfx{bits: <<10, 11>>, maxlen: 32}
       ]
 
-      # not advisable, but mixed representations are possible as well
-      iex> l = ["10.11.0.0/16", {{10, 10, 10, 0}, 24}, %Pfx{bits: <<10, 10>>, maxlen: 32}]
-      iex> Enum.sort(l, Pfx)
+      # mixed representations
+      iex> ["10.11.0.0/16", {{10, 10, 10, 0}, 24}, %Pfx{bits: <<10, 10>>, maxlen: 32}]
+      ...> |> Enum.sort(Pfx)
       [
         {{10, 10, 10, 0}, 24},
         %Pfx{bits: <<10, 10>>, maxlen: 32},
         "10.11.0.0/16",
       ]
 
-      # note: all prefixes must have the same `maxlen`
-      iex> compare(new(<<10>>, 32), new(<<10>>, 128))
-      ** (ArgumentError) prefixes have different maxlen's: {%Pfx{bits: "\n", maxlen: 32}, %Pfx{bits: "\n", maxlen: 128}}
+      # mixed prefix types
+      iex> ["10.10.10.0/24", "10.10.0.0/16", "acdc::1", "acdc::/32"]
+      ...> |> Enum.sort({:desc, Pfx})
+      ["acdc::/32", "acdc::1", "10.10.0.0/16", "10.10.10.0/24"]
 
   """
   @spec compare(prefix, prefix) :: :eq | :lt | :gt
-  def compare(pfx1, pfx2)
+  def compare(prefix1, prefix2)
 
-  def compare(x, y) when is_comparable(x, y),
-    do: comparep(x.bits, y.bits)
-
-  def compare(x, y) when is_pfx(x) and is_pfx(y),
-    do: raise(arg_error(:nocompare, {x, y}))
+  def compare(x, y) when is_pfx(x) and is_pfx(y) do
+    # do: raise(arg_error(:nocompare, {x, y}))
+    cond do
+      x.maxlen > y.maxlen -> :gt
+      x.maxlen < y.maxlen -> :lt
+      true -> comparep(x.bits, y.bits)
+    end
+  end
 
   def compare(x, y) do
     new(x)
@@ -2429,6 +2434,10 @@ defmodule Pfx do
       iex> member?("10.10.10.10", "10.10.10.256/24")
       false
 
+      # different types
+      iex> member?("10.10.10.10", "acdc::/32")
+      false
+
   """
   @spec member?(prefix, prefix) :: boolean
   def member?(pfx1, pfx2)
@@ -2440,7 +2449,8 @@ defmodule Pfx do
 
   def member?(pfx1, pfx2) do
     try do
-      member?(new(pfx1), new(pfx2))
+      new(pfx1)
+      |> member?(new(pfx2))
     rescue
       _ -> false
     end
@@ -2449,7 +2459,7 @@ defmodule Pfx do
   @doc """
   Returns a minimized list of prefixes covering the same address space.
 
-  The list of, possible mixed types of prefixes, is first grouped by their `maxlen` property,
+  The list of, possibly mixed types of prefixes, is first grouped by their `maxlen` property,
   then each sublist is minimized by:
   - sorting such that, possibly, adjacent/overlapping prefixes are next to each other
   - recursively combine neighboring prefixes into their parent prefix
@@ -2498,35 +2508,30 @@ defmodule Pfx do
       # minimize list of different types of prefixes
       iex> list = ["1.1.0.0/24", "1.1.1.0/24", "acdc:0::/17", "acdc:8000::/17"]
       iex> minimize(list)
-      ["1.1.0.0/23", "acdc:0:0:0:0:0:0:0/16"]
+      ["acdc:0:0:0:0:0:0:0/16", "1.1.0.0/23"]
 
-      # mimic format of first prefix in the list
+      # mimics format of first prefix in the list
       iex> minimize([{1, 2, 3, 4}, {{1, 2, 3, 0}, 25}, "1.2.3.128/26", "1.2.3.192/26"])
       [{{1, 2, 3, 0}, 24}]
 
       # mixed prefixes
       iex> ["10.10.10.0/24", "10.10.11.0/24", "100.100.100.0/25", "100.100.100.128/25", "acdc::1"]
       ...> |> minimize()
-      ["100.100.100.0/24", "10.10.10.0/23", "acdc:0:0:0:0:0:0:1"]
+      ["acdc:0:0:0:0:0:0:1", "100.100.100.0/24", "10.10.10.0/23"]
 
       # minimize & sort mixed prefixes more to less specific (per type)
       iex> ["10.10.10.0/24", "10.10.11.0/24", "100.100.100.0/25", "100.100.100.128/25", "acdc::1"]
       ...> |> minimize()
-      ...> |> Enum.group_by(fn x -> new(x).maxlen end)
-      ...> |> Enum.map(fn {_, v} -> Enum.sort(v, {:desc, Pfx}) end)
-      ...> |> List.flatten()
-      ["10.10.10.0/23", "100.100.100.0/24", "acdc:0:0:0:0:0:0:1"]
+      ...> |> Enum.sort({:desc, Pfx})
+      ["acdc:0:0:0:0:0:0:1", "10.10.10.0/23", "100.100.100.0/24"]
 
       # to avoid excessive conversions due to mimicing, do:
       iex> ["10.10.10.0/24", "10.10.11.0/24", "100.100.100.0/25", "100.100.100.128/25", "acdc::1"]
       ...> |> Enum.map(fn pfx -> new(pfx) end)
       ...> |> minimize()
-      ...> |> Enum.group_by(fn pfx -> pfx.maxlen end)
-      ...> |> Enum.map(fn {_maxlen, pfxs} -> Enum.sort(pfxs, {:desc, Pfx}) end)
-      ...> |> List.flatten()
+      ...> |> Enum.sort({:desc, Pfx})
       ...> |> Enum.map(&format/1)
-      ["10.10.10.0/23", "100.100.100.0/24", "acdc:0:0:0:0:0:0:1"]
-
+      ["acdc:0:0:0:0:0:0:1", "10.10.10.0/23", "100.100.100.0/24"]
 
   """
   @spec minimize([prefix]) :: [prefix]
@@ -2545,18 +2550,16 @@ defmodule Pfx do
 
     prefixes
     |> Enum.map(fn pfx -> new(pfx) end)
-    |> Enum.group_by(fn pfx -> pfx.maxlen end)
-    |> Enum.flat_map(fn {_, v} -> minimizep(v) end)
+    |> minimizep()
+    # |> Enum.group_by(fn pfx -> pfx.maxlen end)
+    # |> Enum.flat_map(fn {_, v} -> minimizep(v) end)
     |> Enum.map(fn pfx -> marshall(pfx, original) end)
   rescue
     err -> raise err
   end
 
-  defp minimizep(prefixes) do
-    # notes:
-    # - these prefixes are expected to have the same maxlen
-    # - minimize_sortp is descending and specific to minimization
-    # - meaning head is, if possible, less specific than elm
+  def minimizep(prefixes) do
+    # note: prefixes must be list of Pfx.t structs that all have the same maxlen
     prefixes
     |> Enum.sort(&minimize_sortp/2)
     |> Enum.reduce([], &minimize_by_contrastp/2)
@@ -2567,34 +2570,30 @@ defmodule Pfx do
 
   defp minimize_by_contrastp(elm, [head | tail] = acc) do
     # notes:
-    # - due to sorting, elm can never be less specific than head
-    # - due to sorting, elm can never be :left adjacent to head
+    # - due to sorting, elm can never be less specific than head nor :left adjacent
     # - if elm is :right adjacent, combine & recurse on tail and new parent-elm
-    new =
-      case contrast(elm, head) do
-        :more -> acc
-        :equal -> acc
-        :right -> minimize_by_contrastp(drop(head, 1), tail)
-        :less -> [elm | tail]
-        :left -> minimize_by_contrastp(drop(elm, 1), tail)
-        _ -> [elm | acc]
-      end
-
-    new
+    case contrast(elm, head) do
+      :more -> acc
+      :equal -> acc
+      :right -> minimize_by_contrastp(drop(head, 1), tail)
+      :less -> [elm | tail]
+      :left -> minimize_by_contrastp(drop(elm, 1), tail)
+      _ -> [elm | acc]
+    end
   end
 
   defp minimize_sortp(x, y) do
-    # sort order to minimize prefixes efficiently:
-    # - prefixes sorted on 'this-network' first
-    # - then on number of bits available
-    xn = padr(x)
+    # return true if x preceeds y or is equal to y: order is less to more specific
+    # - prefixes sorted on 'first full address' first
+    # - then on bit_size
+    xb = padr(x).bits
+    yb = padr(y).bits
     xs = bit_size(x.bits)
-    yn = padr(y)
     ys = bit_size(y.bits)
 
     cond do
-      xn > yn -> false
-      xn < yn -> true
+      xb > yb -> false
+      xb < yb -> true
       xs > ys -> false
       xs < ys -> true
       true -> true
