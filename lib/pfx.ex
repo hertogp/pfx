@@ -342,7 +342,7 @@ defmodule Pfx do
   """
   @spec address(prefix) :: prefix
   def address(prefix) do
-    # ensure we raise on invalid prefix lengths
+    # ensure we raise on invalid prefixes (incl. length)
     new(prefix)
 
     case prefix do
@@ -542,7 +542,7 @@ defmodule Pfx do
   @doc """
   Returns a bitwise NOT of the bits in `pfx`.
 
-  Results are returned in the same representation as given `pfx`.
+  This inverts the `pfx` and returns it using the same representation as given.
 
   ## Examples
 
@@ -2452,18 +2452,23 @@ defmodule Pfx do
   The list of, possible mixed types of prefixes, is first grouped by their `maxlen` property,
   then each sublist is minimized by:
   - sorting such that, possibly, adjacent/overlapping prefixes are next to each other
-  - recursively combine neihgboring prefixes into their parent prefix
+  - recursively combine neighboring prefixes into their parent prefix
 
   The prefixes can be any format understood by `Pfx.new/1` or be straight up
   `t:Pfx.t/0` structs, and the result mimics the format of the first prefix.
 
+  Notes:
+  - to use the list as an acl, apply `Enum.sort({:desc, Pfx})` afterwards
+  - that uses `Pfx.compare/2`, so when using mixed prefix types, group_by maxlen first
+    and sort the sub-lists
+
   ## Examples
 
-      iex> acl = ["1.1.1.1", "1.1.1.2", "1.1.1.3", "1.1.1.4", "1.1.1.4/30"]
+      iex> acl = ["1.1.1.1", "1.1.1.2", "1.1.1.3", "1.1.1.4", "1.1.1.5", "1.1.1.6/31"]
       iex> minimize(acl) |> Enum.sort({:desc, Pfx})
       ["1.1.1.4/30",  "1.1.1.2/31", "1.1.1.1"]
 
-      # list of 255 hosts
+      # list of 255 hosts (ip 1.1.1.128 is excluded)
       iex> hosts = for ip <- hosts("1.1.1.0/24"), ip != "1.1.1.128", do: ip
       iex> Enum.member?(hosts, "1.1.1.128")
       false
@@ -2499,6 +2504,30 @@ defmodule Pfx do
       iex> minimize([{1, 2, 3, 4}, {{1, 2, 3, 0}, 25}, "1.2.3.128/26", "1.2.3.192/26"])
       [{{1, 2, 3, 0}, 24}]
 
+      # mixed prefixes
+      iex> ["10.10.10.0/24", "10.10.11.0/24", "100.100.100.0/25", "100.100.100.128/25", "acdc::1"]
+      ...> |> minimize()
+      ["100.100.100.0/24", "10.10.10.0/23", "acdc:0:0:0:0:0:0:1"]
+
+      # minimize & sort mixed prefixes more to less specific (per type)
+      iex> ["10.10.10.0/24", "10.10.11.0/24", "100.100.100.0/25", "100.100.100.128/25", "acdc::1"]
+      ...> |> minimize()
+      ...> |> Enum.group_by(fn x -> new(x).maxlen end)
+      ...> |> Enum.map(fn {_, v} -> Enum.sort(v, {:desc, Pfx}) end)
+      ...> |> List.flatten()
+      ["10.10.10.0/23", "100.100.100.0/24", "acdc:0:0:0:0:0:0:1"]
+
+      # to avoid excessive conversions due to mimicing, do:
+      iex> ["10.10.10.0/24", "10.10.11.0/24", "100.100.100.0/25", "100.100.100.128/25", "acdc::1"]
+      ...> |> Enum.map(fn pfx -> new(pfx) end)
+      ...> |> minimize()
+      ...> |> Enum.group_by(fn pfx -> pfx.maxlen end)
+      ...> |> Enum.map(fn {_maxlen, pfxs} -> Enum.sort(pfxs, {:desc, Pfx}) end)
+      ...> |> List.flatten()
+      ...> |> Enum.map(&format/1)
+      ["10.10.10.0/23", "100.100.100.0/24", "acdc:0:0:0:0:0:0:1"]
+
+
   """
   @spec minimize([prefix]) :: [prefix]
   def minimize(prefixes)
@@ -2510,9 +2539,9 @@ defmodule Pfx do
     original = hd(prefixes)
 
     original =
-      if is_binary(original),
-        do: original,
-        else: to_tuple(original)
+      if is_tuple(original),
+        do: to_tuple(original, mask: true),
+        else: original
 
     prefixes
     |> Enum.map(fn pfx -> new(pfx) end)
@@ -2654,7 +2683,7 @@ defmodule Pfx do
   - an {`t:ip_address/0`, `length`}-tuple to truncate the bits to `length`.
   - an ipv4 or ipv6 `t:ip_address/0` tuple directly for a full address, or
   - a `t:Pfx.t/0` struct
-  to create a new PFx struct.
+  to create a new Pfx struct.
 
   To avoid a possible `ArgumentError`, use `Pfx.parse/1` or `Pfx.parse/2` instead.
   To avoid applying the mask, use `Pfx.address/1` then apply `Pfx.new/1` if needed.

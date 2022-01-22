@@ -9,17 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### added
 
-- `Pfx.invert/1` as a more logical name for `Pfx.bnot/1`
-    - with a note that using `bnot` directly simply saves a function call.
+- `Pfx.invert/1`, as a proxy for `Pfx.bnot/1`, whose name is somewhat more obscure
+    - has a note that using `bnot` directly actually save a function call
 
 ### fixed
 
-- [x] `Pfx.minimize/1` requires a different sort then `Pfx.compare/2` provides:
-    - `Pfx.compare/2` sorts on bit-size first, then bit-values, good for acl's
-    - `Pfx.minimize/1` needs a sort on 'this-network' first, and bit-size second
-    - now: ["0.0.0.0", "0.0.0.0/8", "255.255.255.255", "240.0.0.0/4" -> is
-      correctly minimized to ["240.0.0.0/4", "0.0.0.0/8"]
-    - to use that minimal list as an acl, use Enum.sort(acl, {:desc, Pfx})
+- [x] `Pfx.minimize/1`
+    - yields results in the same fashion as the first prefix in the list
+    - uses internal sort in order to achieve a really  minimal list
 
 
 ## [0.12.0] - 2022-01-16

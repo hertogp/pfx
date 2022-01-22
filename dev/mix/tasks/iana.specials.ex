@@ -19,7 +19,8 @@ defmodule Mix.Tasks.Iana.Specials do
 
   After download, the xml files are:
   - parsed into a list [{Pfx.t, %{property: value}] per registry
-  - list are then combined a map %{ip4: [..], ip6: [..]}
+  - sorted more to less specific
+  - list are then combined in a map %{ip4: [..], ip6: [..]}
   - that map is then saved as `priv/specials` in erlang external term format
 
   Pfx uses that file as an external resource for a module attribute that allows
@@ -31,30 +32,30 @@ defmodule Mix.Tasks.Iana.Specials do
 
   import SweetXml
 
-  @user_agent {'User-agent', 'Elixir Pfx'}
   @iana_url "http://www.iana.org/assignments"
-  @ip4_iana_spar "#{@iana_url}/iana-ipv4-special-registry/iana-ipv4-special-registry.xml"
-  @ip4_priv_spar "priv/iana-ipv4-special-registry.xml"
-  @ip6_iana_spar "#{@iana_url}/iana-ipv6-special-registry/iana-ipv6-special-registry.xml"
-  @ip6_priv_spar "priv/iana-ipv6-special-registry.xml"
-  @pfx_priv_spar "priv/specials"
+  @iana_ip4_spar "#{@iana_url}/iana-ipv4-special-registry/iana-ipv4-special-registry.xml"
+  @iana_ip6_spar "#{@iana_url}/iana-ipv6-special-registry/iana-ipv6-special-registry.xml"
+  @priv_ip4_spar "priv/iana-ipv4-special-registry.xml"
+  @priv_ip6_spar "priv/iana-ipv6-special-registry.xml"
+  @priv_specials "priv/specials"
+  @user_agent {'User-agent', 'Elixir Pfx'}
 
   @impl Mix.Task
   def run(args) do
     force = "force" in args
     dryrun = "dryrun" in args
 
-    if force or not File.exists?(@ip4_priv_spar),
-      do: fetch(@ip4_iana_spar, @ip4_priv_spar),
-      else: IO.puts("#{@ip4_priv_spar} exists, skipping download")
+    if force or not File.exists?(@priv_ip4_spar),
+      do: fetch(@iana_ip4_spar, @priv_ip4_spar),
+      else: IO.puts("#{@priv_ip4_spar} exists, skipping download")
 
-    if force or not File.exists?(@ip6_priv_spar),
-      do: fetch(@ip6_iana_spar, @ip6_priv_spar),
-      else: IO.puts("#{@ip6_priv_spar} exists, skipping download")
+    if force or not File.exists?(@priv_ip6_spar),
+      do: fetch(@iana_ip6_spar, @priv_ip6_spar),
+      else: IO.puts("#{@priv_ip6_spar} exists, skipping download")
 
     map = %{
-      ip4: xml2list(@ip4_priv_spar),
-      ip6: xml2list(@ip6_priv_spar)
+      ip4: xml2list(@priv_ip4_spar),
+      ip6: xml2list(@priv_ip6_spar)
     }
 
     if dryrun do
@@ -65,7 +66,7 @@ defmodule Mix.Tasks.Iana.Specials do
     else
       map
       |> :erlang.term_to_binary()
-      |> save_term(@pfx_priv_spar)
+      |> save_term(@priv_specials)
     end
 
     Mix.shell().info("Done.")
