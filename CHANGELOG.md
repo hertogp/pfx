@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### added
 
 - `Pfx.invert/1`, as a proxy for `Pfx.bnot/1`, whose name is somewhat more obscure
-    - has a note that using `bnot` directly actually saves a function call
+    - has a note that saying that using `bnot` directly, actually saves a function call
 
 ### changed
 
@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Pfx.minimize/1`
     - yields results in the same fashion as the first prefix in the list
     - needed an pre-sort based on 'first-address' and then on `bit_size` in
-      order to achieve a really minimal list
+      order to really minimize a list of prefixes
 
 
 ## [0.12.0] - 2022-01-16

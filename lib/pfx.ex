@@ -2550,42 +2550,38 @@ defmodule Pfx do
 
     prefixes
     |> Enum.map(fn pfx -> new(pfx) end)
-    |> minimizep()
-    # |> Enum.group_by(fn pfx -> pfx.maxlen end)
-    # |> Enum.flat_map(fn {_, v} -> minimizep(v) end)
+    |> Enum.sort(&minimize_sortp/2)
+    |> Enum.reduce([], &minimizep/2)
     |> Enum.map(fn pfx -> marshall(pfx, original) end)
   rescue
     err -> raise err
   end
 
-  def minimizep(prefixes) do
-    # note: prefixes must be list of Pfx.t structs that all have the same maxlen
-    prefixes
-    |> Enum.sort(&minimize_sortp/2)
-    |> Enum.reduce([], &minimize_by_contrastp/2)
-  end
-
-  defp minimize_by_contrastp(elm, []),
+  @spec minimizep(t, [t]) :: [t]
+  defp minimizep(elm, []),
     do: [elm]
 
-  defp minimize_by_contrastp(elm, [head | tail] = acc) do
+  defp minimizep(elm, [head | tail] = acc) do
     # notes:
-    # - due to sorting, elm can never be less specific than head nor :left adjacent
-    # - if elm is :right adjacent, combine & recurse on tail and new parent-elm
+    # - assumes acc has been sorted less to more specific by minimize_sortp
     case contrast(elm, head) do
       :more -> acc
       :equal -> acc
-      :right -> minimize_by_contrastp(drop(head, 1), tail)
+      :right -> minimizep(drop(head, 1), tail)
+      :left -> minimizep(drop(elm, 1), tail)
       :less -> [elm | tail]
-      :left -> minimize_by_contrastp(drop(elm, 1), tail)
       _ -> [elm | acc]
     end
   end
 
+  @spec minimize_sortp(t, t) :: true | false
   defp minimize_sortp(x, y) do
     # return true if x preceeds y or is equal to y: order is less to more specific
     # - prefixes sorted on 'first full address' first
     # - then on bit_size
+    # note that x,y MUST be Pfx.t structs and MAY be of different types in
+    # which case smaller maxlen's will end up left of larger maxlen's.
+    #
     xb = padr(x).bits
     yb = padr(y).bits
     xs = bit_size(x.bits)
