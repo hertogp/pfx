@@ -2581,7 +2581,6 @@ defmodule Pfx do
     # - then on bit_size
     # note that x,y MUST be Pfx.t structs and MAY be of different types in
     # which case smaller maxlen's will end up left of larger maxlen's.
-    #
     xb = padr(x).bits
     yb = padr(y).bits
     xs = bit_size(x.bits)
