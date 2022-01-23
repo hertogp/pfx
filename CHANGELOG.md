@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### changed
 
 - `Pfx.compare/2`, now compares prefixes of mixed types as well (using the maxlen property)
+- `Pfx.format/2`, when given a `:unit` of `0` it reverts to the prefix's `maxlen`
 
 ### fixed
 

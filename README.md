@@ -329,6 +329,10 @@ some options that help shape the string representation for a `Pfx` struct.
       {1, 2, 3, 3}
     ]
 
+    # format as a string of bits
+    iex> "10.10.10.10" |> format(width: 1, unit: 8)
+    "00001010.00001010.00001010.00001010"
+
 ## Limitations
 
 A lot of `Pfx`-functions convert the `Pfx.bits` bitstring to an integer using

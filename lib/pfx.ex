@@ -1661,6 +1661,8 @@ defmodule Pfx do
     reverse = Keyword.get(opts, :reverse, false)
     padding = Keyword.get(opts, :padding, true)
 
+    unit = if unit == 0, do: pfx.maxlen, else: unit
+
     string =
       pfx
       |> (fn x -> if padding, do: padr(x), else: x end).()
