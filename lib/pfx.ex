@@ -4296,11 +4296,12 @@ defmodule Pfx do
   A semi-boolean, for lack of a better word, can have 3 values:
   - `true`,
   - `false`, or
-  - `:na`, which somehow means not-applicable in the eyes of [iana](https://iana.org)
+  - `:na`, which means not-applicable in the eyes of [iana](https://iana.org)
 
-  The `:na` case currently appears only for the `:global` property of:
-  - `2001::/32` (teredo), and
-  - `2002::/16` (6to4)
+  The `:na` case currently appears only for:
+  - `192.88.99.0/24` (deprecated 6to4),
+  - `2002::/16` (6to4), and
+  - `2001::/32` (teredo)
 
   The `:name` property value is somewhat normalized, but will be tricky to rely
   on in code since that may change at the whim of the RFC editors.
