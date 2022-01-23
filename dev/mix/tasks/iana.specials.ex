@@ -10,22 +10,21 @@ defmodule Mix.Tasks.Iana.Specials do
   Usage:
 
   ```
-  mix iana.specials [force] [dryrun]
+  mix iana.specials [options]
+
+  options include:
+  -f, --force   download from iana, replaces local xml registry files
+  -s, --show    convert the xml registry files and show map on screen
   ```
 
-  The `force` will force the download, even though the xml files are already
-  present in the `priv` subdir.
-
-  The `dryrun` will read and convert the downloaded xml files, convert them
-  to a map and show the map without writing to disk.
-
-  After download, the xml files are:
+  The xml registry files are:
   - parsed into a list [{Pfx.t, %{property: value}] per registry
   - sorted more to less specific
   - list are then combined in a map %{ip4: [..], ip6: [..]}
   - that map is then saved as `priv/specials` in erlang external term format
+    or shown on screen when `-s` option is used.
 
-  Pfx uses that file as an external resource for a module attribute that allows
+  Pfx uses `priv/specials` as an external resource for a module attribute that allows
   looking up IANA attributes for a given prefix via `Pfx.iana_special/2`.
 
   """
@@ -43,10 +42,15 @@ defmodule Mix.Tasks.Iana.Specials do
   @priv_ip6_spar "priv/iana-ipv6-special-registry.xml"
   @priv_specials "priv/specials"
 
+  @options [force: :boolean, show: :boolean]
+  @aliases [f: :force, s: :show]
+
   @impl Mix.Task
   def run(args) do
-    force = "force" in args
-    dryrun = "dryrun" in args
+    {opts, _args, _invalid} = OptionParser.parse(args, aliases: @aliases, strict: @options)
+
+    force = Keyword.get(opts, :force, false)
+    show = Keyword.get(opts, :show, false)
 
     if force or not File.exists?(@priv_ip4_spar),
       do: fetch(@iana_ip4_spar, @priv_ip4_spar),
@@ -61,7 +65,7 @@ defmodule Mix.Tasks.Iana.Specials do
       ip6: xml2list(@priv_ip6_spar)
     }
 
-    if dryrun do
+    if show do
       Mix.shell().info("IANA IPv4 Special-Purpose Address Registry")
       IO.inspect(map.ip4)
       Mix.shell().info("\nIANA IPv6 Special-Purpose Address Registry")
@@ -78,12 +82,12 @@ defmodule Mix.Tasks.Iana.Specials do
   defp fetch(url, priv) do
     with {:ok, {{_http_ver, 200, 'OK'}, _headers, body}} <-
            :httpc.request(:get, {url, [@user_agent]}, [], []) do
-      # filter out a line, since xmerl chokes on it.
+      # filter out ?xml-model since xmerl chokes on it.
       body =
         List.to_string(body)
         |> String.split("\n")
         |> Enum.map(&String.trim/1)
-        |> Enum.filter(fn line -> not String.starts_with?(line, "<?xml-model href") end)
+        |> Enum.filter(fn line -> not String.starts_with?(line, "<?xml-model") end)
         |> Enum.join("\n")
 
       File.write!(priv, body)
