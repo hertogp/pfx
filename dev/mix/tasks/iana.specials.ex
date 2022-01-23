@@ -20,8 +20,8 @@ defmodule Mix.Tasks.Iana.Specials do
   The xml registry files are:
   - parsed into a list [{Pfx.t, %{property: value}] per registry
   - sorted more to less specific
-  - list are then combined in a map %{ip4: [..], ip6: [..]}
-  - that map is then saved as `priv/specials` in erlang external term format
+  - the lists are then stored in a map %{ip4: [..], ip6: [..]}
+  - that map is then saved as `priv/specials` in erlang external term format  
     or shown on screen when `-s` option is used.
 
   Pfx uses `priv/specials` as an external resource for a module attribute that allows
