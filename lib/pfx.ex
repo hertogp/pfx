@@ -1,4 +1,6 @@
 defmodule Pfx do
+  # credo:disable-for-this-file Credo.Check.Warning.RaiseInsideRescue
+  # - functions generally raise an exception by Pfx.new as their own
   alias Bitwise
 
   @specials_file "priv/specials"
@@ -52,7 +54,7 @@ defmodule Pfx do
 
   defguardp is_8bit(n) when is_integer(n) and -1 < n and n < 256
   defguardp is_ip4len(l) when is_integer(l) and -1 < l and l < 33
-  defguardp is_16bit(n) when is_integer(n) and -1 < n and n < 65536
+  defguardp is_16bit(n) when is_integer(n) and -1 < n and n < 65_536
   defguardp is_ip6len(l) when is_integer(l) and -1 < l and l < 129
 
   defguardp is_ip4(a, b, c, d, l)
@@ -98,116 +100,48 @@ defmodule Pfx do
 
   # Helpers
 
+  @errors %{
+    :bitpos => "invalid bit position",
+    :einval => "expected an ipv4/ipv6 CIDR or EUI-48/64 string",
+    :create => "cannot create a Pfx from",
+    :ip4dig => "expected valid IPv4 digits",
+    :ip4len => "expected a valid IPv4 prefix length",
+    :ip6dig => "expected valid IPv6 digits",
+    :ip6len => "expected a valid IPv6 prefix length",
+    :maxlen => "expected a non_neg_integer for maxlen",
+    :nat64 => "expected a valid IPv6 nat64 address",
+    :nat64len => "nat64 prefix length not in [#{Enum.join(@nat64_lengths, ", ")}]",
+    :nobit => "expected a integer (bit) value 0..1",
+    :nobits => "expected a non-empty bitstring",
+    :nobitstr => "expected a bitstring",
+    :nocapacity => "prefix's capacity exceeded",
+    :nocompare => "prefixes have different maxlen's",
+    :noeui => "expected an EUI48/64 prefix, string or tuple",
+    :noeui64 => "expected an EUI-64 prefix, string or tuple(s)",
+    :noflags => "expected a 16-element tuple of bits",
+    :nohex => "expected a hexadecimal string",
+    :noint => "expected an integer",
+    :noints => "expected all integers",
+    :noneg => "expected a non_neg_integer",
+    :noneighbor => "empty prefixes have no neighbor",
+    :nopart => "cannot partition prefixes using",
+    :nopos => "expected a pos_integer",
+    :noundig => "expected {{n1, n2, ..}, length}",
+    :nowidth => "expected valid width",
+    :pfx => "expected a valid Pfx struct",
+    :pfx4 => "expected a valid IPv4 Pfx",
+    :pfx4full => "expected a full IPv4 address",
+    :pfx6 => "expected a valid IPv6 Pfx",
+    :pfx6full => "expected a full IPv6 address",
+    :range => "invalid index range"
+  }
+
   defp arg_error(reason, data) do
-    msg =
-      case reason do
-        :bitpos ->
-          "invalid bit position: #{inspect(data)}"
-
-        :einval ->
-          "expected a ipv4/ipv6 CIDR or EUI-48/64 string, got #{inspect(data)}"
-
-        :create ->
-          "cannot create a Pfx from: #{inspect(data)}"
-
-        :ip4dig ->
-          "expected valid IPv4 digits, got #{inspect(data)}"
-
-        :ip4len ->
-          "expected a valid IPv4 prefix length, got #{inspect(data)}"
-
-        :ip6dig ->
-          "expected valid IPv6 digits, got #{inspect(data)}"
-
-        :ip6len ->
-          "expected a valid IPv6 prefix length, got #{inspect(data)}"
-
-        :maxlen ->
-          "expected a non_neg_integer for maxlen, got #{inspect(data)}"
-
-        :nat64 ->
-          "expected a valid IPv6 nat64 address, got #{inspect(data)}"
-
-        :nat64len ->
-          "nat64 prefix length not in [#{Enum.join(@nat64_lengths, ", ")}], got #{inspect(data)}"
-
-        :nobit ->
-          "expected a integer (bit) value 0..1, got #{inspect(data)}"
-
-        :nobits ->
-          "expected a non-empty bitstring, got: #{inspect(data)}"
-
-        :nobitstr ->
-          "expected a bitstring, got: #{inspect(data)}"
-
-        :nocapacity ->
-          "prefix's capacity exceeded: #{inspect(data)}"
-
-        :nocompare ->
-          "prefixes have different maxlen's: #{inspect(data)}"
-
-        :noeui ->
-          "expected an EUI48/64 prefix, string or tuple, got #{inspect(data)}"
-
-        :noeui64 ->
-          "expected an EUI-64 prefix, string or tuple(s), got #{inspect(data)}"
-
-        :noflags ->
-          "expected a 16-element tuple of bits, got #{inspect(data)}"
-
-        :nohex ->
-          "expected a hexadecimal string, got #{inspect(data)}"
-
-        :noint ->
-          "expected an integer, got #{inspect(data)}"
-
-        :noints ->
-          "expected all integers, got #{inspect(data)}"
-
-        :noneg ->
-          "expected a non_neg_integer, got #{inspect(data)}"
-
-        :noneighbor ->
-          "empty prefixes have no neighbor: #{inspect(data)}"
-
-        :nopart ->
-          "cannot partition prefixes using #{inspect(data)}"
-
-        # :nopfx ->
-        #   "expected a valid %Pfx{}-struct, got #{inspect(data)}"
-
-        :nopos ->
-          "expected a pos_integer, got #{inspect(data)}"
-
-        :noundig ->
-          "expected {{n1, n2, ..}, length}, got #{inspect(data)}"
-
-        :nowidth ->
-          "expected valid width, got #{inspect(data)}"
-
-        :pfx ->
-          "expected a valid Pfx struct, got #{inspect(data)}"
-
-        :pfx4 ->
-          "expected a valid IPv4 Pfx, got #{inspect(data)}"
-
-        :pfx4full ->
-          "expected a full IPv4 address, got #{inspect(data)}"
-
-        :pfx6 ->
-          "expected a valid IPv6 Pfx, got #{inspect(data)}"
-
-        :pfx6full ->
-          "expected a full IPv6 address, got #{inspect(data)}"
-
-        :range ->
-          "invalid index range: #{inspect(data)}"
-
-        reason ->
-          "error #{reason}, #{inspect(data)}"
-      end
-
-    ArgumentError.exception(msg)
+    case @errors[reason] do
+      nil -> "error #{reason}, #{inspect(data)}"
+      msg -> msg <> ", got #{inspect(data)}"
+    end
+    |> ArgumentError.exception()
   end
 
   # cast a series of bits to a number, width bits wide.
@@ -351,9 +285,6 @@ defmodule Pfx do
       {{a, b, c, d, e, f, g, h}, _} -> {a, b, c, d, e, f, g, h}
       _ -> prefix
     end
-
-    # |> new()
-    # |> marshall(prefix)
   rescue
     err -> raise err
   end
@@ -393,10 +324,10 @@ defmodule Pfx do
 
       # errors out on invalid positions
       iex> bit("255.255.255.255", 33)
-      ** (ArgumentError) invalid bit position: 33
+      ** (ArgumentError) invalid bit position, got 33
 
       iex> bit("10.10.0.0/16", -33)
-      ** (ArgumentError) invalid bit position: -33
+      ** (ArgumentError) invalid bit position, got -33
 
   """
   @spec bit(prefix, integer) :: 0 | 1
@@ -1291,7 +1222,7 @@ defmodule Pfx do
 
       # cannot exceed boundaries though:
       iex> %Pfx{bits: <<255, 255>>, maxlen: 32} |> cut(8, 32)
-      ** (ArgumentError) invalid index range: {8, 32}
+      ** (ArgumentError) invalid index range, got {8, 32}
 
   """
   @spec cut(prefix, integer, integer) :: prefix
@@ -1407,10 +1338,9 @@ defmodule Pfx do
   """
   @spec drop(prefix, non_neg_integer) :: prefix
   def drop(pfx, count) when is_pfx(pfx) and is_non_neg_integer(count) do
-    cond do
-      count < bit_size(pfx.bits) -> %{pfx | bits: truncate(pfx.bits, bit_size(pfx.bits) - count)}
-      true -> %{pfx | bits: <<>>}
-    end
+    if count < bit_size(pfx.bits),
+      do: %{pfx | bits: truncate(pfx.bits, bit_size(pfx.bits) - count)},
+      else: %{pfx | bits: <<>>}
   end
 
   def drop(pfx, count) when is_non_neg_integer(count) do
@@ -1418,7 +1348,7 @@ defmodule Pfx do
     |> drop(count)
     |> marshall(pfx)
   rescue
-    err -> raise err
+    err -> raise(err)
   end
 
   def drop(_, count),
@@ -1942,7 +1872,7 @@ defmodule Pfx do
 
       # cannot append to a full prefix, positions go from 0..31
       iex> insert("1.2.3.4", <<255>>, 32)
-      ** (ArgumentError) invalid bit position: 32
+      ** (ArgumentError) invalid bit position, got 32
 
       # but inserting inside the bitstring, is ok
       iex> insert("1.2.3.4", <<255>>, 16)
@@ -2069,10 +1999,9 @@ defmodule Pfx do
   """
   @spec keep(prefix, non_neg_integer) :: prefix
   def keep(pfx, count) when is_pfx(pfx) and is_non_neg_integer(count) do
-    cond do
-      count < bit_size(pfx.bits) -> %{pfx | bits: truncate(pfx.bits, count)}
-      true -> pfx
-    end
+    if count < bit_size(pfx.bits),
+      do: %{pfx | bits: truncate(pfx.bits, count)},
+      else: pfx
   end
 
   def keep(pfx, count) when is_non_neg_integer(count) do
@@ -2450,12 +2379,11 @@ defmodule Pfx do
     do: false
 
   def member?(pfx1, pfx2) do
-    try do
-      new(pfx1)
-      |> member?(new(pfx2))
-    rescue
-      _ -> false
-    end
+    new(pfx1)
+    |> member?(new(pfx2))
+  rescue
+    _ ->
+      false
   end
 
   @doc """
@@ -2762,7 +2690,7 @@ defmodule Pfx do
       ...> rescue
       ...>   x -> Exception.message(x)
       ...> end
-      "expected a ipv4/ipv6 CIDR or EUI-48/64 string, got \"1.1.1.256\""
+      "expected an ipv4/ipv6 CIDR or EUI-48/64 string, got \"1.1.1.256\""
 
   """
   @spec new(prefix) :: t()
@@ -3667,6 +3595,7 @@ defmodule Pfx do
 
   """
   @spec sigil_p(prefix, [integer]) :: t() | binary | tuple
+  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   def sigil_p(prefix, opts) do
     {mask, pfx} =
       cond do
@@ -3680,10 +3609,7 @@ defmodule Pfx do
         true -> {true, new(prefix)}
       end
 
-    pfx =
-      if ?i in opts,
-        do: bnot(pfx),
-        else: pfx
+    pfx = if ?i in opts, do: bnot(pfx), else: pfx
 
     cond do
       ?T in opts -> to_tuple(pfx, mask: mask)

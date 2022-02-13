@@ -477,7 +477,7 @@ defmodule PfxTest do
     # cast pads right, then turns it into a number
     assert 255 == cast(%Pfx{bits: <<255>>, maxlen: 8})
     assert 128 == cast(%Pfx{bits: <<1::1>>, maxlen: 8})
-    assert 65535 - 255 == cast(%Pfx{bits: <<255>>, maxlen: 16})
+    assert 65_535 - 255 == cast(%Pfx{bits: <<255>>, maxlen: 16})
   end
 
   test "compare/2" do
@@ -876,12 +876,12 @@ defmodule PfxTest do
     # more bits
     assert 16 == hosts("10.10.10.0/28") |> length()
     assert 256 == hosts("10.10.10.0/24") |> length()
-    assert 65536 == hosts("10.10.0.0/16") |> length()
+    assert 65_536 == hosts("10.10.0.0/16") |> length()
 
     # all representations
     assert 16 == hosts({{10, 10, 10, 0}, 28}) |> length()
     assert 256 == hosts({{10, 10, 10, 0}, 24}) |> length()
-    assert 65536 == hosts({{10, 10, 10, 10}, 16}) |> length()
+    assert 65_536 == hosts({{10, 10, 10, 10}, 16}) |> length()
 
     # remember: hosts returns full length prefixes
     assert [{{1, 1, 1, 0}, 32}, {{1, 1, 1, 1}, 32}] == hosts({{1, 1, 1, 0}, 31})
@@ -1026,7 +1026,7 @@ defmodule PfxTest do
   test "is_pfx/1" do
     # handle zero bits
     assert is_pfx(%Pfx{bits: <<>>, maxlen: 0})
-    assert is_pfx(%Pfx{bits: <<>>, maxlen: 10000})
+    assert is_pfx(%Pfx{bits: <<>>, maxlen: 10_000})
 
     # handle 1 bit
     assert is_pfx(%Pfx{bits: <<0::1>>, maxlen: 1})
@@ -1883,7 +1883,7 @@ defmodule PfxTest do
     assert 1 == partition("1.1.1.0/32", 32) |> length()
     assert 2 == partition("1.1.1.0/24", 25) |> length()
     assert 256 == partition("1.1.1.0/24", 32) |> length()
-    assert 65536 == partition("acdc::1976/112", 128) |> length()
+    assert 65_536 == partition("acdc::1976/112", 128) |> length()
   end
 
   test "partition_range/2 with start,nhosts" do
@@ -2143,7 +2143,7 @@ defmodule PfxTest do
     # some bits left
     assert 16 == size(%Pfx{bits: <<255>>, maxlen: 12})
     assert 256 == size(%Pfx{bits: <<1, 2, 3>>, maxlen: 32})
-    assert 65536 == size(%Pfx{bits: <<1, 2>>, maxlen: 32})
+    assert 65_536 == size(%Pfx{bits: <<1, 2>>, maxlen: 32})
 
     # accepts all formats
     assert 1 == size("1.1.1.1")
@@ -2207,7 +2207,7 @@ defmodule PfxTest do
 
     server = new("1.2.3.4")
     client = new("10.10.10.10") |> bnot()
-    port = Bitwise.bnot(33000)
+    port = Bitwise.bnot(33_000)
     flags = <<1::1, 0::15>>
 
     addr = %Pfx{
@@ -2218,7 +2218,7 @@ defmodule PfxTest do
     map = teredo_decode(addr)
     assert map.server == %Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}
     assert map.client == %Pfx{bits: <<10, 10, 10, 10>>, maxlen: 32}
-    assert map.port == 33000
+    assert map.port == 33_000
     assert map.flags == {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
     assert map.prefix == addr
 
@@ -2226,7 +2226,7 @@ defmodule PfxTest do
     map = teredo_decode("#{addr}")
     assert map.server == "1.2.3.4"
     assert map.client == "10.10.10.10"
-    assert map.port == 33000
+    assert map.port == 33_000
     assert map.flags == {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
     assert map.prefix == "#{addr}"
 
@@ -2234,7 +2234,7 @@ defmodule PfxTest do
     map = teredo_decode(digits(addr, 16))
     assert map.server == {{1, 2, 3, 4}, 32}
     assert map.client == {{10, 10, 10, 10}, 32}
-    assert map.port == 33000
+    assert map.port == 33_000
     assert map.flags == {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
     assert map.prefix == digits(addr, 16)
   end
