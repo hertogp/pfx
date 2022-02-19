@@ -6,6 +6,7 @@ defmodule Pfx.MixProject do
   # - mix test
   # - mix docs
   # - mix dialyzer
+  # - check github ci is ok
   # - git tag -a vx.y.z -m 'Release vx.y.z'
   # - git push --tags
   # mix hex.publish
