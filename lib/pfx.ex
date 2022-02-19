@@ -13,7 +13,10 @@ defmodule Pfx do
              |> Enum.fetch!(1)
 
   @specials File.read!(@specials_file)
-            |> :erlang.binary_to_term()
+            |> (case do
+                  "" -> %{ip4: [], ip6: []}
+                  binary -> :erlang.binary_to_term(binary)
+                end)
 
   @enforce_keys [:bits, :maxlen]
   defstruct bits: <<>>, maxlen: 0
@@ -4245,7 +4248,8 @@ defmodule Pfx do
          prefix: "0.0.0.0/32",
          reserved: true,
          source: true,
-         spec: ["rfc1122"]
+         spec: ["rfc1122"],
+         termination: :na
        }}
 
       iex> iana_special(:ip4) |> length()
@@ -4263,7 +4267,8 @@ defmodule Pfx do
         prefix: "10.0.0.0/8",
         reserved: false,
         source: true,
-        spec: ["rfc1918"]
+        spec: ["rfc1918"],
+        termination: :na
       }
 
       iex> iana_special("10.11.12.13", :global)

@@ -249,7 +249,8 @@ as set in those registries (if at all) using `Pfx.iana_special/2`.
       prefix: "10.0.0.0/8",
       reserved: false,
       source: true,
-      spec: ["rfc1918"]
+      spec: ["rfc1918"],
+      termination: :na
     }
 
     # or just one
@@ -365,7 +366,8 @@ Anyway, enough downplay, here are some more examples.
       prefix: "fc00::/7",
       reserved: false,
       source: true,
-      spec: ["rfc4193", "rfc8190"]
+      spec: ["rfc4193", "rfc8190"],
+      termination: :na
     }
 
     # IANA's OUI range 00-00-5e-xx-xx-xx

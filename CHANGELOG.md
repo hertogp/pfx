@@ -9,7 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### added
 
-- [ ] mix task to renew iana special registry
+- [ ] mix task to update the local snapshot of the IANA IPv4/6 special registries
+    - run `mix iana.specials` which will update the local registry if needed
+
+### changed
+
+- [x] Iana special registry entries now include `:termination` date as well
+    - which is usually `:na` and sometimes "yyyy-mm"
 
 
 ## [0.13.0] - 2022-01-23

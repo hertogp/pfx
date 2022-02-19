@@ -922,7 +922,8 @@ defmodule PfxTest do
              prefix: "192.168.0.0/16",
              reserved: false,
              source: true,
-             spec: ["rfc1918"]
+             spec: ["rfc1918"],
+             termination: :na
            }
 
     assert iana_special("2001::1") == %{
@@ -934,7 +935,8 @@ defmodule PfxTest do
              prefix: "2001::/32",
              reserved: false,
              source: true,
-             spec: ["rfc4380", "rfc8190"]
+             spec: ["rfc4380", "rfc8190"],
+             termination: :na
            }
 
     # get an individual property
@@ -947,6 +949,7 @@ defmodule PfxTest do
     assert ["rfc1918"] == iana_special("10.10.10.10", :spec)
     assert "10.0.0.0/8" == iana_special("10.10.10.10", :prefix)
     assert "private-use" == iana_special("10.10.10.10", :name)
+    assert :na == iana_special("10.10.10.10", :termination)
 
     # multiple prefixes are split into their own entries
     assert "192.0.0.170/32" == iana_special("192.0.0.170", :prefix)

@@ -26,7 +26,7 @@ defmodule Pfx.MixProject do
       aliases: aliases(),
       preferred_cli_env: [ci: :test],
       elixirc_paths: elixirc_paths(Mix.env()),
-      dialyzer: [plt_add_apps: [:sweet_xml, :mix, :inets]]
+      dialyzer: [plt_add_apps: [:mix, :inets, :xmerl]]
     ]
   end
 
@@ -92,8 +92,7 @@ defmodule Pfx.MixProject do
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:dialyxir, "~> 1.0", only: :dev, runtime: false},
       {:benchee, "~> 1.0", only: :dev, runtime: false},
-      {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
-      {:sweet_xml, "~> 0.7.1", only: :dev, runtime: false}
+      {:credo, "~> 1.6", only: [:dev, :test], runtime: false}
     ]
   end
 
