@@ -54,12 +54,12 @@ A prefix can be expressed as:
 - a `t:Pfx.t/0`, e.g. `%Pfx{bits: <<1, 1, 1>>, maxlen: 24}`
 - a `t:Pfx.ip_address/0`, e.g. `{1, 1, 1, 1}`
 - a `t:Pfx.ip_prefix/0`, e.g. `{{1, 2, 3, 4, 5, 6, 7, 0}, 120}`
-- a `t:binary/0` (either an IPv4 CIDR, IPv6, EUI48 or EUI64 string) e.g. "1.1.1.0/24"
+- a `t:binary/0` (either an IPv4 CIDR, IPv6, EUI48 or EUI64 string), e.g. "1.1.1.0/24"
 
 Functions generally accept these representations and yield their result in the
 same fashion. Pfx has several [IP functions](Pfx.html#ip-functions), like
-`Pfx.unique_local?/1` which are IP oriented. They are included along with the
-more [generic functions](Pfx.html#functions) (like `Pfx.cut/3`) in order to
+`Pfx.unique_local?/1`, which are IP oriented. They are included along with the
+more [generic functions](Pfx.html#functions), like `Pfx.cut/3`, in order to
 have one module to rule them all.
 
     # check a local snapshot of IANA's IPv4 special-purpose address registry
@@ -438,7 +438,7 @@ list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:pfx, "~> 0.13.0"}
+    {:pfx, "~> 0.14.0"}
   ]
 end
 ```

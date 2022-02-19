@@ -5,20 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [unreleased]
+## [v0.14.0] - 2022-02-19
 
 ### added
 
-- [x] mix task to update the local snapshot of the IANA IPv4/6 special registries
+- mix task to update the local snapshot of the IANA IPv4/6 special registries
     - `mix iana.specials` will update the local registry (if needed)
 
 ### changed
 
-- [x] formatting an IPv6 prefix now uses '::' where appropiate
-- [x] Iana special registry entries now include `:termination` date as well
+- formatting an IPv6 prefix now uses '::' where appropiate
+- Iana special registry entries now include `:termination` date as well
     - which is usually `:na` and sometimes "yyyy-mm"
 
-## [0.13.0] - 2022-01-23
+
+## [v0.13.0] - 2022-01-23
 
 ### added
 
@@ -38,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       order to really minimize a list of prefixes
 
 
-## [0.12.0] - 2022-01-16
+## [v0.12.0] - 2022-01-16
 
 ### added
 
@@ -54,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - example: address({{1, 1, 1, 1}, 24}) -> {1, 1, 1, 1}
 
 
-## [0.11.0] - 2022-01-11
+## [v0.11.0] - 2022-01-11
 
 ### fixed
 
@@ -69,7 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - prefixes are grouped and minimized per maxlen property
 
 
-## [0.10.1] - 2022-01-09
+## [v0.10.1] - 2022-01-09
 
 ### fixed
 

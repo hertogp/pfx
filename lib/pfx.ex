@@ -1579,8 +1579,8 @@ defmodule Pfx do
   @spec format(prefix, Keyword.t()) :: String.t()
   def format(pfx, opts \\ [])
 
-  # - NOTE: String.Chars, when using Pfx.format, MUST always provide at least 1 option
   def format(pfx, []) when is_pfx(pfx) and pfx.maxlen in [32, 48, 64, 128] do
+    # - NOTE: String.Chars, when using Pfx.format, MUST always provide at least 1 option
     "#{pfx}"
   end
 
