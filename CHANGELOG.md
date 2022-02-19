@@ -9,17 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### added
 
-- [ ] `Pfx.from_range/1` and `Pfx.to_range/1`
-    - convience functions when working with whois data
-
 - [x] mix task to update the local snapshot of the IANA IPv4/6 special registries
     - `mix iana.specials` will update the local registry (if needed)
 
 ### changed
 
+- [x] formatting an IPv6 prefix now uses '::' where appropiate
 - [x] Iana special registry entries now include `:termination` date as well
     - which is usually `:na` and sometimes "yyyy-mm"
-- [ ] formatting an IPv6 prefix will use '::' where appropiate
 
 ## [0.13.0] - 2022-01-23
 
