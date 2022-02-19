@@ -304,7 +304,7 @@ some options that help shape the string representation for a `Pfx` struct.
     "10.11.12.0/24"
 
     iex> "#{new(<<44252::16, 6518::16>>, 128)}"
-    "acdc:1976:0:0:0:0:0:0/32"
+    "acdc:1976::/32"
 
     iex> "#{%Pfx{bits: <<0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6>>, maxlen: 48}}"
     "A1-B2-C3-D4-E5-F6"

@@ -713,7 +713,7 @@ defmodule PfxTest do
 
     # all formats
     assert "1.1.1.0" == first("1.1.1.255/24")
-    assert "acdc:1976:0:0:0:0:0:0" == first("acdc:1976::/32")
+    assert "acdc:1976::" == first("acdc:1976::/32")
     assert {{1, 2, 3, 0}, 32} == first({{1, 2, 3, 4}, 24})
   end
 
@@ -1154,8 +1154,8 @@ defmodule PfxTest do
 
     # other formats
     assert link_local?("fe80::")
-    assert link_local?("fe80:0:0:0:1:2:3:4")
-    assert link_local?("fe80:0:0:0:ffff:ffff:ffff:ffff")
+    assert link_local?("fe80::1:2:3:4")
+    assert link_local?("fe80::ffff:ffff:ffff:ffff")
     refute link_local?({169, 254, 0, 0})
     refute link_local?({169, 254, 0, 255})
     refute link_local?({169, 254, 255, 0})
@@ -1210,7 +1210,7 @@ defmodule PfxTest do
 
     # mask with full address lengths
     assert "1.0.0.1" == mask("1.1.1.1", "255.0.0.255")
-    assert "acdc:1976:0:0:0:0:0:0" == mask("acdc:1976:2021::", "acdc:1976::", trim: false)
+    assert "acdc:1976::" == mask("acdc:1977:2021::", "acdc:1976::", trim: false)
 
     # trim defaults to true
     assert "1.1.1.0/24" == mask("1.1.1.1", "255.255.255.0")
@@ -1410,16 +1410,16 @@ defmodule PfxTest do
     assert multicast_decode("ff71:340:2001:db8:beef:feed:0:f") == %{
              flags: {0, 1, 1, 1},
              multicast_address: "ff71:340:2001:db8:beef:feed:0:f",
-             multicast_prefix: "ff70:0:0:0:0:0:0:0/12",
+             multicast_prefix: "ff70::/12",
              protocol: :ipv6,
              rfc: %{
                group_id: 15,
-               unicast_prefix: "2001:db8:beef:feed:0:0:0:0/64",
+               unicast_prefix: "2001:db8:beef:feed::/64",
                plen: 64,
                reserved: 0,
                rfc: 3956,
                riid: 3,
-               rp_prefix: "2001:db8:beef:feed:0:0:0:3"
+               rp_prefix: "2001:db8:beef:feed::3"
              },
              scope: 1
            }
@@ -1461,12 +1461,12 @@ defmodule PfxTest do
 
     assert multicast_decode("FF31:0030:3FFE:FFFF:0001::8") == %{
              flags: {0, 0, 1, 1},
-             multicast_address: "ff31:30:3ffe:ffff:1:0:0:8",
-             multicast_prefix: "ff30:0:0:0:0:0:0:0/12",
+             multicast_address: "ff31:30:3ffe:ffff:1::8",
+             multicast_prefix: "ff30::/12",
              protocol: :ipv6,
              rfc: %{
                group_id: 8,
-               unicast_prefix: "3ffe:ffff:1:0:0:0:0:0/48",
+               unicast_prefix: "3ffe:ffff:1::/48",
                plen: 48,
                reserved: 0,
                rfc: 3306
@@ -1476,8 +1476,8 @@ defmodule PfxTest do
 
     assert multicast_decode("ff00::") == %{
              flags: {0, 0, 0, 0},
-             multicast_address: "ff00:0:0:0:0:0:0:0",
-             multicast_prefix: "ff00:0:0:0:0:0:0:0/12",
+             multicast_address: "ff00::",
+             multicast_prefix: "ff00::/12",
              protocol: :ipv6,
              rfc: %{group_id: 0, rfc: 4291},
              scope: 0
@@ -1579,7 +1579,7 @@ defmodule PfxTest do
 
     # all formats
     assert "1.1.1.0" == network("1.1.1.255/24")
-    assert "acdc:1976:0:0:0:0:0:0" == network("acdc:1976::/32")
+    assert "acdc:1976::" == network("acdc:1976::/32")
     assert {{1, 2, 3, 0}, 32} == network({{1, 2, 3, 4}, 24})
   end
 
@@ -1933,7 +1933,7 @@ defmodule PfxTest do
     assert ["10.10.0.0/16"] == partition_range("10.10.0.0", "10.10.255.255")
     assert ["0.0.0.0/0"] == partition_range("0.0.0.0", "255.255.255.255")
 
-    assert ["0:0:0:0:0:0:0:0/0"] ==
+    assert ["::/0"] ==
              partition_range("::", "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
   end
 
@@ -2346,7 +2346,7 @@ defmodule PfxTest do
     # no mask for full addresses
     assert "1.2.3.4" == "#{%Pfx{bits: <<1, 2, 3, 4>>, maxlen: 32}}"
 
-    assert "acdc:1976:0:0:0:0:0:0" ==
+    assert "acdc:1976::" ==
              "#{%Pfx{bits: <<0xACDC::16, 0x1976::16, 0::96>>, maxlen: 128}}"
 
     assert "acdc:1976:ffff:ffff:ffff:ffff:ffff:ffff" ==

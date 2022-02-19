@@ -493,7 +493,7 @@ defmodule Pfx do
       %Pfx{bits: <<0, 0, 255, 255>>, maxlen: 32}
 
       iex> bnot("5323:e689::/32")
-      "acdc:1976:0:0:0:0:0:0/32"
+      "acdc:1976::/32"
 
   """
   @spec bnot(prefix) :: prefix
@@ -1327,7 +1327,7 @@ defmodule Pfx do
       "0.0.0.0/0"
 
       iex> drop("2001:0db8:85a3:0000:0000:8a2e:0370:7334", 64)
-      "2001:db8:85a3:0:0:0:0:0/64"
+      "2001:db8:85a3::/64"
 
       iex> drop({1, 2, 3, 4}, 8)
       {1, 2, 3, 0}
@@ -1425,7 +1425,7 @@ defmodule Pfx do
       "10.10.10.0"
 
       iex> first("acdc:1976::/32")
-      "acdc:1976:0:0:0:0:0:0"
+      "acdc:1976::"
 
       # a full address is its own this-network
       iex> first({10, 10, 10, 1})
@@ -1976,7 +1976,7 @@ defmodule Pfx do
   ## Examples
 
       iex> keep("2001:0db8:85a3:0000:0000:8a2e:0370:7334", 64)
-      "2001:db8:85a3:0:0:0:0:0/64"
+      "2001:db8:85a3::/64"
 
       iex> keep("1.2.3.0/31", 30)
       "1.2.3.0/30"
@@ -2044,7 +2044,7 @@ defmodule Pfx do
       %Pfx{bits: <<0xACDC::16, 0x1976::16, -1::96>>, maxlen: 128}
 
       iex> last("acdc:1976::/112")
-      "acdc:1976:0:0:0:0:0:ffff"
+      "acdc:1976::ffff"
 
   """
   @spec last(prefix) :: prefix
@@ -2123,7 +2123,7 @@ defmodule Pfx do
       {{255, 255, 255, 128}, 32}
 
       iex> mask("acdc:1976::/32")
-      "ffff:ffff:0:0:0:0:0:0"
+      "ffff:ffff::"
 
       # some prefix with some other maxlen
       iex> mask(%Pfx{bits: <<10, 10, 0::1>>, maxlen: 20})
@@ -2441,7 +2441,7 @@ defmodule Pfx do
       # minimize list of different types of prefixes
       iex> list = ["1.1.0.0/24", "1.1.1.0/24", "acdc:0::/17", "acdc:8000::/17"]
       iex> minimize(list)
-      ["acdc:0:0:0:0:0:0:0/16", "1.1.0.0/23"]
+      ["acdc::/16", "1.1.0.0/23"]
 
       # mimics format of first prefix in the list
       iex> minimize([{1, 2, 3, 4}, {{1, 2, 3, 0}, 25}, "1.2.3.128/26", "1.2.3.192/26"])
@@ -2450,13 +2450,13 @@ defmodule Pfx do
       # mixed prefixes
       iex> ["10.10.10.0/24", "10.10.11.0/24", "100.100.100.0/25", "100.100.100.128/25", "acdc::1"]
       ...> |> minimize()
-      ["acdc:0:0:0:0:0:0:1", "100.100.100.0/24", "10.10.10.0/23"]
+      ["acdc::1", "100.100.100.0/24", "10.10.10.0/23"]
 
       # minimize & sort mixed prefixes more to less specific (per type)
       iex> ["10.10.10.0/24", "10.10.11.0/24", "100.100.100.0/25", "100.100.100.128/25", "acdc::1"]
       ...> |> minimize()
       ...> |> Enum.sort({:desc, Pfx})
-      ["acdc:0:0:0:0:0:0:1", "10.10.10.0/23", "100.100.100.0/24"]
+      ["acdc::1", "10.10.10.0/23", "100.100.100.0/24"]
 
       # to avoid excessive conversions due to mimicing, do:
       iex> ["10.10.10.0/24", "10.10.11.0/24", "100.100.100.0/25", "100.100.100.128/25", "acdc::1"]
@@ -2464,7 +2464,7 @@ defmodule Pfx do
       ...> |> minimize()
       ...> |> Enum.sort({:desc, Pfx})
       ...> |> Enum.map(&format/1)
-      ["acdc:0:0:0:0:0:0:1", "10.10.10.0/23", "100.100.100.0/24"]
+      ["acdc::1", "10.10.10.0/23", "100.100.100.0/24"]
 
   """
   @spec minimize([prefix]) :: [prefix]
@@ -3129,10 +3129,10 @@ defmodule Pfx do
       131
 
       iex(481)> partition_range("acdc::1976", "acdc::2021")
-      ["acdc:0:0:0:0:0:0:1976/127", "acdc:0:0:0:0:0:0:1978/125",
-       "acdc:0:0:0:0:0:0:1980/121", "acdc:0:0:0:0:0:0:1a00/119",
-       "acdc:0:0:0:0:0:0:1c00/118", "acdc:0:0:0:0:0:0:2000/123",
-       "acdc:0:0:0:0:0:0:2020/127"]
+      ["acdc::1976/127", "acdc::1978/125",
+       "acdc::1980/121", "acdc::1a00/119",
+       "acdc::1c00/118", "acdc::2000/123",
+       "acdc::2020/127"]
 
   When working with address tuples, the result will be in addres,length-tuples otherwise
   prefix length information would be lost.
@@ -3679,7 +3679,7 @@ defmodule Pfx do
 
       # apply mask, get string representation
       iex> "acdc::1" |> ~p(ffff::)S
-      "acdc:0:0:0:0:0:0:0/16"
+      "acdc::/16"
 
       # apply mask to an EUI48 address
       iex> "aa:bb:cc:dd:ee:ff" |> ~p(ff:ff:ff:ff:ff:00)S
@@ -3755,7 +3755,7 @@ defmodule Pfx do
       {{255, 255, 255, 0}, 24}
 
       iex> trim("acdc:1976::ff00/128")
-      "acdc:1976:0:0:0:0:0:ff00/120"
+      "acdc:1976::ff00/120"
 
   """
   @spec trim(prefix) :: prefix
@@ -4030,7 +4030,7 @@ defmodule Pfx do
       %Pfx{bits: <<0xACDC::16, 0x1976::16, -1::96>>, maxlen: 128}
 
       iex> broadcast("acdc:1976::/112")
-      "acdc:1976:0:0:0:0:0:ffff"
+      "acdc:1976::ffff"
 
   """
   @doc section: :ip
@@ -4350,13 +4350,13 @@ defmodule Pfx do
       iex> y = link_local("fe80::acdc:1976")
       iex> y
       %{ preamble: 1018,
-         prefix: "fe80:0:0:0:0:0:0:0/64",
+         prefix: "fe80::/64",
          ifaceID: 2900105590,
          address: "fe80::acdc:1976"
       }
       #
       iex> host(y.prefix, y.ifaceID)
-      "fe80:0:0:0:0:0:acdc:1976"
+      "fe80::acdc:1976"
 
   """
   @doc section: :ip
@@ -4541,12 +4541,12 @@ defmodule Pfx do
       iex> Pfx.multicast_decode("FF32:0030:3FFE:FFFF:0001::/96")
       %{
         flags: {0, 0, 1, 1},
-        multicast_address: "ff32:30:3ffe:ffff:1:0:0:0/96",
-        multicast_prefix: "ff30:0:0:0:0:0:0:0/12",
+        multicast_address: "ff32:30:3ffe:ffff:1::/96",
+        multicast_prefix: "ff30::/12",
         protocol: :ipv6,
         rfc: %{
           group_id: 0,
-          unicast_prefix: "3ffe:ffff:1:0:0:0:0:0/48",
+          unicast_prefix: "3ffe:ffff:1::/48",
           plen: 48,
           reserved: 0,
           rfc: 3306
@@ -4779,19 +4779,19 @@ defmodule Pfx do
   ## Examples
 
       iex> nat64_encode("2001:db8:100::/40", "192.0.2.33")
-      "2001:db8:1c0:2:21:0:0:0"
+      "2001:db8:1c0:2:21::"
 
       iex> nat64_encode("2001:db8:122::/48", "192.0.2.33")
-      "2001:db8:122:c000:2:2100:0:0"
+      "2001:db8:122:c000:2:2100::"
 
       iex> nat64_encode("2001:db8:122:300::/56", "192.0.2.33")
-      "2001:db8:122:3c0:0:221:0:0"
+      "2001:db8:122:3c0:0:221::"
 
       iex> nat64_encode("2001:db8:122:344::/64", "192.0.2.33")
       "2001:db8:122:344:c0:2:2100:0"
 
       iex> nat64_encode("2001:db8:122:344::/96", "192.0.2.33")
-      "2001:db8:122:344:0:0:c000:221"
+      "2001:db8:122:344::c000:221"
 
       iex> nat64_encode({{0x2001, 0xdb8, 0, 0, 0, 0, 0, 0}, 32}, "192.0.2.33")
       {{0x2001, 0xdb8, 0xc000, 0x221, 0, 0, 0, 0}, 128}
@@ -4800,7 +4800,7 @@ defmodule Pfx do
       %Pfx{bits: <<0x2001::16, 0xdb8::16, 0xc000::16, 0x221::16, 0::64>>, maxlen: 128}
 
       iex> nat64_encode("2001:db8::/32", "192.0.2.33")
-      "2001:db8:c000:221:0:0:0:0"
+      "2001:db8:c000:221::"
 
   """
   @doc section: :ip
@@ -4845,7 +4845,7 @@ defmodule Pfx do
       "10.10.10.0"
 
       iex> network("acdc:1976::/32")
-      "acdc:1976:0:0:0:0:0:0"
+      "acdc:1976::"
 
       # a full address is its own this-network
       iex> network({10, 10, 10, 1})
@@ -5076,6 +5076,17 @@ defmodule Pfx do
 end
 
 defimpl String.Chars, for: Pfx do
+  @spec to_string(Pfx.t()) :: binary
+  def to_string(pfx) when pfx.maxlen == 128 do
+    {addr, len} = Pfx.to_tuple(pfx)
+    addr = :inet.ntoa(addr) |> List.to_string()
+
+    case len do
+      128 -> addr
+      _ -> "#{addr}/#{len}"
+    end
+  end
+
   def to_string(pfx) do
     # delegates to Pfx.format with maxlen specific options, but should *NEVER*
     # delegate to Pfx.format without at least 1 option!
@@ -5083,7 +5094,6 @@ defimpl String.Chars, for: Pfx do
       32 -> Pfx.format(pfx, base: 10, width: 8, unit: 1, ssep: ".")
       48 -> Pfx.format(pfx, base: 16, width: 4, unit: 2, ssep: "-")
       64 -> Pfx.format(pfx, base: 16, width: 4, unit: 2, ssep: "-")
-      128 -> Pfx.format(pfx, base: 16, width: 16, unit: 1, ssep: ":") |> String.downcase()
       _ -> Pfx.format(pfx, ssep: ".")
     end
   end
