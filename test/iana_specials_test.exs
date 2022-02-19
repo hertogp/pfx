@@ -1,12 +1,16 @@
 defmodule Mix.Tasks.Iana.SpecialsTest do
   use ExUnit.Case
 
+  @specials_file "priv/specials"
+
   setup do
     Mix.shell(Mix.Shell.Process)
     on_exit(fn -> Mix.shell(Mix.Shell.IO) end)
   end
 
   test "run/1" do
+    # ensure we will update the specials file
+    File.touch(@specials_file, {{1970, 1, 1}, {0, 0, 0}})
     Mix.Tasks.Iana.Specials.run([])
     assert_received {:mix_shell, :info, [line1]}
     assert_received {:mix_shell, :info, [line2]}
@@ -16,7 +20,19 @@ defmodule Mix.Tasks.Iana.SpecialsTest do
     assert String.starts_with?(line1, "IANA IPv4")
     assert String.starts_with?(line2, "IANA IPv6")
     assert String.starts_with?(line3, "Local Pfx")
-    assert String.ends_with?(line4, "updated") or String.ends_with?(line4, "up-to-date")
+    assert String.ends_with?(line4, "updated")
+
+    # Repeating the exercise should yield "up-to-date"
+    Mix.Tasks.Iana.Specials.run([])
+    assert_received {:mix_shell, :info, [line1]}
+    assert_received {:mix_shell, :info, [line2]}
+    assert_received {:mix_shell, :info, [line3]}
+    assert_received {:mix_shell, :info, [line4]}
+
+    assert String.starts_with?(line1, "IANA IPv4")
+    assert String.starts_with?(line2, "IANA IPv6")
+    assert String.starts_with?(line3, "Local Pfx")
+    assert String.ends_with?(line4, "up-to-date")
   end
 
   test "priv/specials" do
