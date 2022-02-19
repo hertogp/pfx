@@ -37,7 +37,7 @@ defmodule Pfx.MixProject do
     do: []
 
   defp applications(_),
-    do: [extra_applications: [:inets]]
+    do: [extra_applications: [:inets, :xmerl]]
 
   defp elixirc_paths(:dev),
     do: ["lib", "dev"]

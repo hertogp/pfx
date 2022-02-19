@@ -41,9 +41,17 @@ defmodule Mix.Tasks.Iana.Specials do
     {reg_updated, reg} = read(@priv_specials)
     num_records = length(reg.ip4) + length(reg.ip6)
 
-    Mix.shell().info("IPv4 special registry: #{length(ip4)} records, last update #{ip4_updated}.")
-    Mix.shell().info("IPv6 special registry: #{length(ip6)} records, last update #{ip6_updated}.")
-    Mix.shell().info("Pfx  special registry: #{num_records} records, last update #{reg_updated}.")
+    Mix.shell().info(
+      "IANA IPv4 special registry: #{length(ip4)} records, last update #{ip4_updated}."
+    )
+
+    Mix.shell().info(
+      "IANA IPv6 special registry: #{length(ip6)} records, last update #{ip6_updated}."
+    )
+
+    Mix.shell().info(
+      "Local Pfx special registry: #{num_records} records, last update #{reg_updated}."
+    )
 
     if Date.compare(ip4_updated, reg_updated) == :gt or
          Date.compare(ip6_updated, reg_updated) == :gt do
