@@ -11,7 +11,7 @@ defmodule Pfx.MixProject do
   # - git push --tags
   # mix hex.publish
 
-  @version "0.14.0"
+  @version "0.14.1"
   @source_url "https://github.com/hertogp/pfx"
 
   def project do
@@ -31,14 +31,11 @@ defmodule Pfx.MixProject do
     ]
   end
 
-  def application,
-    do: applications(Mix.env())
-
-  defp applications(:prod),
-    do: []
-
-  defp applications(_),
-    do: [extra_applications: [:inets, :xmerl]]
+  def application() do
+    [
+      extra_applications: [:inets, :xmerl]
+    ]
+  end
 
   defp elixirc_paths(_),
     do: ["lib"]
