@@ -29,7 +29,8 @@ defmodule Mix.Tasks.Iana.Specials do
   @iana_ip6_spar "#{@iana_url}/iana-ipv6-special-registry/iana-ipv6-special-registry.xml"
 
   @user_agent {'User-agent', 'Elixir Pfx'}
-  @priv_specials "priv/specials"
+  # always point to Pfx's priv directory
+  @priv_specials "specials"
 
   # used to normalize strings
   @keep Enum.to_list(?a..?z) ++ Enum.to_list(?0..?9) ++ [?\s, ?-, ?/]
@@ -38,7 +39,7 @@ defmodule Mix.Tasks.Iana.Specials do
   def run(_args) do
     {ip4_updated, ip4} = fetch(@iana_ip4_spar)
     {ip6_updated, ip6} = fetch(@iana_ip6_spar)
-    {reg_updated, reg} = read(@priv_specials)
+    {reg_updated, reg} = read(specials_path())
     num_records = length(reg.ip4) + length(reg.ip6)
 
     Mix.shell().info(
@@ -55,7 +56,7 @@ defmodule Mix.Tasks.Iana.Specials do
 
     if Date.compare(ip4_updated, reg_updated) == :gt or
          Date.compare(ip6_updated, reg_updated) == :gt do
-      save_term(%{ip4: ip4, ip6: ip6}, @priv_specials)
+      save_term(%{ip4: ip4, ip6: ip6}, specials_path())
       Mix.shell().info("\nLocal Pfx special registry updated")
     else
       Mix.shell().info("\nLocal Pfx special registry is up-to-date")
@@ -75,6 +76,9 @@ defmodule Mix.Tasks.Iana.Specials do
       metadata -> {:error, "#{inspect(metadata)}"}
     end
   end
+
+  defp specials_path(),
+    do: Path.join([:code.priv_dir(:pfx), @priv_specials])
 
   @spec read(Path.t()) :: {Date.t(), map}
   defp read(fpath) do

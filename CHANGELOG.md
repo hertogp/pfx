@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### fixed
 
+- mix iana.specials should write to Pfx's priv/specials, not that of parent
+  project that might have Pfx as a dependency.
+
+## [v0.14.1] - 2022-02-20
+
+### fixed
+
 - in mix.exs, list `:inets` and `:xmerl` as extra application for all modes
 
 
