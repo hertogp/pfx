@@ -1051,7 +1051,7 @@ defmodule Pfx do
   - `:right_nc` pfx1 is right-adjacent to pfx2, but cannot be combined
   - `:disjoint` pfx1 has no match with pfx2
   - `:einvalid` either pfx1 or pfx2 was invalid
-  - `:incompatible` pfx1 and pfx2 donot have the same maxlen
+  - `:incompatible` pfx1 and pfx2 do not have the same maxlen
 
   ## Examples
 
@@ -1517,7 +1517,7 @@ defmodule Pfx do
   - `:padding`, whether to pad out the `pfx.bits` (default true)
 
   The defaults are geared towards IPv4 prefixes, but the options should be able
-  to accomodate other domains as well.
+  to accommodate other domains as well.
 
   Notes:
   - the *prefix.bits*-length is omitted if equal to the *prefix.bits*-size
@@ -1555,7 +1555,7 @@ defmodule Pfx do
       iex> format(pfx, width: 4, base: 16, unit: 4, ssep: ":")
       "acdc:1976:0000:0000:0000:0000:0000:0000/32"
       #
-      # this time, omit the acutal pfx length
+      # this time, omit the actual pfx length
       #
       iex> format(pfx, width: 16, base: 16, ssep: ":", mask: false)
       "acdc:1976:0:0:0:0:0:0"
@@ -1888,7 +1888,7 @@ defmodule Pfx do
       ...> |> insert(<<0xFF, 0xFE>>, 24)
       %Pfx{bits: <<0x02, 0x88, 0x88, 0xFF, 0xFE, 0x88, 0x88, 0x88>>, maxlen: 64}
 
-      # sliently clips to pfx's maxlen
+      # silently clips to pfx's maxlen
       iex> insert("1.2.3.0/24", <<255, 255, 255, 255>>, 0)
       "255.255.255.255"
 
@@ -2458,7 +2458,7 @@ defmodule Pfx do
       ...> |> Enum.sort({:desc, Pfx})
       ["acdc::1", "10.10.10.0/23", "100.100.100.0/24"]
 
-      # to avoid excessive conversions due to mimicing, do:
+      # to avoid excessive conversions due to mimicking, do:
       iex> ["10.10.10.0/24", "10.10.11.0/24", "100.100.100.0/25", "100.100.100.128/25", "acdc::1"]
       ...> |> Enum.map(fn pfx -> new(pfx) end)
       ...> |> minimize()
@@ -2509,7 +2509,7 @@ defmodule Pfx do
 
   @spec minimize_sortp(t, t) :: true | false
   defp minimize_sortp(x, y) do
-    # return true if x preceeds y or is equal to y: order is less to more specific
+    # return true if x precedes y or is equal to y: order is less to more specific
     # - prefixes sorted on 'first full address' first
     # - then on bit_size
     # note that x,y MUST be Pfx.t structs and MAY be of different types in
@@ -3134,7 +3134,7 @@ defmodule Pfx do
        "acdc::1c00/118", "acdc::2000/123",
        "acdc::2020/127"]
 
-  When working with address tuples, the result will be in addres,length-tuples otherwise
+  When working with address tuples, the result will be in address,length-tuples otherwise
   prefix length information would be lost.
 
       # 128 hosts, starting with "10.10.10.128"
@@ -4960,7 +4960,7 @@ defmodule Pfx do
   @doc """
   Encodes given `server`, `client`, `port` and `flags` as an IPv6 teredo address.
 
-  The `client` and `server` must be full IPv4 adresses, while both `port` and `flags`
+  The `client` and `server` must be full IPv4 addresses, while both `port` and `flags`
   are interpreted as 16-bit unsigned integers.
 
   The result mirrors the representation format of the `client` argument.
