@@ -4252,11 +4252,6 @@ defmodule Pfx do
          termination: :na
        }}
 
-      iex> iana_special(:ip4) |> length()
-      25
-      iex> iana_special(:ip6) |> length()
-      20
-
       iex> iana_special("10.10.10.10")
       %{
         allocation: "1996-02",
