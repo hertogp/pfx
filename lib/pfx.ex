@@ -49,7 +49,7 @@ defmodule Pfx do
   # valid prefix lengths to use for nat64
   @nat64_lengths [96, 64, 56, 48, 40, 32]
 
-  # Private Guards
+  # [[ Private Guards ]]
 
   defguardp is_non_neg_integer(n) when is_integer(n) and n >= 0
   defguardp is_pos_integer(n) when is_integer(n) and n > 0
@@ -77,7 +77,7 @@ defmodule Pfx do
                    is_8bit(e) and is_8bit(f) and is_8bit(g) and is_8bit(h) and
                    is_inrange(l, 0, 64)
 
-  # Guards
+  # [[ GUARDS ]]
 
   @doc """
   Guard that ensures a given `pfx` is actually valid.
@@ -101,7 +101,7 @@ defmodule Pfx do
   defguard is_comparable(x, y)
            when is_pfx(x) and is_pfx(y) and x.maxlen == y.maxlen
 
-  # Helpers
+  # [[ HELPERS ]]
 
   @errors %{
     :bitpos => "invalid bit position",
