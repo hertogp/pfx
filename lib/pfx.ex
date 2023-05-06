@@ -2703,14 +2703,15 @@ defmodule Pfx do
   def new(pfx) when is_pfx(pfx),
     do: pfx
 
-  # ipv4 tuple(s)
+  # [[ ipv4 tuple(s) ]]
 
-  def new({a, b, c, d}),
-    do: new({{a, b, c, d}, 32})
+  def new({a, b, c, d}) when is_ip4(a, b, c, d, 32) do
+    %Pfx{bits: <<a::8, b::8, c::8, d::8>>, maxlen: 32}
+  end
 
-  # ipv4 default mask is 32
-  def new({{a, b, c, d}, nil}),
-    do: new({{a, b, c, d}, 32})
+  def new({{a, b, c, d}, nil}) when is_ip4(a, b, c, d, 32) do
+    %Pfx{bits: <<a::8, b::8, c::8, d::8>>, maxlen: 32}
+  end
 
   def new({{a, b, c, d}, len}) when is_ip4(a, b, c, d, len) do
     <<bits::bitstring-size(len), _::bitstring>> = <<a::8, b::8, c::8, d::8>>
@@ -2723,14 +2724,15 @@ defmodule Pfx do
   def new({{_, _, _, _} = digits, len}),
     do: raise(arg_error(:ip4dig, {digits, len}))
 
-  # ipv6 tuple(s)
+  # [[ ipv6 tuple(s) ]]
 
-  def new({a, b, c, d, e, f, g, h}),
-    do: new({{a, b, c, d, e, f, g, h}, 128})
+  def new({a, b, c, d, e, f, g, h}) when is_ip6(a, b, c, d, e, f, g, h, 128) do
+    %Pfx{bits: <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>, maxlen: 128}
+  end
 
-  # ipv6 default mask is 128
-  def new({{a, b, c, d, e, f, g, h}, nil}),
-    do: new({{a, b, c, d, e, f, g, h}, 128})
+  def new({{a, b, c, d, e, f, g, h}, nil}) when is_ip6(a, b, c, d, e, f, g, h, 128) do
+    %Pfx{bits: <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>, maxlen: 128}
+  end
 
   def new({{a, b, c, d, e, f, g, h}, len}) when is_ip6(a, b, c, d, e, f, g, h, len) do
     <<bits::bitstring-size(len), _::bitstring>> =
