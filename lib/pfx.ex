@@ -2752,9 +2752,23 @@ defmodule Pfx do
     charlist = String.to_charlist(string)
     {address, mask} = splitp(charlist, [])
 
-    case :inet.parse_address(address) do
-      {:ok, digits} -> new({digits, mask})
-      {:error, _} -> hexify(address) |> keep(mask)
+    # TODO: inline the new({.., mask} code here, no additional checks needed
+    case :inet_parse.address(address) do
+      {:ok, {a, b, c, d}} ->
+        mask = mask || 32
+        <<bits::bitstring-size(mask), _::bitstring>> = <<a::8, b::8, c::8, d::8>>
+        %Pfx{bits: bits, maxlen: 32}
+
+      {:ok, {a, b, c, d, e, f, g, h}} ->
+        mask = mask || 128
+
+        <<bits::bitstring-size(mask), _::bitstring>> =
+          <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>
+
+        %Pfx{bits: bits, maxlen: 128}
+
+      {:error, _} ->
+        hexify(address) |> keep(mask)
     end
   rescue
     _ -> raise arg_error(:einval, string)

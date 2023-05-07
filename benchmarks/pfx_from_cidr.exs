@@ -28,10 +28,10 @@ defmodule Alt0 do
   @compile {:inline, ip6: 2}
   def ip6(state, addr) do
     case state do
-      [w] -> <<addr::bitstring, w::4>>
-      [w, x] -> <<addr::bitstring, x::4, w::4>>
-      [w, x, y] -> <<addr::bitstring, y::4, x::4, w::4>>
       [w, x, y, z] -> <<addr::bitstring, z::4, y::4, x::4, w::4>>
+      [w, x, y] -> <<addr::bitstring, 0::4, y::4, x::4, w::4>>
+      [w, x] -> <<addr::bitstring, 0::8, x::4, w::4>>
+      [w] -> <<addr::bitstring, w::16>>
       [] -> addr
     end
   end
@@ -80,71 +80,66 @@ defmodule Alt0 do
   end
 end
 
-# defmodule Alt1 do
-#   # convert CIDR string using charlist
-#   def new(str) do
-#     str
-#     |> String.to_charlist()
-#     |> newp([], <<>>)
-#   end
-#
-#   def newp([h | t], state, addr) do
-#     case h do
-#       ?. -> newip4(t, [], ip4(state, addr))
-#       ?: -> newip6(t, [], ip6(state, addr))
-#       h when h in ?0..?9 -> newp(t, [h - ?0 | state], addr)
-#       h when h in ?a..?f -> newp(t, [10 + h - ?a | state], addr)
-#       h when h in ?A..?F -> newp(t, [10 + h - ?A | state], addr)
-#     end
-#   end
-#
-#   def newip4([?. | t], state, addr),
-#     do: newip4(t, [], ip4(state, addr))
-#
-#   def newip4([h | t], state, addr),
-#     do: newip4(t, [h - ?0 | state], addr)
-#
-#   def newip4([], state, addr),
-#     do: %Pfx{bits: ip4(state, addr), maxlen: 32}
-#
-#   def newip6([?: | t], state, addr),
-#     do: newip6(t, [], ip6(state, addr))
-#
-#   def newip6([h | t], state, addr) when h in ?0..?9,
-#     do: newip6(t, [h - ?0 | state], addr)
-#
-#   def newip6([h | t], state, addr) when h in ?a..?f,
-#     do: newip6(t, [10 + h - ?a | state], addr)
-#
-#   def newip6([h | t], state, addr) when h in ?A..?F,
-#     do: newip6(t, [10 + h - ?A | state], addr)
-#
-#   def newip6([], state, addr),
-#     do: %Pfx{bits: ip6(state, addr), maxlen: 128}
-#
-#   @compile {:inline, ip4: 2}
-#   defp ip4(state, addr) do
-#     case state do
-#       [x] -> <<addr::bitstring, x::8>>
-#       [x, y] -> <<addr::bitstring, x + 10 * y::8>>
-#       [x, y, z] -> <<addr::bitstring, x + 10 * y + 100 * z::8>>
-#     end
-#   end
-#
-#   @compile {:inline, ip6: 2}
-#   defp ip6(state, addr) do
-#     case state do
-#       [w] -> <<addr::bitstring, w::16>>
-#       [w, x] -> <<addr::bitstring, 16 * x + w::16>>
-#       [w, x, y] -> <<addr::bitstring, 256 * y + 16 * x + w::16>>
-#       [w, x, y, z] -> <<addr::bitstring, 4096 * z + 256 * y + 16 * x + w::16>>
-#       [] -> addr
-#     end
-#   end
-# end
-#
+defmodule Alt1 do
+  # Same as Pfx but with different split implementation to get {address, mask}
+
+  def split(<<>>, acc),
+    do: {Enum.reverse(acc), nil}
+
+  def split(<<?/>> <> mask, acc) do
+    {Enum.reverse(acc), mask(mask, nil)}
+  end
+
+  def split(<<d>> <> tail, acc),
+    do: split(tail, [d | acc])
+
+  def mask(<<>>, len),
+    do: len
+
+  def mask(<<n>> <> tail, nil),
+    do: mask(tail, n - ?0)
+
+  def mask(<<n>> <> tail, len),
+    do: mask(tail, 10 * len + n - ?0)
+
+  def new(string) when is_binary(string) do
+    {address, mask} = split(string, [])
+    # {address, mask} =
+    #   case :string.split(string, "/") do
+    #     [addr] -> {String.to_charlist(addr), nil}
+    #     [addr, msk] -> {String.to_charlist(addr), mask(msk, nil)}
+    #   end
+
+    case :inet_parse.address(address) do
+      {:ok, {a, b, c, d}} ->
+        mask = mask || 32
+        <<bits::bitstring-size(mask), _::bitstring>> = <<a::8, b::8, c::8, d::8>>
+        %Pfx{bits: bits, maxlen: 32}
+
+      {:ok, {a, b, c, d, e, f, g, h}} ->
+        mask = mask || 128
+
+        <<bits::bitstring-size(mask), _::bitstring>> =
+          <<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>
+
+        %Pfx{bits: bits, maxlen: 128}
+
+      {:error, msg} ->
+        raise ArgumentError, inspect(msg)
+    end
+  rescue
+    err -> raise ArgumentError, inspect(err)
+  end
+
+  def new(_prefix),
+    do: raise(ArgumentError)
+end
+
 Alt0.new("10.0.10.10/16")
 |> IO.inspect(label: :alt0)
+
+Alt1.new("10.0.10.10/16")
+|> IO.inspect(label: :alt1)
 
 Alt0.new("10/16")
 |> IO.inspect(label: :alt0)
@@ -152,24 +147,26 @@ Alt0.new("10/16")
 Alt0.new("10.10.10.10")
 |> IO.inspect(label: :alt0)
 
-# Alt1.new("10.10.10.10")
-# |> IO.inspect(label: :alt1)
-
 Pfx.new("10.10.10.10")
 |> IO.inspect(label: :pfx)
 
 Alt0.new("acdc:1975::")
 |> IO.inspect(label: :alt0)
 
-Pfx.new("acdc:1975:3333:4444:5555:6666:7777:8888")
+Alt0.new("acdc:1975:333:444:555:6:7777:8888")
+|> IO.inspect(label: :alt0)
+
+Pfx.new("acdc:1975:333:444:555:6:7777:8888")
 |> IO.inspect(label: :pfx)
 
 Benchee.run(%{
   "Alt0.ip4new" => fn -> Alt0.new("10.10.10.10/24") end,
+  "Alt1.ip4new" => fn -> Alt1.new("10.10.10.10/24") end,
   "Pfx.ip4new" => fn -> Pfx.new("10.10.10.10/24") end
 })
 
 Benchee.run(%{
   "Alt0.ip6new" => fn -> Alt0.new("acdc:1975:3333:4444:5555:6666:7777:8888/120") end,
+  "Alt1.ip6new" => fn -> Alt1.new("acdc:1975:3333:4444:5555:6666:7777:8888/120") end,
   "Pfx.ip6new" => fn -> Pfx.new("acdc:1975:3333:4444:5555:6666:7777:8888/120") end
 })
