@@ -104,11 +104,6 @@ defmodule Alt1 do
 
   def new(string) when is_binary(string) do
     {address, mask} = split(string, [])
-    # {address, mask} =
-    #   case :string.split(string, "/") do
-    #     [addr] -> {String.to_charlist(addr), nil}
-    #     [addr, msk] -> {String.to_charlist(addr), mask(msk, nil)}
-    #   end
 
     case :inet_parse.address(address) do
       {:ok, {a, b, c, d}} ->

@@ -2752,7 +2752,6 @@ defmodule Pfx do
     charlist = String.to_charlist(string)
     {address, mask} = splitp(charlist, [])
 
-    # TODO: inline the new({.., mask} code here, no additional checks needed
     case :inet_parse.address(address) do
       {:ok, {a, b, c, d}} ->
         mask = mask || 32
