@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [unreleased]
 
+### fixed
+
+- Pfx.type's typespec now also lists `:einvalid`
+
 ### added
 
 - [ ] Pfx.range(prefix) -> "first - last"

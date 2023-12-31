@@ -3917,7 +3917,7 @@ defmodule Pfx do
       256
 
   """
-  @spec type(prefix) :: :ip4 | :ip6 | :eui48 | :eui64 | non_neg_integer()
+  @spec type(prefix) :: :ip4 | :ip6 | :eui48 | :eui64 | non_neg_integer() | :einvalid
   def type(prefix) do
     case new(prefix).maxlen do
       32 -> :ip4
