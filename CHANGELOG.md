@@ -7,17 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [unreleased]
 
-### fixed
-
-- Pfx.type's typespec now also lists `:einvalid`
-
 ### added
 
 - [ ] Pfx.range(prefix) -> "first - last"
 
-### changed
+## [v0.14.2] - 2024-10-21
 
-- [ ] Pfx.partition_range now handles either "first - last", [first, last], or (first, last)
+### fixed
+
+- Thanks to elfenlaid: Fix Elixir 1.17 compilation warnings #1
+  charlists should be specified using the `~c` sigil, using single quotes has
+  been depracated.
 
 
 ## [v0.14.1] - 2022-02-20
