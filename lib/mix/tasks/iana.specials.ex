@@ -28,7 +28,7 @@ defmodule Mix.Tasks.Iana.Specials do
   @iana_ip4_spar "#{@iana_url}/iana-ipv4-special-registry/iana-ipv4-special-registry.xml"
   @iana_ip6_spar "#{@iana_url}/iana-ipv6-special-registry/iana-ipv6-special-registry.xml"
 
-  @user_agent {'User-agent', 'Elixir Pfx'}
+  @user_agent {~c"User-agent", ~c"Elixir Pfx"}
   # always point to Pfx's priv directory
   @priv_specials "specials"
 
@@ -66,7 +66,7 @@ defmodule Mix.Tasks.Iana.Specials do
   @spec fetch(String.t()) :: {:error, String.t()} | {Date.t(), [{Pfx.t(), map}]}
   defp fetch(url) do
     # filter out ?xml-model since xmerl chokes on it.
-    with {:ok, {{_http_ver, 200, 'OK'}, _headers, body}} <-
+    with {:ok, {{_http_ver, 200, ~c"OK"}, _headers, body}} <-
            :httpc.request(:get, {url, [@user_agent]}, [], []),
          body <- List.to_string(body),
          body <- Regex.replace(~r/<\?xml-model.*\n/, body, ""),
@@ -157,7 +157,7 @@ defmodule Mix.Tasks.Iana.Specials do
     rfcs =
       for xref <- data do
         case xref do
-          {:xref, [type: 'rfc', data: rfc], _} -> to_string(rfc)
+          {:xref, [type: ~c"rfc", data: rfc], _} -> to_string(rfc)
           _ -> ""
         end
       end
