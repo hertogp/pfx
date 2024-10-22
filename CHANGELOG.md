@@ -11,13 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - [ ] Pfx.range(prefix) -> "first - last"
 
+## [v0.14.3] -- xxx
+
+### fixed
+
+- spelling in changelog for v0.14.2, it's deprecated, not depracated.
+
 ## [v0.14.2] - 2024-10-21
 
 ### fixed
 
 - Thanks to elfenlaid: Fix Elixir 1.17 compilation warnings #1
   charlists should be specified using the `~c` sigil, using single quotes has
-  been depracated.
+  been deprecated.
 
 
 ## [v0.14.1] - 2022-02-20
